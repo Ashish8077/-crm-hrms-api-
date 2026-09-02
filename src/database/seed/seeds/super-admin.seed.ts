@@ -19,24 +19,12 @@ export class SuperAdminSeed {
   async run(): Promise<void> {
     this.logger.log('Seeding Super Admin user...');
 
-    const email = this.configService.get<string>('superAdmin.email');
-    const password = this.configService.get<string>('superAdmin.password');
+    const email = this.configService.getOrThrow<string>('superAdmin.email');
+    const password = this.configService.getOrThrow<string>(
+      'superAdmin.password',
+    );
 
-    // 1. Validate configuration
-    if (!email || !password) {
-      this.logger.error('Super Admin credentials missing in configuration.');
-      throw new Error('Super Admin credentials missing');
-    }
-
-    // 2. Validate password configuration
-    if (password.length < 8) {
-      this.logger.error(
-        'Super Admin password must be at least 8 characters long.',
-      );
-      throw new Error('Super Admin password too short');
-    }
-
-    // 3. Normalize email consistently
+    // Normalize email consistently
     const normalizedEmail = email.trim().toLowerCase();
 
     // 4. Resolve Super Admin role
