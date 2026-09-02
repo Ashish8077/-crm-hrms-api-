@@ -7,6 +7,12 @@ import { envValidationSchema } from './config/env.validation';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import configuration from './config/configuration';
+import { User, UserSchema } from './modules/users/schemas/user.schema';
+import { Role, RoleSchema } from './modules/roles/schemas/role.schema';
+import {
+  Permission,
+  PermissionSchema,
+} from './modules/permissions/schemas/permission.schema';
 
 @Module({
   imports: [
@@ -24,6 +30,11 @@ import configuration from './config/configuration';
         uri: configService.getOrThrow<string>('database.mongodbUri'),
       }),
     }),
+    MongooseModule.forFeature([
+      { name: User.name, schema: UserSchema },
+      { name: Role.name, schema: RoleSchema },
+      { name: Permission.name, schema: PermissionSchema },
+    ]),
     HealthModule,
     AuthModule,
   ],
