@@ -16,16 +16,22 @@ export class User {
     unique: true,
     lowercase: true,
     trim: true,
-    index: true,
   })
-  email: string;
+  email!: string;
 
   @Prop({
     type: String,
     required: true,
     select: false,
   })
-  passwordHash: string;
+  passwordHash!: string;
+
+  @Prop({
+    type: [Types.ObjectId],
+    ref: 'Role',
+    default: [],
+  })
+  roleIds!: Types.ObjectId[];
 
   @Prop({
     type: String,
@@ -34,41 +40,41 @@ export class User {
     required: true,
     index: true,
   })
-  status: UserStatus;
+  status!: UserStatus;
 
   @Prop({
     type: Date,
     default: null,
   })
-  lastLoginAt: Date | null;
+  lastLoginAt!: Date | null;
 
   @Prop({
     type: Date,
     default: null,
     index: true,
   })
-  deletedAt: Date | null;
+  deletedAt!: Date | null;
 
   @Prop({
     type: Types.ObjectId,
-    ref: User.name,
+    ref: 'User',
     default: null,
   })
-  createdBy: Types.ObjectId | null;
+  createdBy!: Types.ObjectId | null;
 
   @Prop({
     type: Types.ObjectId,
-    ref: User.name,
+    ref: 'User',
     default: null,
   })
-  updatedBy: Types.ObjectId | null;
+  updatedBy!: Types.ObjectId | null;
 
   @Prop({
     type: Types.ObjectId,
-    ref: User.name,
+    ref: 'User',
     default: null,
   })
-  deletedBy: Types.ObjectId | null;
+  deletedBy!: Types.ObjectId | null;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

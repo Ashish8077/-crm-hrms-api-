@@ -7,4 +7,6 @@ export const envValidationSchema = Joi.object({
   PORT: Joi.number().port().default(3000),
   MONGODB_URI: Joi.string().uri().required(),
   CORS_ORIGIN: Joi.string().uri().required(),
+  SUPER_ADMIN_EMAIL: Joi.string().email().allow('').optional(),
+  SUPER_ADMIN_PASSWORD: Joi.string().allow('').optional(),
 });
