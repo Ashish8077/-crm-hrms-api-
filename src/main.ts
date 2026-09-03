@@ -16,6 +16,14 @@ async function bootstrap() {
 
   app.use(helmet());
 
+  const configService = app.get(ConfigService);
+
+  const trustProxy = configService.getOrThrow<number>('app.trustProxy');
+  if (trustProxy > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+    app.getHttpAdapter().getInstance().set('trust proxy', trustProxy);
+  }
+
   app.setGlobalPrefix(API_PREFIX);
   app.useGlobalPipes(
     new ValidationPipe({
@@ -24,8 +32,6 @@ async function bootstrap() {
       transform: true,
     }),
   );
-
-  const configService = app.get(ConfigService);
 
   app.enableCors({
     origin: configService.getOrThrow<string>('CORS_ORIGIN'),
