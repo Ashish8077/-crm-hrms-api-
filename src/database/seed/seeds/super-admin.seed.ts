@@ -5,7 +5,8 @@ import { User } from '../../../modules/users/schemas/user.schema';
 import { Role } from '../../../modules/roles/schemas/role.schema';
 import { UserStatus } from '../../../modules/users/constants/user-status.constant';
 import { SystemRole } from '../../../modules/roles/constants/role.constant';
-import { PasswordUtil } from '../../../common/utils/password.util';
+import { PasswordUtil } from '../../../common/utils/password.util.js';
+import { validatePasswordPolicy } from '../../../common/utils/password-policy.util.js';
 
 export class SuperAdminSeed {
   private readonly logger = new Logger(SuperAdminSeed.name);
@@ -75,7 +76,16 @@ export class SuperAdminSeed {
       return;
     }
 
-    // 7. Hash password before storing it
+    // Validate password against policy
+    const violations = validatePasswordPolicy(password);
+    if (violations.length > 0) {
+      violations.forEach((v) => this.logger.error(`  - ${v}`));
+      throw new Error(
+        'SUPER_ADMIN_PASSWORD does not meet the password policy.',
+      );
+    }
+
+    // Hash password before storing it
     const passwordHash = await PasswordUtil.hash(password);
 
     // 8. Create Super Admin user
