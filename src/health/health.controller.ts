@@ -4,12 +4,14 @@ import {
   HealthCheckService,
   MongooseHealthIndicator,
 } from '@nestjs/terminus';
+import { RedisHealthIndicator } from './redis.health.js';
 
 @Controller('health')
 export class HealthController {
   constructor(
     private readonly health: HealthCheckService,
     private readonly mongoose: MongooseHealthIndicator,
+    private readonly redisHealthIndicator: RedisHealthIndicator,
   ) {}
 
   @Get('live')
@@ -21,6 +23,9 @@ export class HealthController {
   @Get('ready')
   @HealthCheck()
   ready() {
-    return this.health.check([() => this.mongoose.pingCheck('mongodb')]);
+    return this.health.check([
+      () => this.mongoose.pingCheck('mongodb'),
+      () => this.redisHealthIndicator.isHealthy('redis'),
+    ]);
   }
 }

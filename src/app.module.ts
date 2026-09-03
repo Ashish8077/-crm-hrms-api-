@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -13,6 +15,8 @@ import {
   Permission,
   PermissionSchema,
 } from './modules/permissions/schemas/permission.schema';
+import { RedisModule } from './common/redis/redis.module';
+import { CsrfGuard } from './common/guards/csrf.guard';
 
 @Module({
   imports: [
@@ -23,6 +27,12 @@ import {
       cache: true,
       envFilePath: `.env.${process.env.NODE_ENV}`,
     }),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 60,
+      },
+    ]),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -35,10 +45,21 @@ import {
       { name: Role.name, schema: RoleSchema },
       { name: Permission.name, schema: PermissionSchema },
     ]),
+    RedisModule,
     HealthModule,
     AuthModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: CsrfGuard,
+    },
+  ],
 })
 export class AppModule {}
