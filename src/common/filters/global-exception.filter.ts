@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Request, Response } from 'express';
 
 import { AppError } from '../errors/app-error';
@@ -21,7 +22,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
     const response = ctx.getResponse<Response>();
 
-    const requestId = request.headers['x-request-id']?.toString() ?? null;
+    let incomingRequestId = request.headers['x-request-id'];
+    if (Array.isArray(incomingRequestId)) {
+      incomingRequestId = incomingRequestId[0];
+    }
+    const requestId =
+      typeof incomingRequestId === 'string' ? incomingRequestId : randomUUID();
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
 
@@ -75,6 +81,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
       if (statusCode === HttpStatus.NOT_FOUND) {
         code = ErrorCode.RESOURCE_NOT_FOUND;
+      }
+
+      if (statusCode === HttpStatus.TOO_MANY_REQUESTS) {
+        code = ErrorCode.TOO_MANY_REQUESTS;
+        message = 'Too many requests. Please try again later.';
       }
     }
 
