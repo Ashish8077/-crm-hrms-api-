@@ -44,6 +44,7 @@ export function setupSwagger(app: INestApplication): void {
       docExpansion: 'none',
       tagsSorter: 'alpha',
       operationsSorter: 'alpha',
+      // withCredentials: true,
     },
     jsonDocumentUrl: 'docs/json',
   });

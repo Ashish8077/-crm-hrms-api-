@@ -21,4 +21,8 @@ export class UserRepository {
       .updateOne({ _id: userId }, { $set: { lastLoginAt: new Date() } })
       .exec();
   }
+
+  async findById(userId: Types.ObjectId): Promise<User | null> {
+    return this.userModel.findById(userId).select('+passwordHash').lean();
+  }
 }

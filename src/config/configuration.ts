@@ -17,6 +17,7 @@ export default () => ({
 
   redis: {
     url: process.env.REDIS_URL,
+    keyHmacSecret: process.env.REDIS_KEY_HMAC_SECRET,
   },
 
   jwt: {

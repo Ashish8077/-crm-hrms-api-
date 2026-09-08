@@ -31,9 +31,9 @@ export class AuditLog {
 
   @Prop({
     type: String,
-    required: true,
+    default: null,
   })
-  email!: string;
+  email!: string | null;
 
   @Prop({
     type: String,
