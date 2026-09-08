@@ -4,6 +4,7 @@ import { HttpStatus, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Types } from 'mongoose';
+import { getConnectionToken } from '@nestjs/mongoose';
 
 import { AuthService } from './auth.service.js';
 import { UserRepository } from '../users/repositories/user.repository.js';
@@ -69,6 +70,18 @@ describe('AuthService', () => {
       }),
     };
 
+    const dbSessionMock = {
+      startTransaction: jest.fn(),
+      commitTransaction: jest.fn(),
+      abortTransaction: jest.fn(),
+      endSession: jest.fn(),
+      inTransaction: jest.fn().mockReturnValue(true),
+    };
+
+    const connectionMock = {
+      startSession: jest.fn().mockResolvedValue(dbSessionMock),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -78,6 +91,7 @@ describe('AuthService', () => {
         { provide: AuditLogRepository, useValue: auditLogRepositoryMock },
         { provide: JwtService, useValue: jwtServiceMock },
         { provide: ConfigService, useValue: configServiceMock },
+        { provide: getConnectionToken(), useValue: connectionMock },
       ],
     }).compile();
 
@@ -216,6 +230,101 @@ describe('AuthService', () => {
         clientMetadata.ipAddress,
         clientMetadata.userAgent,
         mockUser._id,
+      );
+    });
+  });
+
+  describe('refresh', () => {
+    const refreshToken = 'valid_token';
+    const mockSession = {
+      _id: new Types.ObjectId(),
+      userId: mockUser._id,
+    };
+
+    beforeEach(() => {
+      sessionRepository.findValidSessionByRefreshTokenHash = jest.fn();
+      sessionRepository.revokeSessionById = jest.fn();
+      sessionRepository.revokeSessionAtomically = jest.fn();
+      auditLogRepository.recordRefreshFailure = jest.fn();
+      auditLogRepository.recordRefreshSuccess = jest.fn();
+    });
+
+    it('should successfully rotate refresh token', async () => {
+      sessionRepository.findValidSessionByRefreshTokenHash.mockResolvedValue(mockSession as any);
+      userRepository.findById.mockResolvedValue(mockUser as any);
+      sessionRepository.revokeSessionAtomically.mockResolvedValue(true);
+      sessionRepository.createSession.mockResolvedValue({
+        _id: new Types.ObjectId(),
+      } as any);
+      jwtService.signAsync.mockResolvedValue('new_access_token');
+
+      const result = await service.refresh(refreshToken, clientMetadata);
+
+      expect(result.accessToken).toBe('new_access_token');
+      expect(result.refreshToken).toBeDefined();
+      expect(result.expiresIn).toBe(900); // 15m
+      expect(result.user.email).toBe(mockUser.email);
+      expect(result.user.id).toBe(mockUser._id.toString());
+      
+      expect(sessionRepository.revokeSessionAtomically).toHaveBeenCalled();
+      expect(auditLogRepository.recordRefreshSuccess).toHaveBeenCalled();
+    });
+
+    it('should fail if token is missing', async () => {
+      await expect(service.refresh(undefined, clientMetadata)).rejects.toThrow(
+        new AppError(ErrorCode.INVALID_REFRESH_TOKEN, 'Invalid or expired refresh token', HttpStatus.UNAUTHORIZED),
+      );
+      expect(auditLogRepository.recordRefreshFailure).toHaveBeenCalledWith(
+        'invalid_refresh_token',
+        clientMetadata.ipAddress,
+        clientMetadata.userAgent,
+      );
+    });
+
+    it('should fail if session is invalid', async () => {
+      sessionRepository.findValidSessionByRefreshTokenHash.mockResolvedValue(null);
+
+      await expect(service.refresh(refreshToken, clientMetadata)).rejects.toThrow(
+        new AppError(ErrorCode.INVALID_REFRESH_TOKEN, 'Invalid or expired refresh token', HttpStatus.UNAUTHORIZED),
+      );
+      expect(auditLogRepository.recordRefreshFailure).toHaveBeenCalledWith(
+        'invalid_refresh_token',
+        clientMetadata.ipAddress,
+        clientMetadata.userAgent,
+      );
+    });
+
+    it('should fail and delete session if user is inactive', async () => {
+      sessionRepository.findValidSessionByRefreshTokenHash.mockResolvedValue(mockSession as any);
+      userRepository.findById.mockResolvedValue({ ...mockUser, status: UserStatus.INACTIVE } as any);
+
+      await expect(service.refresh(refreshToken, clientMetadata)).rejects.toThrow(
+        new AppError(ErrorCode.INVALID_REFRESH_TOKEN, 'Invalid or expired refresh token', HttpStatus.UNAUTHORIZED),
+      );
+      
+      expect(sessionRepository.revokeSessionById).toHaveBeenCalledWith(mockSession._id);
+      expect(auditLogRepository.recordRefreshFailure).toHaveBeenCalledWith(
+        'account_inactive',
+        clientMetadata.ipAddress,
+        clientMetadata.userAgent,
+        mockSession.userId,
+      );
+    });
+
+    it('should fail atomic rotation if token is reused', async () => {
+      sessionRepository.findValidSessionByRefreshTokenHash.mockResolvedValue(mockSession as any);
+      userRepository.findById.mockResolvedValue(mockUser as any);
+      sessionRepository.revokeSessionAtomically.mockResolvedValue(false); // Fails atomic check
+
+      await expect(service.refresh(refreshToken, clientMetadata)).rejects.toThrow(
+        new AppError(ErrorCode.INVALID_REFRESH_TOKEN, 'Invalid or expired refresh token', HttpStatus.UNAUTHORIZED),
+      );
+      
+      expect(auditLogRepository.recordRefreshFailure).toHaveBeenCalledWith(
+        'refresh_token_reuse',
+        clientMetadata.ipAddress,
+        clientMetadata.userAgent,
+        mockSession.userId,
       );
     });
   });

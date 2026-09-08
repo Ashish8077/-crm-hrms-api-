@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { HttpStatus, Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { API_PREFIX } from './common/constants/api.constants';
 import helmet from 'helmet';
@@ -8,6 +8,11 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { setupSwagger } from './config/swagger.config';
+import cookieParser from 'cookie-parser';
+import { ValidationError } from 'class-validator';
+import { AppError } from './common/errors/app-error';
+import { ErrorCode } from './common/errors/error-codes';
+import { mapValidationErrors } from './common/validation/validation-error.mapper';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -30,11 +35,23 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      exceptionFactory: (errors: ValidationError[]) => {
+        const details = mapValidationErrors(errors);
+        return new AppError(
+          ErrorCode.VALIDATION_ERROR,
+          'Request validation failed',
+          HttpStatus.BAD_REQUEST,
+          details,
+        );
+      },
     }),
   );
 
+  app.use(cookieParser());
+
   app.enableCors({
     origin: configService.getOrThrow<string>('CORS_ORIGIN'),
+    credentials: true,
   });
 
   app.useGlobalInterceptors(
