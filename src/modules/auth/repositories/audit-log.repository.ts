@@ -63,4 +63,73 @@ export class AuditLogRepository {
       );
     }
   }
+
+  async recordRefreshSuccess(
+    userId: Types.ObjectId,
+    email: string,
+    ipAddress: string | null,
+    userAgent: string | null,
+  ): Promise<void> {
+    try {
+      const log = new this.auditLogModel({
+        action: AuditLogAction.REFRESH_SUCCESS,
+        userId,
+        email,
+        ipAddress,
+        userAgent,
+      });
+      await log.save();
+    } catch (error) {
+      this.logger.error(
+        `Failed to record refresh success audit log for user ${userId.toString()}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
+
+  async recordRefreshFailure(
+    reason: AuditLogFailureReason,
+    ipAddress: string | null,
+    userAgent: string | null,
+    userId?: Types.ObjectId | null,
+  ): Promise<void> {
+    try {
+      const log = new this.auditLogModel({
+        action: AuditLogAction.REFRESH_FAILURE,
+        userId: userId ?? null,
+        ipAddress,
+        userAgent,
+        reason,
+      });
+      await log.save();
+    } catch (error) {
+      this.logger.error(
+        `Failed to record refresh failure audit log`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
+
+  async recordLogoutSuccess(
+    userId: Types.ObjectId,
+    email: string,
+    ipAddress: string | null,
+    userAgent: string | null,
+  ): Promise<void> {
+    try {
+      const log = new this.auditLogModel({
+        action: AuditLogAction.LOGOUT_SUCCESS,
+        userId,
+        email,
+        ipAddress,
+        userAgent,
+      });
+      await log.save();
+    } catch (error) {
+      this.logger.error(
+        `Failed to record logout success audit log for user ${userId.toString()}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
 }

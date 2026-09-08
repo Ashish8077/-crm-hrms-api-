@@ -132,6 +132,19 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return result as number;
   }
 
+  async resetLoginAttempts(
+    attemptsKey: string,
+    lockoutKey: string,
+  ): Promise<number> {
+    const script = `
+      redis.call("DEL", KEYS[1], KEYS[2])
+      return 1
+    `;
+
+    const result = await this.client.eval(script, 2, attemptsKey, lockoutKey);
+    return result as number;
+  }
+
   /**
    * Returns the underlying ioredis client for advanced operations
    * (e.g., pipelines, multi/exec, Lua scripts).

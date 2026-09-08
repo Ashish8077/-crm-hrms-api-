@@ -6,8 +6,8 @@ export class LoginDto {
     description: 'User email address',
     example: 'user@example.com',
   })
-  @IsEmail()
   @IsNotEmpty()
+  @IsEmail()
   @MaxLength(255)
   email!: string;
 
@@ -15,8 +15,8 @@ export class LoginDto {
     description: 'User password',
     example: 'StrongPassword123!',
   })
-  @IsString()
   @IsNotEmpty()
+  @IsString()
   @MaxLength(128)
   password!: string;
 }

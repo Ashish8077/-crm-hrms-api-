@@ -11,6 +11,8 @@ import { SessionRepository } from './repositories/session.repository.js';
 import { AuditLog, AuditLogSchema } from './schemas/audit-log.schema.js';
 import { Session, SessionSchema } from './schemas/session.schema.js';
 import { LoginSecurityService } from './services/login-security.service.js';
+import { APP_GUARD } from '@nestjs/core';
+import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 
 @Module({
   imports: [
@@ -37,6 +39,11 @@ import { LoginSecurityService } from './services/login-security.service.js';
     SessionRepository,
     AuditLogRepository,
     LoginSecurityService,
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
   ],
+  exports: [AuthService],
 })
 export class AuthModule {}
