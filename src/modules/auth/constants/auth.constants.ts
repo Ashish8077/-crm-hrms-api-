@@ -23,22 +23,3 @@ export const REFRESH_TOKEN_COOKIE = 'refresh_token';
 /** Redis key prefixes for login security. */
 export const REDIS_LOGIN_ATTEMPTS_PREFIX = 'login_attempts:';
 export const REDIS_LOGIN_LOCKOUT_PREFIX = 'login_lockout:';
-
-/** Audit log actions. */
-export enum AuditLogAction {
-  LOGIN_SUCCESS = 'LOGIN_SUCCESS',
-  LOGIN_FAILURE = 'LOGIN_FAILURE',
-  REFRESH_SUCCESS = 'REFRESH_SUCCESS',
-  REFRESH_FAILURE = 'REFRESH_FAILURE',
-  LOGOUT_SUCCESS = 'LOGOUT_SUCCESS',
-  LOGOUT_FAILURE = 'LOGOUT_FAILURE',
-}
-
-/** Audit log failure reasons. */
-export enum AuditLogFailureReason {
-  INVALID_CREDENTIALS = 'invalid_credentials',
-  ACCOUNT_INACTIVE = 'account_inactive',
-  ACCOUNT_LOCKED_OUT = 'account_locked_out',
-  INVALID_REFRESH_TOKEN = 'invalid_refresh_token',
-  REFRESH_TOKEN_REUSE = 'refresh_token_reuse',
-}

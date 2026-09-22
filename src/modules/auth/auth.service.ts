@@ -12,7 +12,7 @@ import { UserDocument } from '../users/schemas/user.schema.js';
 import { UserRepository } from '../users/repositories/user.repository.js';
 import { LoginDto } from './dto/login.dto.js';
 import { MeResponseDto } from './dto/me-response.dto.js';
-import { AuditLogRepository } from './repositories/audit-log.repository.js';
+import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
 import { SessionRepository } from './repositories/session.repository.js';
 import { LoginSecurityService } from './services/login-security.service.js';
 import {
@@ -21,7 +21,7 @@ import {
   LogoutData,
   RefreshResult,
 } from './types/auth.types.js';
-import { AuditLogFailureReason } from './constants/auth.constants.js';
+import { AuditLogFailureReason } from '../audit-logs/constants/audit-log.constant.js';
 import { TimeUtil } from '../../common/utils/time.util.js';
 
 @Injectable()
@@ -32,7 +32,7 @@ export class AuthService {
     private readonly userRepository: UserRepository,
     private readonly sessionRepository: SessionRepository,
     private readonly loginSecurityService: LoginSecurityService,
-    private readonly auditLogRepository: AuditLogRepository,
+    private readonly auditLogsService: AuditLogsService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     @InjectConnection() private readonly connection: Connection,
@@ -44,7 +44,7 @@ export class AuthService {
     clientMetadata: ClientMetadata,
     userId?: Types.ObjectId,
   ): Promise<never> {
-    await this.auditLogRepository.recordLoginFailure(
+    await this.auditLogsService.recordLoginFailure(
       email,
       reason,
       clientMetadata.ipAddress,
@@ -166,7 +166,7 @@ export class AuthService {
       });
 
     // 11. Audit success (reliable, doesn't fail login)
-    await this.auditLogRepository.recordLoginSuccess(
+    await this.auditLogsService.recordLoginSuccess(
       user._id,
       email,
       ipAddress,
@@ -190,7 +190,7 @@ export class AuthService {
   ): Promise<RefreshResult> {
     if (!refreshToken) {
       this.logger.warn('Refresh rejected: refresh token missing');
-      await this.auditLogRepository.recordRefreshFailure(
+      await this.auditLogsService.recordRefreshFailure(
         AuditLogFailureReason.INVALID_REFRESH_TOKEN,
         clientMetadata.ipAddress,
         clientMetadata.userAgent,
@@ -210,7 +210,7 @@ export class AuthService {
 
     if (!session) {
       this.logger.warn('Refresh rejected: valid session not found');
-      await this.auditLogRepository.recordRefreshFailure(
+      await this.auditLogsService.recordRefreshFailure(
         AuditLogFailureReason.INVALID_REFRESH_TOKEN,
         clientMetadata.ipAddress,
         clientMetadata.userAgent,
@@ -229,7 +229,7 @@ export class AuthService {
       this.logger.warn(`Refresh rejected: account inactive or not found`);
       // Inactive/deleted user using valid token -> delete session and reject
       await this.sessionRepository.revokeSessionById(session._id);
-      await this.auditLogRepository.recordRefreshFailure(
+      await this.auditLogsService.recordRefreshFailure(
         AuditLogFailureReason.ACCOUNT_INACTIVE,
         clientMetadata.ipAddress,
         clientMetadata.userAgent,
@@ -261,7 +261,7 @@ export class AuthService {
         await dbSession.abortTransaction();
 
         // Token was already consumed or concurrent attempt
-        await this.auditLogRepository.recordRefreshFailure(
+        await this.auditLogsService.recordRefreshFailure(
           AuditLogFailureReason.REFRESH_TOKEN_REUSE,
           clientMetadata.ipAddress,
           clientMetadata.userAgent,
@@ -316,7 +316,7 @@ export class AuthService {
       await dbSession.commitTransaction();
 
       // Audit success
-      await this.auditLogRepository.recordRefreshSuccess(
+      await this.auditLogsService.recordRefreshSuccess(
         userId,
         user.email,
         clientMetadata.ipAddress,
@@ -363,7 +363,7 @@ export class AuthService {
     }
 
     try {
-      await this.auditLogRepository.recordLogoutSuccess(
+      await this.auditLogsService.recordLogoutSuccess(
         userId,
         user.email,
         ipAddress,
