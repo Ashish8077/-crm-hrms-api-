@@ -18,9 +18,10 @@ export class Role {
   name!: string;
 
   @Prop({
-    required: true,
     type: String,
+    required: true,
     unique: true,
+    index: true,
     trim: true,
     lowercase: true,
     maxlength: 100,
@@ -53,6 +54,9 @@ export class Role {
     index: true,
   })
   isActive!: boolean;
+
+  createdAt!: Date;
+  updatedAt!: Date;
 }
 
 export const RoleSchema = SchemaFactory.createForClass(Role);

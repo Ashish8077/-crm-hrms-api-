@@ -8,13 +8,11 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { envValidationSchema } from './config/env.validation';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { RolesModule } from './modules/roles/roles.module';
+import { PermissionsModule } from './modules/permissions/permissions.module';
+import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import configuration from './config/configuration';
-import { User, UserSchema } from './modules/users/schemas/user.schema';
-import { Role, RoleSchema } from './modules/roles/schemas/role.schema';
-import {
-  Permission,
-  PermissionSchema,
-} from './modules/permissions/schemas/permission.schema';
 import { RedisModule } from './common/redis/redis.module';
 import { CsrfGuard } from './common/guards/csrf.guard';
 
@@ -40,13 +38,12 @@ import { CsrfGuard } from './common/guards/csrf.guard';
         uri: configService.getOrThrow<string>('database.mongodbUri'),
       }),
     }),
-    MongooseModule.forFeature([
-      { name: User.name, schema: UserSchema },
-      { name: Role.name, schema: RoleSchema },
-      { name: Permission.name, schema: PermissionSchema },
-    ]),
     RedisModule,
     HealthModule,
+    AuditLogsModule,
+    PermissionsModule,
+    RolesModule,
+    UsersModule,
     AuthModule,
   ],
   controllers: [AppController],

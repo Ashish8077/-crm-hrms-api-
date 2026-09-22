@@ -2,25 +2,23 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
-import { User, UserSchema } from '../users/schemas/user.schema.js';
-import { UserRepository } from '../users/repositories/user.repository.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
-import { AuditLogRepository } from './repositories/audit-log.repository.js';
 import { SessionRepository } from './repositories/session.repository.js';
-import { AuditLog, AuditLogSchema } from './schemas/audit-log.schema.js';
 import { Session, SessionSchema } from './schemas/session.schema.js';
 import { LoginSecurityService } from './services/login-security.service.js';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 
+import { AuthorizationService } from './authorization/authorization.service';
+import { UsersModule } from '../users/users.module.js';
+import { RolesModule } from '../roles/roles.module.js';
+import { PermissionsModule } from '../permissions/permissions.module.js';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module.js';
+
 @Module({
   imports: [
-    MongooseModule.forFeature([
-      { name: User.name, schema: UserSchema },
-      { name: Session.name, schema: SessionSchema },
-      { name: AuditLog.name, schema: AuditLogSchema },
-    ]),
+    MongooseModule.forFeature([{ name: Session.name, schema: SessionSchema }]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -31,19 +29,22 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
         },
       }),
     }),
+    UsersModule,
+    RolesModule,
+    PermissionsModule,
+    AuditLogsModule,
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
-    UserRepository,
     SessionRepository,
-    AuditLogRepository,
     LoginSecurityService,
+    AuthorizationService,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
   ],
-  exports: [AuthService],
+  exports: [AuthService, AuthorizationService],
 })
 export class AuthModule {}
