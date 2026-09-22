@@ -66,7 +66,7 @@ Example: if `key = module.action` (e.g., `employees.view`), then a unique index 
 
 ### Role Model
 
-- `key` — unique role identifier (e.g., `super_admin`)
+- `key` — unique role identifier (e.g., `super-admin`)
 - `name` — human-readable display name (e.g., `Super Admin`)
 - `permissionIds` — array of `ObjectId` references to `Permission`
 - `isSystemRole` — marks seed/built-in roles that should not be deleted
