@@ -1,8 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { HttpStatus, Logger, ValidationPipe } from '@nestjs/common';
+import {
+  HttpStatus,
+  Logger,
+  ValidationPipe,
+  VersioningType,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { API_PREFIX } from './common/constants/api.constants';
 import helmet from 'helmet';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
@@ -29,7 +33,11 @@ async function bootstrap() {
     app.getHttpAdapter().getInstance().set('trust proxy', trustProxy);
   }
 
-  app.setGlobalPrefix(API_PREFIX);
+  app.setGlobalPrefix('api');
+
+  app.enableVersioning({
+    type: VersioningType.URI,
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

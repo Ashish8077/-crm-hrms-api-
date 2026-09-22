@@ -37,7 +37,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     let details: unknown;
 
-    if (exception instanceof AppError) {
+    if (this.isMongoDuplicateKeyError(exception)) {
+      const error = new AppError(
+        ErrorCode.RESOURCE_ALREADY_EXISTS,
+        'Resource already exists',
+        HttpStatus.CONFLICT,
+      );
+      statusCode = error.statusCode;
+      code = error.code;
+      message = error.message;
+    } else if (exception instanceof AppError) {
       statusCode = exception.statusCode;
       code = exception.code;
       message = exception.message;
@@ -113,5 +122,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
       requestId,
     });
+  }
+
+  private isMongoDuplicateKeyError(exception: unknown): boolean {
+    return (
+      typeof exception === 'object' &&
+      exception !== null &&
+      'code' in exception &&
+      (exception as { code?: number }).code === 11000
+    );
   }
 }

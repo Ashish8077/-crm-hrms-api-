@@ -9,7 +9,7 @@ import { getConnectionToken } from '@nestjs/mongoose';
 import { AuthService } from './auth.service.js';
 import { UserRepository } from '../users/repositories/user.repository.js';
 import { SessionRepository } from './repositories/session.repository.js';
-import { AuditLogRepository } from './repositories/audit-log.repository.js';
+import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
 import { LoginSecurityService } from './services/login-security.service.js';
 import { PasswordUtil } from '../../common/utils/password.util.js';
 import { UserStatus } from '../users/constants/user-status.constant.js';
@@ -21,7 +21,7 @@ describe('AuthService', () => {
   let userRepository: jest.Mocked<UserRepository>;
   let sessionRepository: jest.Mocked<SessionRepository>;
   let loginSecurityService: jest.Mocked<LoginSecurityService>;
-  let auditLogRepository: jest.Mocked<AuditLogRepository>;
+  let auditLogsService: jest.Mocked<AuditLogsService>;
   let jwtService: jest.Mocked<JwtService>;
   let configService: jest.Mocked<ConfigService>;
 
@@ -55,9 +55,12 @@ describe('AuthService', () => {
       incrementFailedAttempts: jest.fn(),
       resetAttempts: jest.fn(),
     };
-    const auditLogRepositoryMock = {
-      recordLoginFailure: jest.fn(),
+    const auditLogsServiceMock = {
       recordLoginSuccess: jest.fn(),
+      recordLoginFailure: jest.fn(),
+      recordRefreshSuccess: jest.fn(),
+      recordRefreshFailure: jest.fn(),
+      recordLogoutSuccess: jest.fn(),
     };
     const jwtServiceMock = {
       signAsync: jest.fn(),
@@ -88,7 +91,7 @@ describe('AuthService', () => {
         { provide: UserRepository, useValue: userRepositoryMock },
         { provide: SessionRepository, useValue: sessionRepositoryMock },
         { provide: LoginSecurityService, useValue: loginSecurityServiceMock },
-        { provide: AuditLogRepository, useValue: auditLogRepositoryMock },
+        { provide: AuditLogsService, useValue: auditLogsServiceMock },
         { provide: JwtService, useValue: jwtServiceMock },
         { provide: ConfigService, useValue: configServiceMock },
         { provide: getConnectionToken(), useValue: connectionMock },
@@ -99,7 +102,7 @@ describe('AuthService', () => {
     userRepository = module.get(UserRepository);
     sessionRepository = module.get(SessionRepository);
     loginSecurityService = module.get(LoginSecurityService);
-    auditLogRepository = module.get(AuditLogRepository);
+    auditLogsService = module.get(AuditLogsService);
     jwtService = module.get(JwtService);
     configService = module.get(ConfigService);
 
@@ -134,7 +137,7 @@ describe('AuthService', () => {
       expect(loginSecurityService.resetAttempts).toHaveBeenCalledWith(
         loginDto.email,
       );
-      expect(auditLogRepository.recordLoginSuccess).toHaveBeenCalledWith(
+      expect(auditLogsService.recordLoginSuccess).toHaveBeenCalledWith(
         mockUser._id,
         loginDto.email,
         clientMetadata.ipAddress,
@@ -153,7 +156,7 @@ describe('AuthService', () => {
         ),
       );
 
-      expect(auditLogRepository.recordLoginFailure).toHaveBeenCalledWith(
+      expect(auditLogsService.recordLoginFailure).toHaveBeenCalledWith(
         loginDto.email,
         'account_locked_out',
         clientMetadata.ipAddress,
@@ -176,7 +179,7 @@ describe('AuthService', () => {
       expect(loginSecurityService.incrementFailedAttempts).toHaveBeenCalledWith(
         loginDto.email,
       );
-      expect(auditLogRepository.recordLoginFailure).toHaveBeenCalledWith(
+      expect(auditLogsService.recordLoginFailure).toHaveBeenCalledWith(
         loginDto.email,
         'invalid_credentials',
         clientMetadata.ipAddress,
@@ -200,7 +203,7 @@ describe('AuthService', () => {
       expect(loginSecurityService.incrementFailedAttempts).toHaveBeenCalledWith(
         loginDto.email,
       );
-      expect(auditLogRepository.recordLoginFailure).toHaveBeenCalledWith(
+      expect(auditLogsService.recordLoginFailure).toHaveBeenCalledWith(
         loginDto.email,
         'invalid_credentials',
         clientMetadata.ipAddress,
@@ -224,7 +227,7 @@ describe('AuthService', () => {
         ),
       );
 
-      expect(auditLogRepository.recordLoginFailure).toHaveBeenCalledWith(
+      expect(auditLogsService.recordLoginFailure).toHaveBeenCalledWith(
         loginDto.email,
         'account_inactive',
         clientMetadata.ipAddress,
@@ -245,12 +248,14 @@ describe('AuthService', () => {
       sessionRepository.findValidSessionByRefreshTokenHash = jest.fn();
       sessionRepository.revokeSessionById = jest.fn();
       sessionRepository.revokeSessionAtomically = jest.fn();
-      auditLogRepository.recordRefreshFailure = jest.fn();
-      auditLogRepository.recordRefreshSuccess = jest.fn();
+      auditLogsService.recordRefreshFailure = jest.fn();
+      auditLogsService.recordRefreshSuccess = jest.fn();
     });
 
     it('should successfully rotate refresh token', async () => {
-      sessionRepository.findValidSessionByRefreshTokenHash.mockResolvedValue(mockSession as any);
+      sessionRepository.findValidSessionByRefreshTokenHash.mockResolvedValue(
+        mockSession as any,
+      );
       userRepository.findById.mockResolvedValue(mockUser as any);
       sessionRepository.revokeSessionAtomically.mockResolvedValue(true);
       sessionRepository.createSession.mockResolvedValue({
@@ -265,16 +270,20 @@ describe('AuthService', () => {
       expect(result.expiresIn).toBe(900); // 15m
       expect(result.user.email).toBe(mockUser.email);
       expect(result.user.id).toBe(mockUser._id.toString());
-      
+
       expect(sessionRepository.revokeSessionAtomically).toHaveBeenCalled();
-      expect(auditLogRepository.recordRefreshSuccess).toHaveBeenCalled();
+      expect(auditLogsService.recordRefreshSuccess).toHaveBeenCalled();
     });
 
     it('should fail if token is missing', async () => {
       await expect(service.refresh(undefined, clientMetadata)).rejects.toThrow(
-        new AppError(ErrorCode.INVALID_REFRESH_TOKEN, 'Invalid or expired refresh token', HttpStatus.UNAUTHORIZED),
+        new AppError(
+          ErrorCode.INVALID_REFRESH_TOKEN,
+          'Invalid or expired refresh token',
+          HttpStatus.UNAUTHORIZED,
+        ),
       );
-      expect(auditLogRepository.recordRefreshFailure).toHaveBeenCalledWith(
+      expect(auditLogsService.recordRefreshFailure).toHaveBeenCalledWith(
         'invalid_refresh_token',
         clientMetadata.ipAddress,
         clientMetadata.userAgent,
@@ -282,12 +291,20 @@ describe('AuthService', () => {
     });
 
     it('should fail if session is invalid', async () => {
-      sessionRepository.findValidSessionByRefreshTokenHash.mockResolvedValue(null);
-
-      await expect(service.refresh(refreshToken, clientMetadata)).rejects.toThrow(
-        new AppError(ErrorCode.INVALID_REFRESH_TOKEN, 'Invalid or expired refresh token', HttpStatus.UNAUTHORIZED),
+      sessionRepository.findValidSessionByRefreshTokenHash.mockResolvedValue(
+        null,
       );
-      expect(auditLogRepository.recordRefreshFailure).toHaveBeenCalledWith(
+
+      await expect(
+        service.refresh(refreshToken, clientMetadata),
+      ).rejects.toThrow(
+        new AppError(
+          ErrorCode.INVALID_REFRESH_TOKEN,
+          'Invalid or expired refresh token',
+          HttpStatus.UNAUTHORIZED,
+        ),
+      );
+      expect(auditLogsService.recordRefreshFailure).toHaveBeenCalledWith(
         'invalid_refresh_token',
         clientMetadata.ipAddress,
         clientMetadata.userAgent,
@@ -295,15 +312,28 @@ describe('AuthService', () => {
     });
 
     it('should fail and delete session if user is inactive', async () => {
-      sessionRepository.findValidSessionByRefreshTokenHash.mockResolvedValue(mockSession as any);
-      userRepository.findById.mockResolvedValue({ ...mockUser, status: UserStatus.INACTIVE } as any);
-
-      await expect(service.refresh(refreshToken, clientMetadata)).rejects.toThrow(
-        new AppError(ErrorCode.INVALID_REFRESH_TOKEN, 'Invalid or expired refresh token', HttpStatus.UNAUTHORIZED),
+      sessionRepository.findValidSessionByRefreshTokenHash.mockResolvedValue(
+        mockSession as any,
       );
-      
-      expect(sessionRepository.revokeSessionById).toHaveBeenCalledWith(mockSession._id);
-      expect(auditLogRepository.recordRefreshFailure).toHaveBeenCalledWith(
+      userRepository.findById.mockResolvedValue({
+        ...mockUser,
+        status: UserStatus.INACTIVE,
+      } as any);
+
+      await expect(
+        service.refresh(refreshToken, clientMetadata),
+      ).rejects.toThrow(
+        new AppError(
+          ErrorCode.INVALID_REFRESH_TOKEN,
+          'Invalid or expired refresh token',
+          HttpStatus.UNAUTHORIZED,
+        ),
+      );
+
+      expect(sessionRepository.revokeSessionById).toHaveBeenCalledWith(
+        mockSession._id,
+      );
+      expect(auditLogsService.recordRefreshFailure).toHaveBeenCalledWith(
         'account_inactive',
         clientMetadata.ipAddress,
         clientMetadata.userAgent,
@@ -312,15 +342,23 @@ describe('AuthService', () => {
     });
 
     it('should fail atomic rotation if token is reused', async () => {
-      sessionRepository.findValidSessionByRefreshTokenHash.mockResolvedValue(mockSession as any);
+      sessionRepository.findValidSessionByRefreshTokenHash.mockResolvedValue(
+        mockSession as any,
+      );
       userRepository.findById.mockResolvedValue(mockUser as any);
       sessionRepository.revokeSessionAtomically.mockResolvedValue(false); // Fails atomic check
 
-      await expect(service.refresh(refreshToken, clientMetadata)).rejects.toThrow(
-        new AppError(ErrorCode.INVALID_REFRESH_TOKEN, 'Invalid or expired refresh token', HttpStatus.UNAUTHORIZED),
+      await expect(
+        service.refresh(refreshToken, clientMetadata),
+      ).rejects.toThrow(
+        new AppError(
+          ErrorCode.INVALID_REFRESH_TOKEN,
+          'Invalid or expired refresh token',
+          HttpStatus.UNAUTHORIZED,
+        ),
       );
-      
-      expect(auditLogRepository.recordRefreshFailure).toHaveBeenCalledWith(
+
+      expect(auditLogsService.recordRefreshFailure).toHaveBeenCalledWith(
         'refresh_token_reuse',
         clientMetadata.ipAddress,
         clientMetadata.userAgent,
