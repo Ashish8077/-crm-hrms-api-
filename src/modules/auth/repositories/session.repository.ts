@@ -100,4 +100,29 @@ export class SessionRepository {
 
     return result.modifiedCount === 1;
   }
+
+  async revokeAllSessionsForUser(
+    userId: Types.ObjectId,
+    now: Date,
+    session?: ClientSession,
+  ): Promise<number> {
+    const query = this.sessionModel.updateMany(
+      {
+        userId,
+        revokedAt: null,
+      },
+      {
+        $set: {
+          revokedAt: now,
+        },
+      },
+    );
+
+    if (session) {
+      query.session(session);
+    }
+
+    const result = await query.exec();
+    return result.modifiedCount;
+  }
 }

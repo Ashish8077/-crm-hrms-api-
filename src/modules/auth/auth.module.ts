@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -7,13 +7,9 @@ import { AuthService } from './auth.service.js';
 import { SessionRepository } from './repositories/session.repository.js';
 import { Session, SessionSchema } from './schemas/session.schema.js';
 import { LoginSecurityService } from './services/login-security.service.js';
-import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 
-import { AuthorizationService } from './authorization/authorization.service';
 import { UsersModule } from '../users/users.module.js';
-import { RolesModule } from '../roles/roles.module.js';
-import { PermissionsModule } from '../permissions/permissions.module.js';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module.js';
 
 @Module({
@@ -29,9 +25,7 @@ import { AuditLogsModule } from '../audit-logs/audit-logs.module.js';
         },
       }),
     }),
-    UsersModule,
-    RolesModule,
-    PermissionsModule,
+    forwardRef(() => UsersModule),
     AuditLogsModule,
   ],
   controllers: [AuthController],
@@ -39,12 +33,8 @@ import { AuditLogsModule } from '../audit-logs/audit-logs.module.js';
     AuthService,
     SessionRepository,
     LoginSecurityService,
-    AuthorizationService,
-    {
-      provide: APP_GUARD,
-      useClass: JwtAuthGuard,
-    },
+    JwtAuthGuard,
   ],
-  exports: [AuthService, AuthorizationService],
+  exports: [AuthService, JwtAuthGuard, SessionRepository],
 })
 export class AuthModule {}

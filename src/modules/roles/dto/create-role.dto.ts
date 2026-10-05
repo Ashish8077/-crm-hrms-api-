@@ -10,10 +10,12 @@ import {
 } from 'class-validator';
 import { Types } from 'mongoose';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { TrimString } from '../../../common/decorators/trim-string.decorator.js';
 
 export class CreateRoleDto {
   @ApiProperty({ example: 'HR Manager', description: 'The name of the role' })
   @IsString()
+  @TrimString()
   @IsNotEmpty()
   @MaxLength(100)
   name!: string;
@@ -23,6 +25,7 @@ export class CreateRoleDto {
     description: 'Unique identifier key for the role',
   })
   @IsString()
+  @TrimString()
   @IsNotEmpty()
   @MaxLength(100)
   @Matches(/^(?=.*[a-z])[a-z0-9]+(?:-[a-z0-9]+)*$/, {
@@ -36,6 +39,7 @@ export class CreateRoleDto {
     description: 'Optional description of the role',
   })
   @IsString()
+  @TrimString()
   @IsOptional()
   @MaxLength(255)
   description?: string;

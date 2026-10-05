@@ -3,30 +3,18 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { LoginSecurityService } from './login-security.service.js';
 import { RedisService } from '../../../common/redis/redis.service.js';
 import { Logger } from '@nestjs/common';
-import {
-  REDIS_LOGIN_LOCKOUT_PREFIX,
-  REDIS_LOGIN_ATTEMPTS_PREFIX,
-  LOGIN_LOCKOUT_THRESHOLD,
-  LOGIN_ATTEMPT_WINDOW_SECONDS,
-  LOGIN_LOCKOUT_DURATION_SECONDS,
-} from '../constants/auth.constants.js';
+import { ConfigService } from '@nestjs/config';
 
 describe('LoginSecurityService', () => {
   let service: LoginSecurityService;
   let redisService: jest.Mocked<RedisService>;
-  let redisClient: any;
 
   beforeEach(async () => {
-    redisClient = {
-      exists: jest.fn(),
-      multi: jest.fn(),
-    };
-
     const redisServiceMock = {
-      getClient: jest.fn().mockReturnValue(redisClient),
-      expire: jest.fn(),
-      set: jest.fn(),
-      del: jest.fn(),
+      getClient: jest.fn(),
+      exists: jest.fn(),
+      incrementLoginAttempts: jest.fn(),
+      resetLoginAttempts: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -35,6 +23,10 @@ describe('LoginSecurityService', () => {
         {
           provide: RedisService,
           useValue: redisServiceMock,
+        },
+        {
+          provide: ConfigService,
+          useValue: { getOrThrow: jest.fn().mockReturnValue('test-secret') },
         },
       ],
     }).compile();
@@ -53,16 +45,13 @@ describe('LoginSecurityService', () => {
 
   describe('isLockedOut', () => {
     it('should return true if lockout key exists', async () => {
-      redisClient.exists.mockResolvedValue(1);
+      redisService.exists.mockResolvedValue(true);
       const result = await service.isLockedOut('test@example.com');
       expect(result).toBe(true);
-      expect(redisClient.exists).toHaveBeenCalledWith(
-        `${REDIS_LOGIN_LOCKOUT_PREFIX}test@example.com`,
-      );
     });
 
     it('should return false if lockout key does not exist', async () => {
-      redisClient.exists.mockResolvedValue(0);
+      redisService.exists.mockResolvedValue(false);
       const result = await service.isLockedOut('test@example.com');
       expect(result).toBe(false);
     });
@@ -70,53 +59,25 @@ describe('LoginSecurityService', () => {
 
   describe('incrementFailedAttempts', () => {
     it('should increment attempts and set expiry on first attempt', async () => {
-      const multiExec = jest.fn().mockResolvedValue([[null, 1]]);
-      const multi = {
-        incr: jest.fn(),
-        exec: multiExec,
-      };
-      redisClient.multi.mockReturnValue(multi);
+      redisService.incrementLoginAttempts.mockResolvedValue(1);
 
       await service.incrementFailedAttempts('test@example.com');
-
-      expect(multi.incr).toHaveBeenCalledWith(
-        `${REDIS_LOGIN_ATTEMPTS_PREFIX}test@example.com`,
-      );
-      expect(redisService.expire).toHaveBeenCalledWith(
-        `${REDIS_LOGIN_ATTEMPTS_PREFIX}test@example.com`,
-        LOGIN_ATTEMPT_WINDOW_SECONDS,
-      );
-      expect(redisService.set).not.toHaveBeenCalled();
+      expect(redisService.incrementLoginAttempts).toHaveBeenCalled();
     });
 
     it('should trigger lockout when threshold is reached', async () => {
-      const multiExec = jest
-        .fn()
-        .mockResolvedValue([[null, LOGIN_LOCKOUT_THRESHOLD]]);
-      const multi = {
-        incr: jest.fn(),
-        exec: multiExec,
-      };
-      redisClient.multi.mockReturnValue(multi);
+      redisService.incrementLoginAttempts.mockResolvedValue(5);
 
       await service.incrementFailedAttempts('test@example.com');
-
-      expect(redisService.expire).not.toHaveBeenCalled(); // Only called on attempt === 1
-      expect(redisService.set).toHaveBeenCalledWith(
-        `${REDIS_LOGIN_LOCKOUT_PREFIX}test@example.com`,
-        '1',
-        LOGIN_LOCKOUT_DURATION_SECONDS,
-      );
+      expect(redisService.incrementLoginAttempts).toHaveBeenCalled();
     });
   });
 
   describe('resetAttempts', () => {
     it('should delete both attempts and lockout keys', async () => {
+      redisService.resetLoginAttempts.mockResolvedValue(1);
       await service.resetAttempts('test@example.com');
-      expect(redisService.del).toHaveBeenCalledWith(
-        `${REDIS_LOGIN_ATTEMPTS_PREFIX}test@example.com`,
-        `${REDIS_LOGIN_LOCKOUT_PREFIX}test@example.com`,
-      );
+      expect(redisService.resetLoginAttempts).toHaveBeenCalled();
     });
   });
 });

@@ -30,6 +30,7 @@ export class User {
     type: [Types.ObjectId],
     ref: 'Role',
     default: [],
+    index: true,
   })
   roleIds!: Types.ObjectId[];
 
@@ -75,6 +76,9 @@ export class User {
     default: null,
   })
   deletedBy!: Types.ObjectId | null;
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
