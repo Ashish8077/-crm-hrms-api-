@@ -16,7 +16,19 @@ import { UpdateRoleDto } from './dto/update-role.dto';
 import { UpdateRoleStatusDto } from './dto/update-role-status.dto';
 import type { AuthenticatedRequest } from '../auth/types/auth-request.type';
 import { ParseObjectIdPipe } from '@nestjs/mongoose';
-// Note: PermissionsGuard and @RequirePermissions will be added in Phase 5
+import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
+import { PermissionKeys } from '../permissions/constants/permission.constant';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiOkResponse,
+  ApiCreatedResponse,
+} from '@nestjs/swagger';
+
+@ApiTags('Roles')
+@ApiBearerAuth()
 @Controller({
   path: 'roles',
   version: '1',
@@ -25,6 +37,9 @@ export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
   @Post()
+  @ApiOperation({ summary: 'Create a new role' })
+  @ApiCreatedResponse({ description: 'Role created successfully' })
+  @RequirePermissions(PermissionKeys.ROLES_CREATE)
   async create(
     @Body() createRoleDto: CreateRoleDto,
     @Req() request: AuthenticatedRequest,
@@ -38,16 +53,27 @@ export class RolesController {
   }
 
   @Get()
+  @ApiOperation({ summary: 'List roles' })
+  @ApiOkResponse({ description: 'Roles retrieved successfully' })
+  @RequirePermissions(PermissionKeys.ROLES_VIEW)
   async findAll(@Query() query: GetRolesQueryDto) {
     return this.rolesService.findAll(query);
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Get role by ID' })
+  @ApiParam({ name: 'id', description: 'Role ID', type: String })
+  @ApiOkResponse({ description: 'Role retrieved successfully' })
+  @RequirePermissions(PermissionKeys.ROLES_VIEW)
   async findOne(@Param('id', ParseObjectIdPipe) id: Types.ObjectId) {
     return this.rolesService.findById(id);
   }
 
   @Patch(':id')
+  @ApiOperation({ summary: 'Update role details' })
+  @ApiParam({ name: 'id', description: 'Role ID', type: String })
+  @ApiOkResponse({ description: 'Role updated successfully' })
+  @RequirePermissions(PermissionKeys.ROLES_EDIT)
   async update(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() updateRoleDto: UpdateRoleDto,
@@ -62,6 +88,10 @@ export class RolesController {
   }
 
   @Patch(':id/status')
+  @ApiOperation({ summary: 'Update role status' })
+  @ApiParam({ name: 'id', description: 'Role ID', type: String })
+  @ApiOkResponse({ description: 'Role status updated successfully' })
+  @RequirePermissions(PermissionKeys.ROLES_EDIT)
   async updateStatus(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() updateRoleStatusDto: UpdateRoleStatusDto,

@@ -46,6 +46,7 @@ describe('AuthService', () => {
     const userRepositoryMock = {
       findByEmail: jest.fn(),
       updateLastLoginAt: jest.fn(),
+      findById: jest.fn(),
     };
     const sessionRepositoryMock = {
       createSession: jest.fn(),
@@ -161,6 +162,7 @@ describe('AuthService', () => {
         'account_locked_out',
         clientMetadata.ipAddress,
         clientMetadata.userAgent,
+        undefined,
       );
     });
 
@@ -184,6 +186,7 @@ describe('AuthService', () => {
         'invalid_credentials',
         clientMetadata.ipAddress,
         clientMetadata.userAgent,
+        undefined,
       );
     });
 

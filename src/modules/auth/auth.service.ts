@@ -15,12 +15,8 @@ import { MeResponseDto } from './dto/me-response.dto.js';
 import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
 import { SessionRepository } from './repositories/session.repository.js';
 import { LoginSecurityService } from './services/login-security.service.js';
-import {
-  ClientMetadata,
-  LoginResult,
-  LogoutData,
-  RefreshResult,
-} from './types/auth.types.js';
+import { LoginResult, LogoutData, RefreshResult } from './types/auth.types.js';
+import { ClientMetadata } from '../../common/types/client-metadata.type.js';
 import { AuditLogFailureReason } from '../audit-logs/constants/audit-log.constant.js';
 import { TimeUtil } from '../../common/utils/time.util.js';
 

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HealthCheckService, MongooseHealthIndicator } from '@nestjs/terminus';
+import { RedisHealthIndicator } from './redis.health';
 
 import { HealthController } from './health.controller';
 
@@ -16,6 +17,10 @@ describe('HealthController', () => {
         },
         {
           provide: MongooseHealthIndicator,
+          useValue: {},
+        },
+        {
+          provide: RedisHealthIndicator,
           useValue: {},
         },
       ],

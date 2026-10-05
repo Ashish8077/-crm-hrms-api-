@@ -12,9 +12,16 @@ import { UsersModule } from './modules/users/users.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
+import { AuthorizationModule } from './modules/authorization/authorization.module';
+import { DepartmentsModule } from './modules/departments/departments.module';
+import { TeamsModule } from './modules/teams/teams.module';
+import { DesignationsModule } from './modules/designations/designations.module';
+import { BranchesModule } from './modules/branches/branches.module';
 import configuration from './config/configuration';
 import { RedisModule } from './common/redis/redis.module';
 import { CsrfGuard } from './common/guards/csrf.guard';
+import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from './modules/authorization/guards/permissions.guard';
 
 @Module({
   imports: [
@@ -45,6 +52,11 @@ import { CsrfGuard } from './common/guards/csrf.guard';
     RolesModule,
     UsersModule,
     AuthModule,
+    AuthorizationModule,
+    DepartmentsModule,
+    TeamsModule,
+    DesignationsModule,
+    BranchesModule,
   ],
   controllers: [AppController],
   providers: [
@@ -52,6 +64,14 @@ import { CsrfGuard } from './common/guards/csrf.guard';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useExisting: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useExisting: PermissionsGuard,
     },
     {
       provide: APP_GUARD,

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { ArgumentsHost, HttpStatus } from '@nestjs/common';
 import { GlobalExceptionFilter } from './global-exception.filter';
 import { AppError } from '../errors/app-error';
@@ -55,6 +56,58 @@ describe('GlobalExceptionFilter', () => {
           code: ErrorCode.RESOURCE_ALREADY_EXISTS,
           message: 'Resource already exists',
         },
+      }),
+    );
+  });
+
+  it('should handle single MongoDB ValidationError with 400 Bad Request and normalized details', () => {
+    const mongoValidationError = {
+      name: 'ValidationError',
+      message: 'Validation failed',
+      errors: {
+        field: { path: 'field', message: 'Path `field` is required.' },
+      },
+    };
+
+    filter.catch(mongoValidationError, mockHost);
+
+    expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(mockResponse.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: expect.objectContaining({
+          code: ErrorCode.VALIDATION_ERROR,
+          message: 'Database validation failed',
+          details: [{ field: 'field', message: 'Path `field` is required.' }],
+        }),
+      }),
+    );
+  });
+
+  it('should handle multiple MongoDB ValidationErrors with normalized details array', () => {
+    const mongoValidationError = {
+      name: 'ValidationError',
+      message: 'Validation failed',
+      errors: {
+        field1: { path: 'field1', message: 'Path `field1` is required.' },
+        field2: { message: 'Invalid value for field2.' }, // Missing path falls back to key
+      },
+    };
+
+    filter.catch(mongoValidationError, mockHost);
+
+    expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(mockResponse.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: expect.objectContaining({
+          code: ErrorCode.VALIDATION_ERROR,
+          message: 'Database validation failed',
+          details: [
+            { field: 'field1', message: 'Path `field1` is required.' },
+            { field: 'field2', message: 'Invalid value for field2.' },
+          ],
+        }),
       }),
     );
   });

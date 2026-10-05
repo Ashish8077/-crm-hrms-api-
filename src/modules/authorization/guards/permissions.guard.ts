@@ -5,9 +5,9 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { AuthorizationService } from '../authorization/authorization.service';
+import { AuthorizationService } from '../authorization.service';
 import { REQUIRE_PERMISSIONS_KEY } from '../../../common/decorators/require-permissions.decorator';
-import { AuthenticatedRequest } from '../types/auth-request.type';
+import { AuthenticatedRequest } from '../../auth/types/auth-request.type';
 import { AppError } from '../../../common/errors/app-error';
 import { ErrorCode } from '../../../common/errors/error-codes';
 

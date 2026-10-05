@@ -12,10 +12,6 @@ export interface LoginResult {
 }
 
 /** Client metadata required for audit and security tracking. */
-export interface ClientMetadata {
-  ipAddress: string | null;
-  userAgent: string | null;
-}
 
 /** Result of a successful refresh operation. */
 export interface RefreshResult {

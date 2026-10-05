@@ -59,3 +59,38 @@ export enum PermissionModule {
   AUDIT_LOGS = 'audit_logs',
   REPORTS = 'reports',
 }
+
+export const PermissionKey = {
+  of: (module: PermissionModule, action: PermissionAction): string =>
+    `${module}.${action}`,
+} as const;
+
+export const PermissionKeys = {
+  // Users
+  USERS_ASSIGN: PermissionKey.of(
+    PermissionModule.USERS,
+    PermissionAction.ASSIGN,
+  ),
+  USERS_VIEW: PermissionKey.of(PermissionModule.USERS, PermissionAction.VIEW),
+  USERS_CREATE: PermissionKey.of(
+    PermissionModule.USERS,
+    PermissionAction.CREATE,
+  ),
+  USERS_EDIT: PermissionKey.of(PermissionModule.USERS, PermissionAction.EDIT),
+  USERS_DELETE: PermissionKey.of(
+    PermissionModule.USERS,
+    PermissionAction.DELETE,
+  ),
+
+  // Roles
+  ROLES_VIEW: PermissionKey.of(PermissionModule.ROLES, PermissionAction.VIEW),
+  ROLES_CREATE: PermissionKey.of(
+    PermissionModule.ROLES,
+    PermissionAction.CREATE,
+  ),
+  ROLES_EDIT: PermissionKey.of(PermissionModule.ROLES, PermissionAction.EDIT),
+  ROLES_DELETE: PermissionKey.of(
+    PermissionModule.ROLES,
+    PermissionAction.DELETE,
+  ),
+} as const;

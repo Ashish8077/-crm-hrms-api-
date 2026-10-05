@@ -15,7 +15,7 @@ import { AppError } from '../../common/errors/app-error';
 import { ErrorCode } from '../../common/errors/error-codes';
 import { RoleDocument } from './schemas/role.schema';
 import { RoleMapper, RoleResponse } from './mappers/role.mapper';
-import { ClientMetadata } from '../auth/types/auth.types';
+import { ClientMetadata } from '../../common/types/client-metadata.type';
 
 import { GetRolesQueryDto } from './dto/get-roles-query.dto';
 import { escapeRegExp } from '../../common/utils/regex.util';
@@ -154,6 +154,14 @@ export class RolesService {
         ErrorCode.RESOURCE_NOT_FOUND,
         'Role not found',
         HttpStatus.NOT_FOUND,
+      );
+    }
+
+    if (role.isSystemRole) {
+      throw new AppError(
+        ErrorCode.FORBIDDEN,
+        'System roles cannot be modified',
+        HttpStatus.FORBIDDEN,
       );
     }
 

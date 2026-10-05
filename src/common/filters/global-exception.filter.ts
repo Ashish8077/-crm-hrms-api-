@@ -46,6 +46,27 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       statusCode = error.statusCode;
       code = error.code;
       message = error.message;
+    } else if (this.isMongoValidationError(exception)) {
+      const error = new AppError(
+        ErrorCode.VALIDATION_ERROR,
+        'Database validation failed',
+        HttpStatus.BAD_REQUEST,
+      );
+      statusCode = error.statusCode;
+      code = error.code;
+      message = error.message;
+      const mongooseErrors = (
+        exception as {
+          errors?: Record<string, { path?: string; message?: string }>;
+        }
+      ).errors;
+
+      if (mongooseErrors) {
+        details = Object.keys(mongooseErrors).map((key) => ({
+          field: mongooseErrors[key].path || key,
+          message: mongooseErrors[key].message || 'Invalid value',
+        }));
+      }
     } else if (exception instanceof AppError) {
       statusCode = exception.statusCode;
       code = exception.code;
@@ -130,6 +151,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       exception !== null &&
       'code' in exception &&
       (exception as { code?: number }).code === 11000
+    );
+  }
+
+  private isMongoValidationError(exception: unknown): boolean {
+    return (
+      typeof exception === 'object' &&
+      exception !== null &&
+      'name' in exception &&
+      (exception as { name?: string }).name === 'ValidationError'
     );
   }
 }

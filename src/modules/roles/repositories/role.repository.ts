@@ -92,13 +92,19 @@ export class RoleRepository {
     return { roles, total };
   }
 
-  async findActiveByIds(roleIds: Types.ObjectId[]): Promise<RoleLean[]> {
-    return this.roleModel
-      .find({
-        _id: { $in: roleIds },
-        isActive: true,
-      })
-      .lean()
-      .exec();
+  async findActiveByIds(
+    roleIds: Types.ObjectId[],
+    session?: ClientSession,
+  ): Promise<RoleLean[]> {
+    const query = this.roleModel.find({
+      _id: { $in: roleIds },
+      isActive: true,
+    });
+
+    if (session) {
+      query.session(session);
+    }
+
+    return query.lean().exec();
   }
 }
