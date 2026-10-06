@@ -93,4 +93,22 @@ export const PermissionKeys = {
     PermissionModule.ROLES,
     PermissionAction.DELETE,
   ),
+
+  // Employees
+  EMPLOYEES_VIEW: PermissionKey.of(
+    PermissionModule.EMPLOYEES,
+    PermissionAction.VIEW,
+  ),
+  EMPLOYEES_CREATE: PermissionKey.of(
+    PermissionModule.EMPLOYEES,
+    PermissionAction.CREATE,
+  ),
+  EMPLOYEES_EDIT: PermissionKey.of(
+    PermissionModule.EMPLOYEES,
+    PermissionAction.EDIT,
+  ),
+  EMPLOYEES_DELETE: PermissionKey.of(
+    PermissionModule.EMPLOYEES,
+    PermissionAction.DELETE,
+  ),
 } as const;

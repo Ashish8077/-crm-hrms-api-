@@ -17,6 +17,7 @@ import { DepartmentsModule } from './modules/departments/departments.module';
 import { TeamsModule } from './modules/teams/teams.module';
 import { DesignationsModule } from './modules/designations/designations.module';
 import { BranchesModule } from './modules/branches/branches.module';
+import { EmployeesModule } from './modules/employees/employees.module';
 import configuration from './config/configuration';
 import { RedisModule } from './common/redis/redis.module';
 import { CsrfGuard } from './common/guards/csrf.guard';
@@ -57,6 +58,7 @@ import { PermissionsGuard } from './modules/authorization/guards/permissions.gua
     TeamsModule,
     DesignationsModule,
     BranchesModule,
+    EmployeesModule,
   ],
   controllers: [AppController],
   providers: [
