@@ -15,6 +15,6 @@ import { DepartmentsModule } from '../departments/departments.module';
   ],
   controllers: [TeamsController],
   providers: [TeamsService, TeamRepository],
-  exports: [TeamsService],
+  exports: [TeamsService, TeamRepository],
 })
 export class TeamsModule {}
