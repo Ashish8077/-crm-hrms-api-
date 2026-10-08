@@ -53,3 +53,5 @@ export enum AuditLogFailureReason {
   INVALID_REFRESH_TOKEN = 'invalid_refresh_token',
   REFRESH_TOKEN_REUSE = 'refresh_token_reuse',
 }
+
+// Touched to clear IDE TS Server cache for enums

@@ -2,11 +2,15 @@ import { Injectable, HttpStatus } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Types, Connection, ClientSession } from 'mongoose';
 import { EmployeeRepository } from './repositories/employee.repository';
+import { EmployeeStatusHistoryRepository } from './repositories/employee-status-history.repository';
 import { DepartmentRepository } from '../departments/repositories/department.repository';
 import { DesignationRepository } from '../designations/repositories/designation.repository';
 import { BranchRepository } from '../branches/repositories/branch.repository';
 import { TeamRepository } from '../teams/repositories/team.repository';
-import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import {
+  AuditLogsService,
+  CreateAuditLogParams,
+} from '../audit-logs/audit-logs.service';
 import {
   AuditAction,
   AuditTargetModel,
@@ -16,6 +20,7 @@ import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UpdateEmploymentStatusDto } from './dto/update-employment-status.dto';
 import { ListEmployeesQueryDto } from './dto/list-employees-query.dto';
+import { GetEmployeeStatusHistoryQueryDto } from './dto/get-employee-status-history-query.dto';
 import { AppError } from '../../common/errors/app-error';
 import { ErrorCode } from '../../common/errors/error-codes';
 import { EmployeeMapper, EmployeeResponse } from './mappers/employee.mapper';
@@ -27,6 +32,7 @@ import { PaginatedResult } from '../../common/pagination/types/pagination.types'
 export class EmployeesService {
   constructor(
     private readonly employeeRepository: EmployeeRepository,
+    private readonly employeeStatusHistoryRepository: EmployeeStatusHistoryRepository,
     private readonly departmentRepository: DepartmentRepository,
     private readonly designationRepository: DesignationRepository,
     private readonly branchRepository: BranchRepository,
@@ -188,18 +194,17 @@ export class EmployeesService {
           session,
         );
 
-        await this.auditLogsService.createAuditLog(
-          {
-            action: AuditAction.EMPLOYEE_CREATED,
-            targetModel: AuditTargetModel.EMPLOYEE,
-            targetId: employee._id,
-            actorId,
-            details: { after: EmployeeMapper.toResponse(employee) },
-            ipAddress: metadata.ipAddress,
-            userAgent: metadata.userAgent,
-          },
-          session,
-        );
+        const auditLogData = {
+          action: AuditAction.EMPLOYEE_CREATED,
+          targetModel: AuditTargetModel.EMPLOYEE,
+          targetId: employee._id,
+          actorId,
+          details: { after: EmployeeMapper.toResponse(employee) },
+          ipAddress: metadata.ipAddress,
+          userAgent: metadata.userAgent,
+        }; // Force IDE re-lint
+
+        await this.auditLogsService.createAuditLog(auditLogData, session);
 
         result = EmployeeMapper.toResponse(employee);
       });
@@ -348,21 +353,20 @@ export class EmployeesService {
           employeeAfter,
         );
 
-        await this.auditLogsService.createAuditLog(
-          {
-            action: AuditAction.EMPLOYEE_UPDATED,
-            targetModel: AuditTargetModel.EMPLOYEE,
-            targetId: employeeAfter._id,
-            actorId,
-            details: {
-              ...auditDetails,
-              changedFields: Object.keys(changedFields),
-            },
-            ipAddress: metadata.ipAddress,
-            userAgent: metadata.userAgent,
+        const auditLogData: CreateAuditLogParams = {
+          action: AuditAction.EMPLOYEE_UPDATED,
+          targetModel: AuditTargetModel.EMPLOYEE,
+          targetId: employeeAfter._id,
+          actorId,
+          details: {
+            ...auditDetails,
+            changedFields: Object.keys(changedFields),
           },
-          session,
-        );
+          ipAddress: metadata.ipAddress,
+          userAgent: metadata.userAgent,
+        };
+
+        await this.auditLogsService.createAuditLog(auditLogData, session);
 
         result = EmployeeMapper.toResponse(employeeAfter);
       });
@@ -415,21 +419,33 @@ export class EmployeesService {
           );
         }
 
-        await this.auditLogsService.createAuditLog(
+        await this.employeeStatusHistoryRepository.create(
           {
-            action: AuditAction.EMPLOYEE_STATUS_CHANGED,
-            targetModel: AuditTargetModel.EMPLOYEE,
-            targetId: employeeAfter._id,
-            actorId,
-            details: {
-              from: employeeBefore.employmentStatus,
-              to: employeeAfter.employmentStatus,
-            },
-            ipAddress: metadata.ipAddress,
-            userAgent: metadata.userAgent,
+            employeeId: employeeAfter._id,
+            previousStatus: employeeBefore.employmentStatus,
+            newStatus: employeeAfter.employmentStatus,
+            reason: dto.reason || null,
+            changedBy: actorId,
+            changedAt: new Date(),
           },
           session,
         );
+
+        const auditLogData: CreateAuditLogParams = {
+          action: AuditAction.EMPLOYEE_STATUS_CHANGED,
+          targetModel: AuditTargetModel.EMPLOYEE,
+          targetId: employeeAfter._id,
+          actorId,
+          details: {
+            from: employeeBefore.employmentStatus,
+            to: employeeAfter.employmentStatus,
+            reason: dto.reason || null,
+          },
+          ipAddress: metadata.ipAddress,
+          userAgent: metadata.userAgent,
+        };
+
+        await this.auditLogsService.createAuditLog(auditLogData, session);
 
         result = EmployeeMapper.toResponse(employeeAfter);
       });
@@ -472,24 +488,43 @@ export class EmployeesService {
           );
         }
 
-        await this.auditLogsService.createAuditLog(
-          {
-            action: AuditAction.EMPLOYEE_DELETED,
-            targetModel: AuditTargetModel.EMPLOYEE,
-            targetId: id,
-            actorId,
-            details: {
-              employeeCode: deletedEmployee.employeeCode,
-              workEmail: deletedEmployee.workEmail,
-            },
-            ipAddress: metadata.ipAddress,
-            userAgent: metadata.userAgent,
+        const auditLogData: CreateAuditLogParams = {
+          action: AuditAction.EMPLOYEE_DELETED,
+          targetModel: AuditTargetModel.EMPLOYEE,
+          targetId: id,
+          actorId,
+          details: {
+            employeeCode: deletedEmployee.employeeCode,
+            workEmail: deletedEmployee.workEmail,
           },
-          session,
-        );
+          ipAddress: metadata.ipAddress,
+          userAgent: metadata.userAgent,
+        };
+
+        await this.auditLogsService.createAuditLog(auditLogData, session);
       });
     } finally {
       await session.endSession();
     }
+  }
+
+  async getStatusHistory(
+    employeeId: Types.ObjectId,
+    query: GetEmployeeStatusHistoryQueryDto,
+  ) {
+    console.log(employeeId);
+
+    const employee = await this.employeeRepository.findById(employeeId);
+    if (!employee) {
+      throw new AppError(
+        ErrorCode.RESOURCE_NOT_FOUND,
+        'Employee not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    return this.employeeStatusHistoryRepository.findByEmployeeId(
+      employeeId,
+      query,
+    );
   }
 }

@@ -23,6 +23,7 @@ import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UpdateEmploymentStatusDto } from './dto/update-employment-status.dto';
 import { ListEmployeesQueryDto } from './dto/list-employees-query.dto';
+import { GetEmployeeStatusHistoryQueryDto } from './dto/get-employee-status-history-query.dto';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import {
   PermissionModule,
@@ -146,6 +147,21 @@ export class EmployeesController {
       { ipAddress, userAgent },
     );
     return { success: true, data: employee };
+  }
+
+  @Get(':id/status-history')
+  @ApiOperation({ summary: 'Get employee status history' })
+  @ApiParam({ name: 'id', description: 'Employee ID', type: String })
+  @ApiOkResponse({ description: 'The employee status history.' })
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.EMPLOYEES, PermissionAction.VIEW),
+  )
+  async getStatusHistory(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @Query() query: GetEmployeeStatusHistoryQueryDto,
+  ) {
+    const result = await this.employeesService.getStatusHistory(id, query);
+    return { success: true, data: result.data, meta: result.meta };
   }
 
   @Delete(':id')

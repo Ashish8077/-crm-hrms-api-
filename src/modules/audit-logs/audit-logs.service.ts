@@ -12,7 +12,7 @@ export interface CreateAuditLogParams {
   action: AuditAction;
   targetId: Types.ObjectId | null;
   targetModel: AuditTargetModel | null;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
   ipAddress: string | null;
   userAgent: string | null;
   email?: string | null;

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { EmployeesService } from './employees.service';
 import { EmployeeRepository } from './repositories/employee.repository';
+import { EmployeeStatusHistoryRepository } from './repositories/employee-status-history.repository';
 import { DepartmentRepository } from '../departments/repositories/department.repository';
 import { DesignationRepository } from '../designations/repositories/designation.repository';
 import { BranchRepository } from '../branches/repositories/branch.repository';
@@ -15,6 +16,7 @@ import { EmploymentStatus } from './constants/employee.constant';
 describe('EmployeesService', () => {
   let service: EmployeesService;
   let employeeRepo: jest.Mocked<EmployeeRepository>;
+  let employeeStatusHistoryRepo: jest.Mocked<EmployeeStatusHistoryRepository>;
   let departmentRepo: jest.Mocked<DepartmentRepository>;
   let designationRepo: jest.Mocked<DesignationRepository>;
   let branchRepo: jest.Mocked<BranchRepository>;
@@ -87,6 +89,11 @@ describe('EmployeesService', () => {
       softDelete: jest.fn(),
     } as unknown as jest.Mocked<EmployeeRepository>;
 
+    employeeStatusHistoryRepo = {
+      create: jest.fn(),
+      findByEmployeeId: jest.fn(),
+    } as unknown as jest.Mocked<EmployeeStatusHistoryRepository>;
+
     departmentRepo = {
       findById: jest.fn(),
     } as unknown as jest.Mocked<DepartmentRepository>;
@@ -111,6 +118,10 @@ describe('EmployeesService', () => {
       providers: [
         EmployeesService,
         { provide: EmployeeRepository, useValue: employeeRepo },
+        {
+          provide: EmployeeStatusHistoryRepository,
+          useValue: employeeStatusHistoryRepo,
+        },
         { provide: DepartmentRepository, useValue: departmentRepo },
         { provide: DesignationRepository, useValue: designationRepo },
         { provide: BranchRepository, useValue: branchRepo },
