@@ -56,6 +56,9 @@ export enum AuditAction {
   LEAD_DOCUMENT_DELETED = 'LEAD_DOCUMENT_DELETED',
   LEAD_IMPORTED = 'LEAD_IMPORTED',
   LEAD_BULK_ASSIGNED = 'LEAD_BULK_ASSIGNED',
+  DOCUMENT_UPLOADED = 'DOCUMENT_UPLOADED',
+  DOCUMENT_DOWNLOADED = 'DOCUMENT_DOWNLOADED',
+  DOCUMENT_DELETED = 'DOCUMENT_DELETED',
   // Extensible for future actions...
 }
 
@@ -71,6 +74,7 @@ export enum AuditTargetModel {
   COMPANY = 'Company',
   CONTACT = 'Contact',
   LEAD = 'Lead',
+  EMPLOYEE_DOCUMENT = 'EmployeeDocument',
 }
 
 export enum AuditLogFailureReason {
@@ -80,3 +84,5 @@ export enum AuditLogFailureReason {
   INVALID_REFRESH_TOKEN = 'invalid_refresh_token',
   REFRESH_TOKEN_REUSE = 'refresh_token_reuse',
 }
+
+// Touched to clear IDE TS Server cache for enums
