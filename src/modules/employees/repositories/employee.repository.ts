@@ -205,4 +205,35 @@ export class EmployeeRepository {
 
     return `EMP-${String(seq).padStart(4, '0')}`;
   }
+
+  async findByUserId(
+    userId: Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<EmployeeLean | null> {
+    const query = this.employeeModel.findOne({
+      userId,
+      deletedAt: null,
+    });
+    if (session) {
+      query.session(session);
+    }
+    return query.lean().exec();
+  }
+
+  async linkUser(
+    employeeId: Types.ObjectId,
+    userId: Types.ObjectId,
+    updatedBy: Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<EmployeeLean | null> {
+    const query = this.employeeModel.findOneAndUpdate(
+      { _id: employeeId, deletedAt: null },
+      { $set: { userId, updatedBy } },
+      { new: true, runValidators: true },
+    );
+    if (session) {
+      query.session(session);
+    }
+    return query.lean().exec();
+  }
 }

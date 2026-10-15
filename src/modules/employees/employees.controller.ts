@@ -23,6 +23,7 @@ import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UpdateEmploymentStatusDto } from './dto/update-employment-status.dto';
 import { ListEmployeesQueryDto } from './dto/list-employees-query.dto';
+import { LinkEmployeeDto } from './dto/link-employee.dto';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import {
   PermissionModule,
@@ -168,5 +169,30 @@ export class EmployeesController {
       userAgent,
     });
     return { success: true, message: 'Employee successfully deleted' };
+  }
+
+  @Post(':id/link-user')
+  @ApiOperation({ summary: 'Link an existing user to an employee' })
+  @ApiParam({ name: 'id', description: 'Employee ID', type: String })
+  @ApiOkResponse({
+    description: 'User linked to employee successfully.',
+  })
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.EMPLOYEES, PermissionAction.ASSIGN),
+  )
+  async linkUser(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @Body() dto: LinkEmployeeDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const ipAddress = request.ip ?? null;
+    const userAgent = request.headers['user-agent'] ?? null;
+    const employee = await this.employeesService.linkUser(
+      id,
+      new Types.ObjectId(dto.userId),
+      request.user.userId,
+      { ipAddress, userAgent },
+    );
+    return { success: true, data: employee };
   }
 }
