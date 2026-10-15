@@ -17,4 +17,8 @@ export const envValidationSchema = Joi.object({
   COOKIE_DOMAIN: Joi.string().optional().allow(''),
   COOKIE_SECURE: Joi.boolean().default(true),
   TRUST_PROXY: Joi.number().default(0),
+  AWS_REGION: Joi.string().default('ap-south-1'),
+  AWS_ACCESS_KEY_ID: Joi.string().required(),
+  AWS_SECRET_ACCESS_KEY: Joi.string().required(),
+  AWS_S3_BUCKET_NAME: Joi.string().required(),
 });
