@@ -6,6 +6,7 @@ import { DepartmentRepository } from '../departments/repositories/department.rep
 import { DesignationRepository } from '../designations/repositories/designation.repository';
 import { BranchRepository } from '../branches/repositories/branch.repository';
 import { TeamRepository } from '../teams/repositories/team.repository';
+import { UserRepository } from '../users/repositories/user.repository';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import {
   AuditAction,
@@ -22,6 +23,7 @@ import { EmployeeMapper, EmployeeResponse } from './mappers/employee.mapper';
 import { getChangedFields } from '../../common/utils/change-detection.util';
 import { ClientMetadata } from '../../common/types/client-metadata.type';
 import { PaginatedResult } from '../../common/pagination/types/pagination.types';
+import { UserStatus } from '../users/constants/user-status.constant';
 
 @Injectable()
 export class EmployeesService {
@@ -31,6 +33,7 @@ export class EmployeesService {
     private readonly designationRepository: DesignationRepository,
     private readonly branchRepository: BranchRepository,
     private readonly teamRepository: TeamRepository,
+    private readonly userRepository: UserRepository,
     private readonly auditLogsService: AuditLogsService,
     @InjectConnection() private readonly connection: Connection,
   ) {}
@@ -491,5 +494,109 @@ export class EmployeesService {
     } finally {
       await session.endSession();
     }
+  }
+
+  async linkUser(
+    employeeId: Types.ObjectId,
+    userId: Types.ObjectId,
+    actorId: Types.ObjectId,
+    metadata: ClientMetadata,
+  ): Promise<EmployeeResponse> {
+    // 1. Validate the target user exists and is active
+    const user = await this.userRepository.findById(userId);
+    if (!user) {
+      throw new AppError(
+        ErrorCode.RESOURCE_NOT_FOUND,
+        'User not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new AppError(
+        ErrorCode.VALIDATION_ERROR,
+        'User is not active',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // 2. Validate the target employee exists and is active
+    const employee = await this.employeeRepository.findById(employeeId);
+    if (!employee) {
+      throw new AppError(
+        ErrorCode.RESOURCE_NOT_FOUND,
+        'Employee not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    if (!ActiveEmploymentStatuses.includes(employee.employmentStatus)) {
+      throw new AppError(
+        ErrorCode.VALIDATION_ERROR,
+        'Employee is not active',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // 3. Check the Employee is not already linked to a different User
+    if (employee.userId) {
+      throw new AppError(
+        ErrorCode.RESOURCE_ALREADY_EXISTS,
+        'Employee is already linked to a user',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    // 4. Check the User is not already linked to a different Employee
+    const existingEmployee = await this.employeeRepository.findByUserId(userId);
+    if (existingEmployee) {
+      throw new AppError(
+        ErrorCode.RESOURCE_ALREADY_EXISTS,
+        'User is already linked to an employee',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    const session = await this.connection.startSession();
+    let result: EmployeeResponse;
+
+    try {
+      await session.withTransaction(async (session: ClientSession) => {
+        const updatedEmployee = await this.employeeRepository.linkUser(
+          employeeId,
+          userId,
+          actorId,
+          session,
+        );
+
+        if (!updatedEmployee) {
+          throw new AppError(
+            ErrorCode.RESOURCE_NOT_FOUND,
+            'Employee not found',
+            HttpStatus.NOT_FOUND,
+          );
+        }
+
+        await this.auditLogsService.createAuditLog(
+          {
+            action: AuditAction.EMPLOYEE_USER_LINKED,
+            targetModel: AuditTargetModel.EMPLOYEE,
+            targetId: employeeId,
+            actorId,
+            details: {
+              userId: userId.toString(),
+              employeeCode: updatedEmployee.employeeCode,
+            },
+            ipAddress: metadata.ipAddress,
+            userAgent: metadata.userAgent,
+          },
+          session,
+        );
+
+        result = EmployeeMapper.toResponse(updatedEmployee);
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    return result!;
   }
 }

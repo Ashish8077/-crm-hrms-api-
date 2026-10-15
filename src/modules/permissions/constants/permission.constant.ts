@@ -111,4 +111,28 @@ export const PermissionKeys = {
     PermissionModule.EMPLOYEES,
     PermissionAction.DELETE,
   ),
+  EMPLOYEES_ASSIGN: PermissionKey.of(
+    PermissionModule.EMPLOYEES,
+    PermissionAction.ASSIGN,
+  ),
+
+  // Leads
+  LEADS_VIEW: PermissionKey.of(PermissionModule.LEADS, PermissionAction.VIEW),
+  LEADS_CREATE: PermissionKey.of(
+    PermissionModule.LEADS,
+    PermissionAction.CREATE,
+  ),
+  LEADS_EDIT: PermissionKey.of(PermissionModule.LEADS, PermissionAction.EDIT),
+  LEADS_DELETE: PermissionKey.of(
+    PermissionModule.LEADS,
+    PermissionAction.DELETE,
+  ),
+  LEADS_ASSIGN: PermissionKey.of(
+    PermissionModule.LEADS,
+    PermissionAction.ASSIGN,
+  ),
+  LEADS_EXPORT: PermissionKey.of(
+    PermissionModule.LEADS,
+    PermissionAction.EXPORT,
+  ),
 } as const;

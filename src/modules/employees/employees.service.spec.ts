@@ -6,6 +6,7 @@ import { DepartmentRepository } from '../departments/repositories/department.rep
 import { DesignationRepository } from '../designations/repositories/designation.repository';
 import { BranchRepository } from '../branches/repositories/branch.repository';
 import { TeamRepository } from '../teams/repositories/team.repository';
+import { UserRepository } from '../users/repositories/user.repository';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { AppError } from '../../common/errors/app-error';
@@ -115,6 +116,7 @@ describe('EmployeesService', () => {
         { provide: DesignationRepository, useValue: designationRepo },
         { provide: BranchRepository, useValue: branchRepo },
         { provide: TeamRepository, useValue: teamRepo },
+        { provide: UserRepository, useValue: { findById: jest.fn() } },
         { provide: AuditLogsService, useValue: auditLogsService },
         { provide: getConnectionToken(), useValue: mockConnection },
       ],
