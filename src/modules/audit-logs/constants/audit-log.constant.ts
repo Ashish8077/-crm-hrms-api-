@@ -33,6 +33,9 @@ export enum AuditAction {
   EMPLOYEE_UPDATED = 'EMPLOYEE_UPDATED',
   EMPLOYEE_STATUS_CHANGED = 'EMPLOYEE_STATUS_CHANGED',
   EMPLOYEE_DELETED = 'EMPLOYEE_DELETED',
+  DOCUMENT_UPLOADED = 'DOCUMENT_UPLOADED',
+  DOCUMENT_DOWNLOADED = 'DOCUMENT_DOWNLOADED',
+  DOCUMENT_DELETED = 'DOCUMENT_DELETED',
   // Extensible for future actions...
 }
 
@@ -44,6 +47,7 @@ export enum AuditTargetModel {
   BRANCH = 'Branch',
   TEAM = 'Team',
   EMPLOYEE = 'Employee',
+  EMPLOYEE_DOCUMENT = 'EmployeeDocument',
 }
 
 export enum AuditLogFailureReason {
