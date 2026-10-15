@@ -5,6 +5,12 @@ import { UpdateEmployeeDto } from '../dto/update-employee.dto';
 
 export type EmployeeMapperInput = Employee & { _id: Types.ObjectId };
 
+export interface EmergencyContactResponse {
+  name?: string;
+  relationship?: string;
+  phoneNumber?: string;
+}
+
 export interface EmployeeResponse {
   id: string;
   userId: string | null;
@@ -22,7 +28,7 @@ export interface EmployeeResponse {
   reportingManagerId: string | null;
   employmentType: string;
   employmentStatus: string;
-  emergencyContact?: Record<string, any> | null;
+  emergencyContact?: EmergencyContactResponse | null;
   skills: string[];
   certifications: string[];
   createdAt?: Date;
@@ -103,8 +109,6 @@ export class EmployeeMapper {
         : null;
     if (dto.employmentType !== undefined)
       data.employmentType = dto.employmentType;
-    if (dto.employmentStatus !== undefined)
-      data.employmentStatus = dto.employmentStatus;
     if (dto.bankDetails !== undefined) data.bankDetails = dto.bankDetails;
     if (dto.emergencyContact !== undefined)
       data.emergencyContact = dto.emergencyContact;

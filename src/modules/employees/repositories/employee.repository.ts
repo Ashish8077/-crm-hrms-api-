@@ -29,6 +29,7 @@ export class EmployeeRepository {
     id: Types.ObjectId | string,
     session?: ClientSession,
   ): Promise<EmployeeLean | null> {
+    console.log(id);
     const query = this.employeeModel.findOne({ _id: id, deletedAt: null });
     if (session) {
       query.session(session);

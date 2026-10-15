@@ -18,6 +18,7 @@ import { TeamsModule } from './modules/teams/teams.module';
 import { DesignationsModule } from './modules/designations/designations.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { EmployeesModule } from './modules/employees/employees.module';
+import { StorageModule } from './modules/storage/storage.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import configuration from './config/configuration';
 import { RedisModule } from './common/redis/redis.module';
@@ -61,6 +62,7 @@ import { PermissionsGuard } from './modules/authorization/guards/permissions.gua
     BranchesModule,
     EmployeesModule,
     LeadsModule,
+    StorageModule,
   ],
   controllers: [AppController],
   providers: [

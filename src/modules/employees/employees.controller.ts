@@ -8,7 +8,14 @@ import {
   Delete,
   Req,
   Query,
+  UseInterceptors,
+  UploadedFile,
+  HttpStatus,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { EmployeeDocumentsService } from './employee-documents.service';
+import { UploadEmployeeDocumentDto } from './dto/upload-employee-document.dto';
+import { PaginationQueryDto } from '../../common/pagination/dto/pagination-query.dto';
 import {
   ApiTags,
   ApiOperation,
@@ -16,7 +23,16 @@ import {
   ApiCreatedResponse,
   ApiParam,
   ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
 } from '@nestjs/swagger';
+import { AppError } from '../../common/errors/app-error';
+import { ErrorCode } from '../../common/errors/error-codes';
+import {
+  ALLOWED_EMPLOYEE_DOCUMENT_MIME_TYPES,
+  EmployeeDocumentCategory,
+  MAX_DOCUMENT_FILE_SIZE,
+} from './constants/employee-document.constant';
 import { Types } from 'mongoose';
 import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
@@ -24,6 +40,7 @@ import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UpdateEmploymentStatusDto } from './dto/update-employment-status.dto';
 import { ListEmployeesQueryDto } from './dto/list-employees-query.dto';
 import { LinkEmployeeDto } from './dto/link-employee.dto';
+import { GetEmployeeStatusHistoryQueryDto } from './dto/get-employee-status-history-query.dto';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import {
   PermissionModule,
@@ -40,7 +57,10 @@ import type { AuthenticatedRequest } from '../auth/types/auth-request.type';
   version: '1',
 })
 export class EmployeesController {
-  constructor(private readonly employeesService: EmployeesService) {}
+  constructor(
+    private readonly employeesService: EmployeesService,
+    private readonly employeeDocumentsService: EmployeeDocumentsService,
+  ) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new employee' })
@@ -149,6 +169,21 @@ export class EmployeesController {
     return { success: true, data: employee };
   }
 
+  @Get(':id/status-history')
+  @ApiOperation({ summary: 'Get employee status history' })
+  @ApiParam({ name: 'id', description: 'Employee ID', type: String })
+  @ApiOkResponse({ description: 'The employee status history.' })
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.EMPLOYEES, PermissionAction.VIEW),
+  )
+  async getStatusHistory(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @Query() query: GetEmployeeStatusHistoryQueryDto,
+  ) {
+    const result = await this.employeesService.getStatusHistory(id, query);
+    return { success: true, data: result.data, meta: result.meta };
+  }
+
   @Delete(':id')
   @ApiOperation({ summary: 'Soft delete an employee' })
   @ApiParam({ name: 'id', description: 'Employee ID', type: String })
@@ -169,6 +204,139 @@ export class EmployeesController {
       userAgent,
     });
     return { success: true, message: 'Employee successfully deleted' };
+  }
+
+  @Post(':id/documents')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: MAX_DOCUMENT_FILE_SIZE,
+      },
+      fileFilter: (_req, file, callback) => {
+        if (
+          !ALLOWED_EMPLOYEE_DOCUMENT_MIME_TYPES.includes(
+            file.mimetype as (typeof ALLOWED_EMPLOYEE_DOCUMENT_MIME_TYPES)[number],
+          )
+        ) {
+          return callback(
+            new AppError(
+              ErrorCode.VALIDATION_ERROR,
+              `Invalid file type. Allowed: ${ALLOWED_EMPLOYEE_DOCUMENT_MIME_TYPES.join(', ')}`,
+              HttpStatus.BAD_REQUEST,
+            ),
+            false,
+          );
+        }
+        callback(null, true);
+      },
+    }),
+  )
+  @ApiOperation({ summary: 'Upload an employee document' })
+  @ApiParam({ name: 'id', description: 'Employee ID', type: String })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file', 'category'],
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Document file (PDF, JPEG, PNG, max 10MB)',
+        },
+        category: {
+          type: 'string',
+          enum: Object.values(EmployeeDocumentCategory),
+          description:
+            'Category of the document (e.g. ID_PROOF, RESUME, OFFER_LETTER, CERTIFICATE)',
+          example: EmployeeDocumentCategory.ID_PROOF,
+        },
+      },
+    },
+  })
+  @ApiCreatedResponse({ description: 'Document uploaded successfully.' })
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.EMPLOYEES, PermissionAction.EDIT),
+  )
+  async uploadDocument(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: UploadEmployeeDocumentDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const ipAddress = request.ip ?? null;
+    const userAgent = request.headers['user-agent'] ?? null;
+    const document = await this.employeeDocumentsService.uploadDocument(
+      id,
+      request.user.userId,
+      file,
+      dto,
+      { ipAddress, userAgent },
+    );
+    return { success: true, data: document };
+  }
+
+  @Get(':id/documents')
+  @ApiOperation({ summary: 'List employee documents' })
+  @ApiParam({ name: 'id', description: 'Employee ID', type: String })
+  @ApiOkResponse({ description: 'List of documents.' })
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.EMPLOYEES, PermissionAction.VIEW),
+  )
+  async listDocuments(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @Query() query: PaginationQueryDto,
+  ) {
+    const result = await this.employeeDocumentsService.listDocuments(id, query);
+    return { success: true, data: result.data, meta: result.meta };
+  }
+
+  @Get(':id/documents/:documentId/download')
+  @ApiOperation({ summary: 'Get document download URL' })
+  @ApiParam({ name: 'id', description: 'Employee ID', type: String })
+  @ApiParam({ name: 'documentId', description: 'Document ID', type: String })
+  @ApiOkResponse({ description: 'Pre-signed download URL.' })
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.EMPLOYEES, PermissionAction.VIEW),
+  )
+  async downloadDocument(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @Param('documentId', ParseObjectIdPipe) documentId: Types.ObjectId,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const ipAddress = request.ip ?? null;
+    const userAgent = request.headers['user-agent'] ?? null;
+    const result = await this.employeeDocumentsService.getDocumentDownloadUrl(
+      id,
+      documentId,
+      request.user.userId,
+      { ipAddress, userAgent },
+    );
+    return { success: true, data: result };
+  }
+
+  @Delete(':id/documents/:documentId')
+  @ApiOperation({ summary: 'Delete an employee document' })
+  @ApiParam({ name: 'id', description: 'Employee ID', type: String })
+  @ApiParam({ name: 'documentId', description: 'Document ID', type: String })
+  @ApiOkResponse({ description: 'Document deleted successfully.' })
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.EMPLOYEES, PermissionAction.EDIT),
+  )
+  async deleteDocument(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @Param('documentId', ParseObjectIdPipe) documentId: Types.ObjectId,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const ipAddress = request.ip ?? null;
+    const userAgent = request.headers['user-agent'] ?? null;
+    await this.employeeDocumentsService.deleteDocument(
+      id,
+      documentId,
+      request.user.userId,
+      { ipAddress, userAgent },
+    );
+    return { success: true, message: 'Document successfully deleted' };
   }
 
   @Post(':id/link-user')
