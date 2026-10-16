@@ -36,17 +36,6 @@ export class AuthorizationService {
       return false;
     }
 
-    const requiredPermission = await this.permissionRepository.findActiveByKey(
-      requiredPermissionKey,
-    );
-
-    if (!requiredPermission) {
-      this.logger.warn(
-        `Permission key '${requiredPermissionKey}' not found or inactive`,
-      );
-      return false;
-    }
-
     const activeRoles = await this.roleRepository.findActiveByIds(user.roleIds);
 
     if (!activeRoles.length) {
@@ -59,6 +48,17 @@ export class AuthorizationService {
     );
     if (isSuperAdmin) {
       return true;
+    }
+
+    const requiredPermission = await this.permissionRepository.findActiveByKey(
+      requiredPermissionKey,
+    );
+
+    if (!requiredPermission) {
+      this.logger.warn(
+        `Permission key '${requiredPermissionKey}' not found or inactive`,
+      );
+      return false;
     }
 
     const requiredPermissionId = requiredPermission._id.toString();

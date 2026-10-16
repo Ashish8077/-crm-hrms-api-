@@ -20,6 +20,8 @@ import { BranchesModule } from './modules/branches/branches.module';
 import { EmployeesModule } from './modules/employees/employees.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { CompaniesModule } from './modules/companies/companies.module';
+import { ContactsModule } from './modules/contacts/contacts.module';
 import configuration from './config/configuration';
 import { RedisModule } from './common/redis/redis.module';
 import { CsrfGuard } from './common/guards/csrf.guard';
@@ -62,6 +64,8 @@ import { PermissionsGuard } from './modules/authorization/guards/permissions.gua
     BranchesModule,
     EmployeesModule,
     LeadsModule,
+    CompaniesModule,
+    ContactsModule,
     StorageModule,
   ],
   controllers: [AppController],
