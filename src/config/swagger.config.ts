@@ -30,6 +30,8 @@ export function setupSwagger(app: INestApplication): void {
     .addTag('HR - Helpdesk', 'HR helpdesk')
     .addTag('HR - Training', 'Learning and training')
     .addTag('CRM - Leads', 'Lead management')
+    .addTag('CRM - Companies', 'Company records and corporate accounts')
+    .addTag('CRM - Contacts', 'Individual contacts and customer relationships')
     .addTag('CRM - Deals', 'Deal and pipeline management')
     .build();
 
