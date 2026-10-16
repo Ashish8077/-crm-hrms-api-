@@ -4,6 +4,7 @@ import { Types } from 'mongoose';
 import { HttpStatus } from '@nestjs/common';
 import { EmployeesService } from './employees.service';
 import { EmployeeRepository } from './repositories/employee.repository';
+import { EmployeeStatusHistoryRepository } from './repositories/employee-status-history.repository';
 import { DepartmentRepository } from '../departments/repositories/department.repository';
 import { DesignationRepository } from '../designations/repositories/designation.repository';
 import { BranchRepository } from '../branches/repositories/branch.repository';
@@ -96,6 +97,10 @@ describe('EmployeesService - linkUser', () => {
       providers: [
         EmployeesService,
         { provide: EmployeeRepository, useValue: employeeRepo },
+        {
+          provide: EmployeeStatusHistoryRepository,
+          useValue: { create: jest.fn() },
+        },
         { provide: DepartmentRepository, useValue: { findById: jest.fn() } },
         { provide: DesignationRepository, useValue: { findById: jest.fn() } },
         { provide: BranchRepository, useValue: { findById: jest.fn() } },
