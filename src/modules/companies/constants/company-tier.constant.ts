@@ -1,0 +1,13 @@
+export enum CompanyTier {
+  TIER_1 = 'TIER_1',
+  TIER_2 = 'TIER_2',
+  TIER_3 = 'TIER_3',
+  ENTERPRISE = 'ENTERPRISE',
+  MID_MARKET = 'MID_MARKET',
+  SMB = 'SMB',
+  STANDARD = 'STANDARD',
+  SILVER = 'SILVER',
+  GOLD = 'GOLD',
+  PLATINUM = 'PLATINUM',
+}
+
