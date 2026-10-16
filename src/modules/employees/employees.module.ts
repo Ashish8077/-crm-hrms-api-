@@ -20,6 +20,7 @@ import { DepartmentsModule } from '../departments/departments.module';
 import { DesignationsModule } from '../designations/designations.module';
 import { BranchesModule } from '../branches/branches.module';
 import { TeamsModule } from '../teams/teams.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { TeamsModule } from '../teams/teams.module';
     DesignationsModule,
     BranchesModule,
     TeamsModule,
+    UsersModule,
   ],
   controllers: [EmployeesController],
   providers: [
