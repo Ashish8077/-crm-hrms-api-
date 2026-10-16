@@ -1,4 +1,4 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { EmployeesService } from './employees.service';
 import { EmployeeDocumentsService } from './employee-documents.service';
@@ -34,7 +34,7 @@ import { UsersModule } from '../users/users.module';
     DesignationsModule,
     BranchesModule,
     TeamsModule,
-    forwardRef(() => UsersModule),
+    UsersModule,
   ],
   controllers: [EmployeesController],
   providers: [
