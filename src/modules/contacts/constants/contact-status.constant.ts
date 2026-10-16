@@ -1,0 +1,6 @@
+export enum ContactStatus {
+  ACTIVE = 'ACTIVE',
+  INACTIVE = 'INACTIVE',
+  BOUNCED = 'BOUNCED',
+  UNRESPONSIVE = 'UNRESPONSIVE',
+}
