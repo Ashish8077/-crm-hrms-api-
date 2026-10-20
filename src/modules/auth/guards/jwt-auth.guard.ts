@@ -11,7 +11,10 @@ import { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../../../common/decorators/public.decorator.js';
 import { ACCESS_TOKEN_COOKIE } from '../constants/auth.constants.js';
 import { SessionRepository } from '../repositories/session.repository.js';
-import { UserRepository } from '../../users/repositories/user.repository.js';
+import {
+  UserRepository,
+  UserLean,
+} from '../../users/repositories/user.repository.js';
 import { AppError } from '../../../common/errors/app-error.js';
 import { ErrorCode } from '../../../common/errors/error-codes.js';
 import { UserStatus } from '../../users/constants/user-status.constant.js';
@@ -49,9 +52,14 @@ export class JwtAuthGuard implements CanActivate {
     const sessionId = this.toObjectId(payload.sid);
 
     await this.validateSession(sessionId, userId);
-    await this.validateUser(userId);
+    const user = await this.validateUser(userId);
 
-    this.attachAuthenticatedUser(request, userId, sessionId);
+    this.attachAuthenticatedUser(
+      request,
+      userId,
+      sessionId,
+      user.roleIds ?? [],
+    );
 
     return true;
   }
@@ -132,7 +140,7 @@ export class JwtAuthGuard implements CanActivate {
     }
   }
 
-  private async validateUser(userId: Types.ObjectId): Promise<void> {
+  private async validateUser(userId: Types.ObjectId): Promise<UserLean> {
     const user = await this.userRepository.findById(userId);
 
     if (!user || user.status !== UserStatus.ACTIVE) {
@@ -141,17 +149,21 @@ export class JwtAuthGuard implements CanActivate {
       );
       throw this.createUnauthorizedError('Invalid or expired access token');
     }
+
+    return user;
   }
 
   private attachAuthenticatedUser(
     request: Request,
     userId: Types.ObjectId,
     sessionId: Types.ObjectId,
+    roleIds: Types.ObjectId[],
   ): void {
     const authRequest = request as AuthenticatedRequest;
     authRequest.user = {
       userId,
       sessionId,
+      roleIds,
     };
   }
 
