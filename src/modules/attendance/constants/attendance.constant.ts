@@ -1,0 +1,71 @@
+export enum AttendanceStatus {
+  CHECKED_IN = 'CHECKED_IN',
+  ON_BREAK = 'ON_BREAK',
+  PRESENT = 'PRESENT',
+  HALF_DAY = 'HALF_DAY',
+  ABSENT = 'ABSENT',
+  INCOMPLETE = 'INCOMPLETE',
+  REGULARIZED = 'REGULARIZED',
+}
+
+export enum AttendanceType {
+  REGULAR = 'REGULAR',
+  WORK_FROM_HOME = 'WORK_FROM_HOME',
+  ON_DUTY = 'ON_DUTY',
+}
+
+export enum AttendanceSource {
+  WEB = 'WEB',
+  MOBILE = 'MOBILE',
+  BIOMETRIC = 'BIOMETRIC',
+  SYSTEM = 'SYSTEM',
+}
+
+export enum BreakType {
+  LUNCH = 'LUNCH',
+  TEA = 'TEA',
+  PERSONAL = 'PERSONAL',
+  OTHER = 'OTHER',
+}
+
+export enum RegularizationStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED',
+}
+
+export const ATTENDANCE_CONSTANTS = {
+  DEFAULT_TIMEZONE: 'UTC',
+
+  // Shift string lengths
+  SHIFT_NAME_MIN_LENGTH: 2,
+  SHIFT_NAME_MAX_LENGTH: 100,
+  SHIFT_CODE_MIN_LENGTH: 2,
+  SHIFT_CODE_MAX_LENGTH: 20,
+
+  // Late arrival
+  DEFAULT_GRACE_PERIOD_MINUTES: 15,
+  MIN_GRACE_PERIOD_MINUTES: 0,
+  MAX_GRACE_PERIOD_MINUTES: 60,
+
+  // Attendance classification
+  DEFAULT_FULL_DAY_MINUTES: 480, // 8 hours
+  MIN_FULL_DAY_MINUTES: 60, // 1 hour
+  MAX_FULL_DAY_MINUTES: 720, // 12 hours
+
+  DEFAULT_HALF_DAY_MINUTES: 240, // 4 hours
+  MIN_HALF_DAY_MINUTES: 30, // 30 minutes
+  MAX_HALF_DAY_MINUTES: 480, // 8 hours
+
+  DEFAULT_BREAK_DURATION_MINUTES: 60, // 1 hour
+  MIN_BREAK_DURATION_MINUTES: 0,
+  MAX_BREAK_DURATION_MINUTES: 180, // 3 hours
+
+  // Overtime
+  DEFAULT_OVERTIME_THRESHOLD_MINUTES: 480, // 8 hours
+  MIN_OVERTIME_THRESHOLD_MINUTES: 0,
+  MAX_OVERTIME_THRESHOLD_MINUTES: 720, // 12 hours
+
+  MAX_BREAKS_PER_DAY: 3,
+} as const;

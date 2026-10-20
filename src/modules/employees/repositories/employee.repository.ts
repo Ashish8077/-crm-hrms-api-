@@ -29,8 +29,21 @@ export class EmployeeRepository {
     id: Types.ObjectId | string,
     session?: ClientSession,
   ): Promise<EmployeeLean | null> {
-    console.log(id);
     const query = this.employeeModel.findOne({ _id: id, deletedAt: null });
+    if (session) {
+      query.session(session);
+    }
+    return query.lean().exec();
+  }
+
+  async findByUserId(
+    userId: Types.ObjectId | string,
+    session?: ClientSession,
+  ): Promise<EmployeeLean | null> {
+    const query = this.employeeModel.findOne({
+      userId: typeof userId === 'string' ? new Types.ObjectId(userId) : userId,
+      deletedAt: null,
+    });
     if (session) {
       query.session(session);
     }

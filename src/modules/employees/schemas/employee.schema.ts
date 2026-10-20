@@ -79,6 +79,9 @@ export class Employee {
   @Prop({ type: Types.ObjectId, ref: 'Employee', default: null })
   reportingManagerId!: Types.ObjectId | null;
 
+  @Prop({ type: Types.ObjectId, ref: 'Shift', default: null })
+  shiftId?: Types.ObjectId | null;
+
   @Prop({ type: String, enum: Object.values(EmploymentType), required: true })
   employmentType!: EmploymentType;
 
