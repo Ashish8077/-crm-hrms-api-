@@ -13,7 +13,6 @@ export class User {
   @Prop({
     type: String,
     required: true,
-    unique: true,
     lowercase: true,
     trim: true,
   })
@@ -52,7 +51,6 @@ export class User {
   @Prop({
     type: Date,
     default: null,
-    index: true,
   })
   deletedAt!: Date | null;
 
@@ -82,3 +80,21 @@ export class User {
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+// Partial unique index: ensures active users have unique emails,
+// while allowing soft-deleted users' emails to be reused.
+UserSchema.index(
+  { email: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { deletedAt: null },
+    name: 'idx_users_email_active_unique',
+  },
+);
+
+// Query-pattern index for the primary user list endpoint with reverse chronological sorting
+// Also serves as the index prefix for single { deletedAt: 1 } queries
+UserSchema.index(
+  { deletedAt: 1, createdAt: -1 },
+  { name: 'idx_users_deleted_created' },
+);
