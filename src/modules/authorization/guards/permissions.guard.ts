@@ -39,19 +39,18 @@ export class PermissionsGuard implements CanActivate {
       );
     }
 
-    // Check permissions (evaluate all required permissions)
-    for (const permission of requiredPermissions) {
-      const hasAccess = await this.authorizationService.hasPermission(
-        user.userId,
-        permission,
+    // Check permissions in batch (evaluates all required permissions in memory with batch queries)
+    const hasAccess = await this.authorizationService.hasPermissions(
+      user.roleIds,
+      requiredPermissions,
+    );
+
+    if (!hasAccess) {
+      throw new AppError(
+        ErrorCode.FORBIDDEN,
+        `Insufficient permission. Required: ${requiredPermissions.join(', ')}`,
+        HttpStatus.FORBIDDEN,
       );
-      if (!hasAccess) {
-        throw new AppError(
-          ErrorCode.FORBIDDEN,
-          `Insufficient permission. Required: ${permission}`,
-          HttpStatus.FORBIDDEN,
-        );
-      }
     }
 
     return true;
