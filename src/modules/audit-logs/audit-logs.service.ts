@@ -132,4 +132,12 @@ export class AuditLogsService {
       userAgent,
     });
   }
+
+  async findByTarget(
+    targetModel: AuditTargetModel,
+    targetId: Types.ObjectId,
+    limit = 100,
+  ) {
+    return this.auditLogRepository.findByTarget(targetModel, targetId, limit);
+  }
 }

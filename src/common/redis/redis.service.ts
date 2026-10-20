@@ -39,13 +39,23 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
-    await this.client.connect();
-    this.logger.log('Redis client connected');
+    try {
+      await this.client.connect();
+      this.logger.log('Redis client connected');
+    } catch (error) {
+      this.logger.warn(
+        `Redis connection could not be established: ${(error as Error).message}`,
+      );
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
-    await this.client.quit();
-    this.logger.log('Redis client disconnected');
+    try {
+      await this.client.quit();
+      this.logger.log('Redis client disconnected');
+    } catch {
+      // Ignore disconnect error if client was not connected
+    }
   }
 
   // ──────────────────────────────────────────────
