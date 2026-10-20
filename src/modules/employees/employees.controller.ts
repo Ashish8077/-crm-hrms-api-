@@ -60,7 +60,7 @@ export class EmployeesController {
   constructor(
     private readonly employeesService: EmployeesService,
     private readonly employeeDocumentsService: EmployeeDocumentsService,
-  ) { }
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new employee' })

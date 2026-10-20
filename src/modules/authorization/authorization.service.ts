@@ -20,35 +20,47 @@ export class AuthorizationService {
   ) {}
 
   /**
-   * Evaluates if a user has the required permission.
+   * Evaluates if the user's roles grant all required permissions in batch.
    */
-  async hasPermission(
-    userId: Types.ObjectId,
-    requiredPermissionKey: string,
+  async hasPermissions(
+    roleIds: Types.ObjectId[],
+    requiredPermissionKeys: string[],
   ): Promise<boolean> {
-    const user = await this.userRepository.findById(userId);
+    if (!requiredPermissionKeys?.length) {
+      return true;
+    }
 
-    if (!user || user.status !== UserStatus.ACTIVE || user.deletedAt) {
+    if (!roleIds?.length) {
       return false;
     }
 
-    if (!user.roleIds?.length) {
-      return false;
+    // Deduplicate input keys and role IDs to ensure clean DB queries
+    const uniquePermissionKeys = Array.from(new Set(requiredPermissionKeys));
+    if (!uniquePermissionKeys.length) {
+      return true;
     }
 
-    const requiredPermission = await this.permissionRepository.findActiveByKey(
-      requiredPermissionKey,
-    );
+    const uniqueRoleIds = Array.from(
+      new Set(roleIds.map((id) => id.toString())),
+    ).map((idStr) => new Types.ObjectId(idStr));
 
-    if (!requiredPermission) {
+    // Execute exactly 1 batch Permission query and 1 batch Role query concurrently
+    const [activePermissions, activeRoles] = await Promise.all([
+      this.permissionRepository.findActiveByKeys(uniquePermissionKeys),
+      this.roleRepository.findActiveByIds(uniqueRoleIds),
+    ]);
+
+    // If any required permission is inactive or not found in DB, deny access
+    if (activePermissions.length !== uniquePermissionKeys.length) {
+      const foundKeys = new Set(activePermissions.map((p) => p.key));
+      const missingKeys = uniquePermissionKeys.filter((k) => !foundKeys.has(k));
       this.logger.warn(
-        `Permission key '${requiredPermissionKey}' not found or inactive`,
+        `Permission key(s) not found or inactive: ${missingKeys.join(', ')}`,
       );
       return false;
     }
 
-    const activeRoles = await this.roleRepository.findActiveByIds(user.roleIds);
-
+    // If user has no active roles, deny access
     if (!activeRoles.length) {
       return false;
     }
@@ -61,13 +73,30 @@ export class AuthorizationService {
       return true;
     }
 
-    const requiredPermissionId = requiredPermission._id.toString();
+    // Collect all permission IDs granted by user's active roles for O(1) in-memory lookup
+    const grantedPermissionIdSet = new Set<string>();
+    for (const role of activeRoles) {
+      if (role.permissionIds) {
+        for (const permissionId of role.permissionIds) {
+          grantedPermissionIdSet.add(permissionId.toString());
+        }
+      }
+    }
 
-    return activeRoles.some((role) =>
-      role.permissionIds.some(
-        (permissionId) => permissionId.toString() === requiredPermissionId,
-      ),
+    // Enforce ALL semantics: every required active permission must be in grantedPermissionIdSet
+    return activePermissions.every((permission) =>
+      grantedPermissionIdSet.has(permission._id.toString()),
     );
+  }
+
+  /**
+   * Evaluates if the user's roles grant the required permission.
+   */
+  async hasPermission(
+    roleIds: Types.ObjectId[],
+    requiredPermissionKey: string,
+  ): Promise<boolean> {
+    return this.hasPermissions(roleIds, [requiredPermissionKey]);
   }
 
   /**
