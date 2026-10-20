@@ -20,7 +20,11 @@ export function setupSwagger(app: INestApplication): void {
     .addTag('Roles & Permissions', 'RBAC management')
     .addTag('Organization', 'Departments, teams and organization')
     .addTag('HR - Employees', 'Employee management')
-    .addTag('HR - Attendance', 'Attendance management')
+    .addTag(
+      'Attendance',
+      'Attendance tracking, break sessions, monthly calendar, and regularization',
+    )
+    .addTag('Shifts', 'Work shifts configuration and employee shift assignment')
     .addTag('HR - Leave', 'Leave management')
     .addTag('HR - Performance', 'Performance management')
     .addTag('HR - Expenses', 'Expense management')

@@ -111,4 +111,26 @@ export const PermissionKeys = {
     PermissionModule.EMPLOYEES,
     PermissionAction.DELETE,
   ),
+
+  // Attendance
+  ATTENDANCE_VIEW: PermissionKey.of(
+    PermissionModule.ATTENDANCE,
+    PermissionAction.VIEW,
+  ),
+  ATTENDANCE_CREATE: PermissionKey.of(
+    PermissionModule.ATTENDANCE,
+    PermissionAction.CREATE,
+  ),
+  ATTENDANCE_EDIT: PermissionKey.of(
+    PermissionModule.ATTENDANCE,
+    PermissionAction.EDIT,
+  ),
+  ATTENDANCE_APPROVE: PermissionKey.of(
+    PermissionModule.ATTENDANCE,
+    PermissionAction.APPROVE,
+  ),
+  ATTENDANCE_EXPORT: PermissionKey.of(
+    PermissionModule.ATTENDANCE,
+    PermissionAction.EXPORT,
+  ),
 } as const;
