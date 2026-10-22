@@ -89,4 +89,4 @@ import { PermissionsGuard } from './modules/authorization/guards/permissions.gua
     },
   ],
 })
-export class AppModule { }
+export class AppModule {}

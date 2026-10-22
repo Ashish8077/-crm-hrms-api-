@@ -42,7 +42,7 @@ export class EmployeesService {
     private readonly userRepository: UserRepository,
     private readonly auditLogsService: AuditLogsService,
     @InjectConnection() private readonly connection: Connection,
-  ) { }
+  ) {}
 
   private async validateRelationships(
     departmentId: Types.ObjectId,
