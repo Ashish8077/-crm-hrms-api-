@@ -13,7 +13,6 @@ export class Session {
     type: Types.ObjectId,
     ref: 'User',
     required: true,
-    index: true,
   })
   userId: Types.ObjectId;
 
@@ -28,7 +27,6 @@ export class Session {
   @Prop({
     type: Date,
     required: true,
-    index: true,
   })
   expiresAt: Date;
 
@@ -52,3 +50,16 @@ export class Session {
 }
 
 export const SessionSchema = SchemaFactory.createForClass(Session);
+
+// TTL index: MongoDB periodically removes expired session documents
+SessionSchema.index(
+  { expiresAt: 1 },
+  { expireAfterSeconds: 0, name: 'idx_sessions_expires_ttl' },
+);
+
+// Compound index for active session lookups and bulk user revocation
+// Also serves as index prefix for single { userId: 1 } queries
+SessionSchema.index(
+  { userId: 1, revokedAt: 1 },
+  { name: 'idx_sessions_user_revoked' },
+);
