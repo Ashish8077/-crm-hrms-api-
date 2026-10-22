@@ -42,6 +42,21 @@ export class PermissionRepository {
   }
 
   /**
+   * Find active permissions by their keys (e.g. ['users.create', 'users.view']).
+   */
+  async findActiveByKeys(
+    keys: string[],
+  ): Promise<(Permission & { _id: Types.ObjectId })[]> {
+    return this.permissionModel
+      .find({
+        key: { $in: keys },
+        isActive: true,
+      })
+      .lean()
+      .exec();
+  }
+
+  /**
    * Find all active permissions in the system.
    */
   async findAllActive(): Promise<(Permission & { _id: Types.ObjectId })[]> {
