@@ -6,6 +6,7 @@ export type CrmActivityDocument = HydratedDocument<CrmActivity>;
 export enum ActivityEntityType {
   COMPANY = 'Company',
   CONTACT = 'Contact',
+  DEAL = 'Deal',
 }
 
 export enum ActivityType {
