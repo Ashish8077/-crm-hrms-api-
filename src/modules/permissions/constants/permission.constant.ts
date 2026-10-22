@@ -137,18 +137,78 @@ export const PermissionKeys = {
   ),
 
   // Companies
-  COMPANIES_VIEW: PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.VIEW),
-  COMPANIES_CREATE: PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.CREATE),
-  COMPANIES_EDIT: PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EDIT),
-  COMPANIES_DELETE: PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.DELETE),
-  COMPANIES_ASSIGN: PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.ASSIGN),
-  COMPANIES_EXPORT: PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EXPORT),
+  COMPANIES_VIEW: PermissionKey.of(
+    PermissionModule.COMPANIES,
+    PermissionAction.VIEW,
+  ),
+  COMPANIES_CREATE: PermissionKey.of(
+    PermissionModule.COMPANIES,
+    PermissionAction.CREATE,
+  ),
+  COMPANIES_EDIT: PermissionKey.of(
+    PermissionModule.COMPANIES,
+    PermissionAction.EDIT,
+  ),
+  COMPANIES_DELETE: PermissionKey.of(
+    PermissionModule.COMPANIES,
+    PermissionAction.DELETE,
+  ),
+  COMPANIES_ASSIGN: PermissionKey.of(
+    PermissionModule.COMPANIES,
+    PermissionAction.ASSIGN,
+  ),
+  COMPANIES_EXPORT: PermissionKey.of(
+    PermissionModule.COMPANIES,
+    PermissionAction.EXPORT,
+  ),
 
   // Contacts
-  CONTACTS_VIEW: PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.VIEW),
-  CONTACTS_CREATE: PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.CREATE),
-  CONTACTS_EDIT: PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT),
-  CONTACTS_DELETE: PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.DELETE),
-  CONTACTS_ASSIGN: PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.ASSIGN),
-  CONTACTS_EXPORT: PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EXPORT),
+  CONTACTS_VIEW: PermissionKey.of(
+    PermissionModule.CONTACTS,
+    PermissionAction.VIEW,
+  ),
+  CONTACTS_CREATE: PermissionKey.of(
+    PermissionModule.CONTACTS,
+    PermissionAction.CREATE,
+  ),
+  CONTACTS_EDIT: PermissionKey.of(
+    PermissionModule.CONTACTS,
+    PermissionAction.EDIT,
+  ),
+  CONTACTS_DELETE: PermissionKey.of(
+    PermissionModule.CONTACTS,
+    PermissionAction.DELETE,
+  ),
+  CONTACTS_ASSIGN: PermissionKey.of(
+    PermissionModule.CONTACTS,
+    PermissionAction.ASSIGN,
+  ),
+  CONTACTS_EXPORT: PermissionKey.of(
+    PermissionModule.CONTACTS,
+    PermissionAction.EXPORT,
+  ),
+
+  // Deals
+  DEALS_VIEW: PermissionKey.of(PermissionModule.DEALS, PermissionAction.VIEW),
+  DEALS_CREATE: PermissionKey.of(
+    PermissionModule.DEALS,
+    PermissionAction.CREATE,
+  ),
+  DEALS_EDIT: PermissionKey.of(PermissionModule.DEALS, PermissionAction.EDIT),
+  DEALS_DELETE: PermissionKey.of(
+    PermissionModule.DEALS,
+    PermissionAction.DELETE,
+  ),
+  DEALS_ASSIGN: PermissionKey.of(
+    PermissionModule.DEALS,
+    PermissionAction.ASSIGN,
+  ),
+  DEALS_APPROVE: PermissionKey.of(
+    PermissionModule.DEALS,
+    PermissionAction.APPROVE,
+  ),
+  DEALS_EXPORT: PermissionKey.of(
+    PermissionModule.DEALS,
+    PermissionAction.EXPORT,
+  ),
 } as const;

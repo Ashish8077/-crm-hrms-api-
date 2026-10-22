@@ -22,6 +22,7 @@ import { StorageModule } from './modules/storage/storage.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
+import { DealsModule } from './modules/deals/deals.module';
 import configuration from './config/configuration';
 import { RedisModule } from './common/redis/redis.module';
 import { CsrfGuard } from './common/guards/csrf.guard';
@@ -66,6 +67,7 @@ import { PermissionsGuard } from './modules/authorization/guards/permissions.gua
     LeadsModule,
     CompaniesModule,
     ContactsModule,
+    DealsModule,
     StorageModule,
   ],
   controllers: [AppController],
@@ -89,4 +91,4 @@ import { PermissionsGuard } from './modules/authorization/guards/permissions.gua
     },
   ],
 })
-export class AppModule { }
+export class AppModule {}
