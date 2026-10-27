@@ -13,7 +13,9 @@ export const CONTACT_SORTABLE_FIELDS = [
 ] as const;
 
 export class ListContactsQueryDto extends PaginationQueryDto {
-  @ApiPropertyOptional({ description: 'Search term across name, email, phone, and jobTitle' })
+  @ApiPropertyOptional({
+    description: 'Search term across name, email, phone, and jobTitle',
+  })
   @IsString()
   @IsOptional()
   search?: string;

@@ -94,7 +94,10 @@ export class CreateCompanyDto {
   @IsOptional()
   registrationNumber?: string;
 
-  @ApiPropertyOptional({ example: 'TX-998877', description: 'Tax ID or registration number' })
+  @ApiPropertyOptional({
+    example: 'TX-998877',
+    description: 'Tax ID or registration number',
+  })
   @IsString()
   @IsOptional()
   taxId?: string;
@@ -104,7 +107,10 @@ export class CreateCompanyDto {
   @IsOptional()
   status?: CompanyStatus;
 
-  @ApiPropertyOptional({ enum: CompanyIndustry, default: CompanyIndustry.OTHER })
+  @ApiPropertyOptional({
+    enum: CompanyIndustry,
+    default: CompanyIndustry.OTHER,
+  })
   @IsEnum(CompanyIndustry)
   @IsOptional()
   industry?: CompanyIndustry;
@@ -161,7 +167,10 @@ export class CreateCompanyDto {
   @IsOptional()
   additionalEmails?: LabeledEntryDto[];
 
-  @ApiPropertyOptional({ type: AddressDto, description: 'Headquarters / Primary office address' })
+  @ApiPropertyOptional({
+    type: AddressDto,
+    description: 'Headquarters / Primary office address',
+  })
   @ValidateNested()
   @Type(() => AddressDto)
   @IsOptional()
@@ -196,7 +205,10 @@ export class CreateCompanyDto {
   @IsOptional()
   currency?: string;
 
-  @ApiPropertyOptional({ example: 150, description: 'Total number of employees' })
+  @ApiPropertyOptional({
+    example: 150,
+    description: 'Total number of employees',
+  })
   @IsOptional()
   employeeCount?: number | string;
 

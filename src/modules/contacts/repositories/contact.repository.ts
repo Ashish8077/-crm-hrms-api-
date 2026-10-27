@@ -26,7 +26,7 @@ export class ContactRepository {
     session?: ClientSession,
   ): Promise<ContactLean> {
     const docs = await this.contactModel.create([data], { session });
-    return docs[0].toObject() as ContactLean;
+    return docs[0].toObject();
   }
 
   async findById(
@@ -51,9 +51,7 @@ export class ContactRepository {
     return query.lean<ContactLean>().exec();
   }
 
-  async findByCompanyId(
-    companyId: Types.ObjectId,
-  ): Promise<ContactLean[]> {
+  async findByCompanyId(companyId: Types.ObjectId): Promise<ContactLean[]> {
     return this.contactModel
       .find({ companyId, deletedAt: null })
       .sort({ isPrimaryContact: -1, createdAt: 1 })
@@ -200,7 +198,9 @@ export class ContactRepository {
   ): Promise<ContactLean | null> {
     if (!emails || emails.length === 0) return null;
 
-    const normalizedList = emails.map((e) => normalizeEmail(e)!).filter(Boolean);
+    const normalizedList = emails
+      .map((e) => normalizeEmail(e)!)
+      .filter(Boolean);
     if (normalizedList.length === 0) return null;
 
     const query: Record<string, any> = {
@@ -231,13 +231,19 @@ export class ContactRepository {
     session?: ClientSession,
   ): Promise<ContactLean | null> {
     // 1. Fetch current contact
-    const current = await this.contactModel.findOne({ _id: contactId, deletedAt: null }).session(session || null);
+    const current = await this.contactModel
+      .findOne({ _id: contactId, deletedAt: null })
+      .session(session || null);
     if (!current) return null;
 
     const oldCompanyId = current.companyId;
 
     // 2. Clear old company primary status if contact was primary in old company
-    if (oldCompanyId && current.isPrimaryContact && !oldCompanyId.equals(newCompanyId)) {
+    if (
+      oldCompanyId &&
+      current.isPrimaryContact &&
+      !oldCompanyId.equals(newCompanyId)
+    ) {
       await this.contactModel.updateOne(
         { _id: contactId },
         { $set: { isPrimaryContact: false, updatedBy: actorId } },
@@ -377,15 +383,18 @@ export class ContactRepository {
     contactId: Types.ObjectId,
     documentId: Types.ObjectId,
   ): Promise<ContactDocument | null> {
-    const contact = await this.contactModel.findOne(
-      {
-        _id: contactId,
-        deletedAt: null,
-        'documents._id': documentId,
-        'documents.deletedAt': null,
-      },
-      { 'documents.$': 1 },
-    ).lean<ContactLean>().exec();
+    const contact = await this.contactModel
+      .findOne(
+        {
+          _id: contactId,
+          deletedAt: null,
+          'documents._id': documentId,
+          'documents.deletedAt': null,
+        },
+        { 'documents.$': 1 },
+      )
+      .lean<ContactLean>()
+      .exec();
 
     if (!contact || !contact.documents || contact.documents.length === 0) {
       return null;

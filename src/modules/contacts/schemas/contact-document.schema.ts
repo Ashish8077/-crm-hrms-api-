@@ -33,4 +33,5 @@ export class ContactDocument {
   updatedAt?: Date;
 }
 
-export const ContactDocumentSchema = SchemaFactory.createForClass(ContactDocument);
+export const ContactDocumentSchema =
+  SchemaFactory.createForClass(ContactDocument);

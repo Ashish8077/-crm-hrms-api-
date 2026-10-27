@@ -2,7 +2,11 @@ import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Types, ClientSession, Model } from 'mongoose';
 import { ContactRepository } from './repositories/contact.repository';
-import { ContactLean, ContactMapper, ContactResponse } from './mappers/contact.mapper';
+import {
+  ContactLean,
+  ContactMapper,
+  ContactResponse,
+} from './mappers/contact.mapper';
 import { CompanyRepository } from '../companies/repositories/company.repository';
 import { UserRepository } from '../users/repositories/user.repository';
 import { UserStatus } from '../users/constants/user-status.constant';
@@ -148,7 +152,8 @@ export class ContactsService {
       allEmails.push(...dto.additionalEmails.map((e) => e.value));
     }
 
-    const collision = await this.contactRepository.checkEmailCollision(allEmails);
+    const collision =
+      await this.contactRepository.checkEmailCollision(allEmails);
     if (collision) {
       throw new AppError(
         ErrorCode.RESOURCE_ALREADY_EXISTS,
@@ -158,7 +163,10 @@ export class ContactsService {
     }
 
     if (dto.phone) {
-      const phoneDup = await this.contactRepository.checkDuplicate(null, dto.phone);
+      const phoneDup = await this.contactRepository.checkDuplicate(
+        null,
+        dto.phone,
+      );
       if (phoneDup) {
         throw new AppError(
           ErrorCode.RESOURCE_ALREADY_EXISTS,
@@ -225,7 +233,9 @@ export class ContactsService {
     return ContactMapper.toResponse(result!);
   }
 
-  async list(queryDto: ListContactsQueryDto): Promise<PaginatedResult<ContactResponse>> {
+  async list(
+    queryDto: ListContactsQueryDto,
+  ): Promise<PaginatedResult<ContactResponse>> {
     const paginated = await this.contactRepository.findList(queryDto);
 
     return {
@@ -235,10 +245,12 @@ export class ContactsService {
   }
 
   async getById(id: Types.ObjectId): Promise<ContactResponse> {
-    const cached = await this.redisService.get(CONTACT_CACHE_KEYS.DETAIL(id.toString()));
+    const cached = await this.redisService.get(
+      CONTACT_CACHE_KEYS.DETAIL(id.toString()),
+    );
     if (cached) {
       try {
-        return JSON.parse(cached);
+        return JSON.parse(cached) as ContactResponse;
       } catch {
         // Fall through
       }
@@ -293,9 +305,13 @@ export class ContactsService {
       const allEmails: string[] = [];
       if (dto.email) allEmails.push(dto.email);
       if (dto.alternateEmail) allEmails.push(dto.alternateEmail);
-      if (dto.additionalEmails) allEmails.push(...dto.additionalEmails.map((e) => e.value));
+      if (dto.additionalEmails)
+        allEmails.push(...dto.additionalEmails.map((e) => e.value));
 
-      const collision = await this.contactRepository.checkEmailCollision(allEmails, id);
+      const collision = await this.contactRepository.checkEmailCollision(
+        allEmails,
+        id,
+      );
       if (collision) {
         throw new AppError(
           ErrorCode.RESOURCE_ALREADY_EXISTS,
@@ -306,7 +322,11 @@ export class ContactsService {
     }
 
     if (dto.phone) {
-      const phoneDup = await this.contactRepository.checkDuplicate(null, dto.phone, id);
+      const phoneDup = await this.contactRepository.checkDuplicate(
+        null,
+        dto.phone,
+        id,
+      );
       if (phoneDup) {
         throw new AppError(
           ErrorCode.RESOURCE_ALREADY_EXISTS,
@@ -329,7 +349,11 @@ export class ContactsService {
     try {
       await session.withTransaction(async (session: ClientSession) => {
         const updateData = ContactMapper.toUpdateData(dto, actorId);
-        const updated = await this.contactRepository.updateById(id, updateData, session);
+        const updated = await this.contactRepository.updateById(
+          id,
+          updateData,
+          session,
+        );
         if (!updated) {
           throw new AppError(
             ErrorCode.RESOURCE_NOT_FOUND,
@@ -358,7 +382,9 @@ export class ContactsService {
 
     await this.redisService.del(CONTACT_CACHE_KEYS.DETAIL(id.toString()));
     if (existing.companyId) {
-      await this.redisService.del(`crm:companies:${existing.companyId}:contacts`);
+      await this.redisService.del(
+        `crm:companies:${existing.companyId.toString()}:contacts`,
+      );
     }
 
     return ContactMapper.toResponse(result!);
@@ -406,7 +432,9 @@ export class ContactsService {
 
     await this.redisService.del(CONTACT_CACHE_KEYS.DETAIL(id.toString()));
     if (existing.companyId) {
-      await this.redisService.del(`crm:companies:${existing.companyId}:contacts`);
+      await this.redisService.del(
+        `crm:companies:${existing.companyId.toString()}:contacts`,
+      );
     }
   }
 
@@ -478,8 +506,14 @@ export class ContactsService {
 
     await Promise.all([
       this.redisService.del(CONTACT_CACHE_KEYS.DETAIL(contactId.toString())),
-      oldCompanyId ? this.redisService.del(`crm:companies:${oldCompanyId}:contacts`) : Promise.resolve(),
-      this.redisService.del(`crm:companies:${targetCompanyId}:contacts`),
+      oldCompanyId
+        ? this.redisService.del(
+            `crm:companies:${oldCompanyId.toString()}:contacts`,
+          )
+        : Promise.resolve(),
+      this.redisService.del(
+        `crm:companies:${targetCompanyId.toString()}:contacts`,
+      ),
     ]);
 
     return ContactMapper.toResponse(result!);
@@ -506,7 +540,11 @@ export class ContactsService {
 
     try {
       await session.withTransaction(async (session: ClientSession) => {
-        const updated = await this.contactRepository.unlinkCompany(contactId, actorId, session);
+        const updated = await this.contactRepository.unlinkCompany(
+          contactId,
+          actorId,
+          session,
+        );
         result = updated!;
 
         await this.auditLogsService.createAuditLog(
@@ -528,7 +566,11 @@ export class ContactsService {
 
     await Promise.all([
       this.redisService.del(CONTACT_CACHE_KEYS.DETAIL(contactId.toString())),
-      oldCompanyId ? this.redisService.del(`crm:companies:${oldCompanyId}:contacts`) : Promise.resolve(),
+      oldCompanyId
+        ? this.redisService.del(
+            `crm:companies:${oldCompanyId.toString()}:contacts`,
+          )
+        : Promise.resolve(),
     ]);
 
     return ContactMapper.toResponse(result!);
@@ -557,7 +599,12 @@ export class ContactsService {
 
     try {
       await session.withTransaction(async (session: ClientSession) => {
-        const updated = await this.contactRepository.updateOwner(id, newOwnerId, actorId, session);
+        const updated = await this.contactRepository.updateOwner(
+          id,
+          newOwnerId,
+          actorId,
+          session,
+        );
         result = updated!;
 
         await this.auditLogsService.createAuditLog(
@@ -636,7 +683,9 @@ export class ContactsService {
       await session.endSession();
     }
 
-    await this.redisService.del(CONTACT_CACHE_KEYS.DETAIL(contactId.toString()));
+    await this.redisService.del(
+      CONTACT_CACHE_KEYS.DETAIL(contactId.toString()),
+    );
     return ContactMapper.toResponse(result!);
   }
 
@@ -669,7 +718,12 @@ export class ContactsService {
     const session = await this.connection.startSession();
     try {
       await session.withTransaction(async (session: ClientSession) => {
-        await this.contactRepository.softDeleteNote(contactId, noteId, actorId, session);
+        await this.contactRepository.softDeleteNote(
+          contactId,
+          noteId,
+          actorId,
+          session,
+        );
 
         await this.auditLogsService.createAuditLog(
           {
@@ -688,7 +742,9 @@ export class ContactsService {
       await session.endSession();
     }
 
-    await this.redisService.del(CONTACT_CACHE_KEYS.DETAIL(contactId.toString()));
+    await this.redisService.del(
+      CONTACT_CACHE_KEYS.DETAIL(contactId.toString()),
+    );
   }
 
   async uploadDocument(
@@ -774,7 +830,9 @@ export class ContactsService {
       await session.endSession();
     }
 
-    await this.redisService.del(CONTACT_CACHE_KEYS.DETAIL(contactId.toString()));
+    await this.redisService.del(
+      CONTACT_CACHE_KEYS.DETAIL(contactId.toString()),
+    );
     return ContactMapper.toResponse(result!);
   }
 
@@ -800,7 +858,10 @@ export class ContactsService {
       );
     }
 
-    const downloadUrl = await this.storageService.getSignedDownloadUrl(doc.fileKey, 3600);
+    const downloadUrl = await this.storageService.getSignedDownloadUrl(
+      doc.fileKey,
+      3600,
+    );
     return { downloadUrl, expiresIn: 3600 };
   }
 
@@ -831,7 +892,12 @@ export class ContactsService {
     const session = await this.connection.startSession();
     try {
       await session.withTransaction(async (session: ClientSession) => {
-        await this.contactRepository.softDeleteDocument(contactId, docId, actorId, session);
+        await this.contactRepository.softDeleteDocument(
+          contactId,
+          docId,
+          actorId,
+          session,
+        );
 
         await this.auditLogsService.createAuditLog(
           {
@@ -860,10 +926,14 @@ export class ContactsService {
         lastError: (s3Error as Error).message,
         nextRetryAt: new Date(Date.now() + 60000),
       });
-      this.logger.warn(`S3 physical deletion failed for ${doc.fileKey}, queued to outbox.`);
+      this.logger.warn(
+        `S3 physical deletion failed for ${doc.fileKey}, queued to outbox.`,
+      );
     }
 
-    await this.redisService.del(CONTACT_CACHE_KEYS.DETAIL(contactId.toString()));
+    await this.redisService.del(
+      CONTACT_CACHE_KEYS.DETAIL(contactId.toString()),
+    );
   }
 
   async logActivity(
@@ -893,9 +963,10 @@ export class ContactsService {
             type: dto.type,
             subject: dto.subject.trim(),
             description: dto.description ? dto.description.trim() : null,
-            activityDate: dto.activityDate || dto.performedAt
-              ? new Date(dto.activityDate || dto.performedAt!)
-              : new Date(),
+            activityDate:
+              dto.activityDate || dto.performedAt
+                ? new Date(dto.activityDate || dto.performedAt!)
+                : new Date(),
             durationMinutes: dto.durationMinutes ?? 0,
             outcome: dto.outcome ?? null,
             performedBy: actorId,
@@ -974,13 +1045,19 @@ export class ContactsService {
 
     const updateData: Partial<CrmActivity> = {};
     if (dto.subject !== undefined) updateData.subject = dto.subject.trim();
-    if (dto.description !== undefined) updateData.description = dto.description ? dto.description.trim() : null;
-    if (dto.durationMinutes !== undefined) updateData.durationMinutes = dto.durationMinutes;
+    if (dto.description !== undefined)
+      updateData.description = dto.description ? dto.description.trim() : null;
+    if (dto.durationMinutes !== undefined)
+      updateData.durationMinutes = dto.durationMinutes;
     if (dto.outcome !== undefined) updateData.outcome = dto.outcome;
     const dateToUpdate = dto.activityDate || dto.performedAt;
-    if (dateToUpdate !== undefined) updateData.activityDate = new Date(dateToUpdate);
+    if (dateToUpdate !== undefined)
+      updateData.activityDate = new Date(dateToUpdate);
 
-    const updated = await this.crmActivityRepository.updateById(activityId, updateData);
+    const updated = await this.crmActivityRepository.updateById(
+      activityId,
+      updateData,
+    );
     return updated!;
   }
 

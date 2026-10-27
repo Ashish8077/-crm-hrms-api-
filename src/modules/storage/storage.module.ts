@@ -10,11 +10,13 @@ import {
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: FailedStorageOperation.name, schema: FailedStorageOperationSchema },
+      {
+        name: FailedStorageOperation.name,
+        schema: FailedStorageOperationSchema,
+      },
     ]),
   ],
   providers: [StorageService],
   exports: [StorageService, MongooseModule],
 })
 export class StorageModule {}
-

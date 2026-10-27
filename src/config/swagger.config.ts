@@ -33,6 +33,8 @@ export function setupSwagger(app: INestApplication): void {
     .addTag('CRM - Companies', 'Company records and corporate accounts')
     .addTag('CRM - Contacts', 'Individual contacts and customer relationships')
     .addTag('CRM - Deals', 'Deal and pipeline management')
+    .addTag('CRM - Tasks', 'Task and to-do item management')
+    .addTag('CRM - Activities', 'Activity logging, timeline and scheduling')
     .build();
 
   const documentFactory = () => SwaggerModule.createDocument(app, config);

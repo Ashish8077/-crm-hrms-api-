@@ -83,7 +83,7 @@ describe('ContactsController', () => {
       phone: '+1-555-0199',
     };
 
-    const res = await controller.create(dto as any, mockReq);
+    const res = await controller.create(dto, mockReq);
     expect(res).toEqual({ success: true, data: mockContactResponse });
     expect(mockContactsService.create).toHaveBeenCalledWith(dto, actorId, {
       ipAddress: '127.0.0.1',
@@ -105,7 +105,7 @@ describe('ContactsController', () => {
     };
     mockContactsService.list.mockResolvedValue(listResult);
 
-    const res = await controller.list({ page: 1, limit: 20 } as any);
+    const res = await controller.list({ page: 1, limit: 20 });
     expect(res).toEqual({
       success: true,
       data: [mockContactResponse],
@@ -115,7 +115,11 @@ describe('ContactsController', () => {
 
   it('POST /contacts/:id/link-company -> link contact to company', async () => {
     const companyId = new Types.ObjectId();
-    const linkedContact = { ...mockContactResponse, companyId: companyId.toString(), isPrimaryContact: true };
+    const linkedContact = {
+      ...mockContactResponse,
+      companyId: companyId.toString(),
+      isPrimaryContact: true,
+    };
     mockContactsService.linkCompany.mockResolvedValue(linkedContact);
 
     const dto = {
@@ -137,6 +141,9 @@ describe('ContactsController', () => {
     mockContactsService.softDelete.mockResolvedValue(undefined);
 
     const res = await controller.delete(contactId, mockReq);
-    expect(res).toEqual({ success: true, message: 'Contact successfully deleted' });
+    expect(res).toEqual({
+      success: true,
+      message: 'Contact successfully deleted',
+    });
   });
 });
