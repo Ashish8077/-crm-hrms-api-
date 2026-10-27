@@ -3,7 +3,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 import { ContactsService } from './contacts.service';
-import { ContactRepository, ContactLean } from './repositories/contact.repository';
+import {
+  ContactRepository,
+  ContactLean,
+} from './repositories/contact.repository';
 import { CompanyRepository } from '../companies/repositories/company.repository';
 import { UserRepository } from '../users/repositories/user.repository';
 import { RoleRepository } from '../roles/repositories/role.repository';
@@ -11,6 +14,7 @@ import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { StorageService } from '../storage/storage.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { CrmActivityRepository } from '../../common/repositories/crm-activity.repository';
+import { ActivityEntityType } from '../../common/schemas/crm-activity.schema';
 import { FailedStorageOperation } from '../storage/schemas/failed-storage-operation.schema';
 import { ContactStatus } from './constants/contact-status.constant';
 import { DecisionRole } from './constants/decision-role.constant';
@@ -26,7 +30,6 @@ describe('ContactsService', () => {
   let userRepository: jest.Mocked<UserRepository>;
   let roleRepository: jest.Mocked<RoleRepository>;
   let auditLogsService: jest.Mocked<AuditLogsService>;
-  let storageService: jest.Mocked<StorageService>;
   let redisService: jest.Mocked<RedisService>;
   let crmActivityRepository: jest.Mocked<CrmActivityRepository>;
 
@@ -178,7 +181,6 @@ describe('ContactsService', () => {
     userRepository = module.get(UserRepository);
     roleRepository = module.get(RoleRepository);
     auditLogsService = module.get(AuditLogsService);
-    storageService = module.get(StorageService);
     redisService = module.get(RedisService);
     crmActivityRepository = module.get(CrmActivityRepository);
 
@@ -225,7 +227,9 @@ describe('ContactsService', () => {
         phone: '+1-555-9999',
       };
 
-      await expect(service.create(dto, actorId, clientMetadata)).rejects.toMatchObject({
+      await expect(
+        service.create(dto, actorId, clientMetadata),
+      ).rejects.toMatchObject({
         code: ErrorCode.RESOURCE_ALREADY_EXISTS,
       });
     });
@@ -275,7 +279,11 @@ describe('ContactsService', () => {
         isPrimaryContact: false,
       });
 
-      const result = await service.unlinkCompany(contactId, actorId, clientMetadata);
+      const result = await service.unlinkCompany(
+        contactId,
+        actorId,
+        clientMetadata,
+      );
       expect(result.companyId).toBeNull();
       expect(contactRepository.unlinkCompany).toHaveBeenCalledWith(
         contactId,
@@ -297,11 +305,16 @@ describe('ContactsService', () => {
 
       contactRepository.findById.mockResolvedValue({
         ...mockContactLean,
-        notes: hundredNotes as any,
+        notes: hundredNotes as unknown as NonNullable<ContactLean['notes']>,
       });
 
       await expect(
-        service.addNote(contactId, { content: 'Exceeding note' }, actorId, clientMetadata),
+        service.addNote(
+          contactId,
+          { content: 'Exceeding note' },
+          actorId,
+          clientMetadata,
+        ),
       ).rejects.toMatchObject({
         code: ErrorCode.VALIDATION_ERROR,
       });
@@ -315,7 +328,7 @@ describe('ContactsService', () => {
     it('allows author to update activity', async () => {
       crmActivityRepository.findById.mockResolvedValue({
         _id: activityId,
-        entityType: 'CONTACT' as any,
+        entityType: ActivityEntityType.CONTACT,
         entityId: contactId,
         performedBy: actorId,
       } as any);
@@ -341,7 +354,7 @@ describe('ContactsService', () => {
     it('allows admin to delete another user activity', async () => {
       crmActivityRepository.findById.mockResolvedValue({
         _id: activityId,
-        entityType: 'CONTACT' as any,
+        entityType: ActivityEntityType.CONTACT,
         entityId: contactId,
         performedBy: otherUserId,
       } as any);
@@ -358,13 +371,16 @@ describe('ContactsService', () => {
         service.deleteActivity(contactId, activityId, actorId),
       ).resolves.not.toThrow();
 
-      expect(crmActivityRepository.softDelete).toHaveBeenCalledWith(activityId, actorId);
+      expect(crmActivityRepository.softDelete).toHaveBeenCalledWith(
+        activityId,
+        actorId,
+      );
     });
 
     it('rejects non-author non-admin from updating activity', async () => {
       crmActivityRepository.findById.mockResolvedValue({
         _id: activityId,
-        entityType: 'CONTACT' as any,
+        entityType: ActivityEntityType.CONTACT,
         entityId: contactId,
         performedBy: otherUserId,
       } as any);

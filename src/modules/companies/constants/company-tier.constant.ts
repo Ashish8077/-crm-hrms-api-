@@ -10,4 +10,3 @@ export enum CompanyTier {
   GOLD = 'GOLD',
   PLATINUM = 'PLATINUM',
 }
-

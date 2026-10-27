@@ -15,4 +15,6 @@ export class SocialLinksSubdocument {
   github?: string | null;
 }
 
-export const SocialLinksSubdocumentSchema = SchemaFactory.createForClass(SocialLinksSubdocument);
+export const SocialLinksSubdocumentSchema = SchemaFactory.createForClass(
+  SocialLinksSubdocument,
+);

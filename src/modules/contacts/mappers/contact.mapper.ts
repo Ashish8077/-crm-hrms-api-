@@ -20,7 +20,12 @@ export interface ContactResponse {
   alternateEmail?: string | null;
   additionalEmails: Array<{ label: string; value: string }>;
   companyId?: string | null;
-  company?: { id: string; name: string; domain?: string | null; isDeleted?: boolean } | null;
+  company?: {
+    id: string;
+    name: string;
+    domain?: string | null;
+    isDeleted?: boolean;
+  } | null;
   jobTitle?: string | null;
   department?: string | null;
   isPrimaryContact: boolean;
@@ -65,11 +70,17 @@ export class ContactMapper {
       mobilePhone: dto.mobilePhone ? dto.mobilePhone.trim() : null,
       workPhone: dto.workPhone ? dto.workPhone.trim() : null,
       additionalPhones: dto.additionalPhones
-        ? dto.additionalPhones.map((p) => ({ label: p.label.trim(), value: p.value.trim() }))
+        ? dto.additionalPhones.map((p) => ({
+            label: p.label.trim(),
+            value: p.value.trim(),
+          }))
         : [],
       alternateEmail: normalizeEmail(dto.alternateEmail),
       additionalEmails: dto.additionalEmails
-        ? dto.additionalEmails.map((e) => ({ label: e.label.trim(), value: normalizeEmail(e.value)! }))
+        ? dto.additionalEmails.map((e) => ({
+            label: e.label.trim(),
+            value: normalizeEmail(e.value)!,
+          }))
         : [],
       companyId: dto.companyId ? new Types.ObjectId(dto.companyId) : null,
       jobTitle: dto.jobTitle ? dto.jobTitle.trim() : null,
@@ -81,7 +92,9 @@ export class ContactMapper {
       ownerId: dto.ownerId ? new Types.ObjectId(dto.ownerId) : null,
       leadId: dto.leadId ? new Types.ObjectId(dto.leadId) : null,
       status: dto.status ?? ContactStatus.ACTIVE,
-      tags: dto.tags ? Array.from(new Set(dto.tags.map((t) => t.trim().toLowerCase()))) : [],
+      tags: dto.tags
+        ? Array.from(new Set(dto.tags.map((t) => t.trim().toLowerCase())))
+        : [],
       notes: [],
       documents: [],
       deletedAt: null,
@@ -102,23 +115,34 @@ export class ContactMapper {
     if (dto.lastName !== undefined) data.lastName = dto.lastName.trim();
     if (dto.email !== undefined) data.email = normalizeEmail(dto.email)!;
     if (dto.phone !== undefined) data.phone = dto.phone.trim();
-    if (dto.mobilePhone !== undefined) data.mobilePhone = dto.mobilePhone ? dto.mobilePhone.trim() : null;
-    if (dto.workPhone !== undefined) data.workPhone = dto.workPhone ? dto.workPhone.trim() : null;
+    if (dto.mobilePhone !== undefined)
+      data.mobilePhone = dto.mobilePhone ? dto.mobilePhone.trim() : null;
+    if (dto.workPhone !== undefined)
+      data.workPhone = dto.workPhone ? dto.workPhone.trim() : null;
     if (dto.additionalPhones !== undefined) {
-      data.additionalPhones = dto.additionalPhones.map((p) => ({ label: p.label.trim(), value: p.value.trim() }));
+      data.additionalPhones = dto.additionalPhones.map((p) => ({
+        label: p.label.trim(),
+        value: p.value.trim(),
+      }));
     }
     if (dto.alternateEmail !== undefined) {
       data.alternateEmail = normalizeEmail(dto.alternateEmail);
     }
     if (dto.additionalEmails !== undefined) {
-      data.additionalEmails = dto.additionalEmails.map((e) => ({ label: e.label.trim(), value: normalizeEmail(e.value)! }));
+      data.additionalEmails = dto.additionalEmails.map((e) => ({
+        label: e.label.trim(),
+        value: normalizeEmail(e.value)!,
+      }));
     }
     if (dto.companyId !== undefined) {
       data.companyId = dto.companyId ? new Types.ObjectId(dto.companyId) : null;
     }
-    if (dto.jobTitle !== undefined) data.jobTitle = dto.jobTitle ? dto.jobTitle.trim() : null;
-    if (dto.department !== undefined) data.department = dto.department ? dto.department.trim() : null;
-    if (dto.isPrimaryContact !== undefined) data.isPrimaryContact = dto.isPrimaryContact;
+    if (dto.jobTitle !== undefined)
+      data.jobTitle = dto.jobTitle ? dto.jobTitle.trim() : null;
+    if (dto.department !== undefined)
+      data.department = dto.department ? dto.department.trim() : null;
+    if (dto.isPrimaryContact !== undefined)
+      data.isPrimaryContact = dto.isPrimaryContact;
     if (dto.decisionRole !== undefined) data.decisionRole = dto.decisionRole;
     if (dto.address !== undefined) data.address = dto.address;
     if (dto.socialLinks !== undefined) data.socialLinks = dto.socialLinks;
@@ -130,7 +154,9 @@ export class ContactMapper {
     }
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.tags !== undefined) {
-      data.tags = Array.from(new Set(dto.tags.map((t) => t.trim().toLowerCase())));
+      data.tags = Array.from(
+        new Set(dto.tags.map((t) => t.trim().toLowerCase())),
+      );
     }
 
     return data;
@@ -142,7 +168,9 @@ export class ContactMapper {
     owner?: any,
   ): ContactResponse {
     const activeNotes = (contact.notes || []).filter((n) => !n.deletedAt);
-    const activeDocuments = (contact.documents || []).filter((d) => !d.deletedAt);
+    const activeDocuments = (contact.documents || []).filter(
+      (d) => !d.deletedAt,
+    );
 
     return {
       id: contact._id.toString(),
@@ -173,7 +201,10 @@ export class ContactMapper {
       socialLinks: contact.socialLinks || {},
       ownerId: contact.ownerId ? contact.ownerId.toString() : null,
       owner: owner
-        ? { id: owner._id ? owner._id.toString() : owner.id, email: owner.email }
+        ? {
+            id: owner._id ? owner._id.toString() : owner.id,
+            email: owner.email,
+          }
         : contact.ownerId
           ? { id: contact.ownerId.toString() }
           : null,

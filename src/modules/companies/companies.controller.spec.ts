@@ -88,7 +88,7 @@ describe('CompaniesController', () => {
       domain: 'acme.com',
     };
 
-    const res = await controller.create(dto as any, mockReq);
+    const res = await controller.create(dto, mockReq);
     expect(res).toEqual({ success: true, data: mockCompanyResponse });
     expect(mockCompaniesService.create).toHaveBeenCalledWith(dto, actorId, {
       ipAddress: '127.0.0.1',
@@ -110,7 +110,7 @@ describe('CompaniesController', () => {
     };
     mockCompaniesService.list.mockResolvedValue(listResult);
 
-    const res = await controller.list({ page: 1, limit: 20 } as any);
+    const res = await controller.list({ page: 1, limit: 20 });
     expect(res).toEqual({
       success: true,
       data: [mockCompanyResponse],
@@ -130,6 +130,9 @@ describe('CompaniesController', () => {
     mockCompaniesService.softDelete.mockResolvedValue(undefined);
 
     const res = await controller.delete(companyId, mockReq);
-    expect(res).toEqual({ success: true, message: 'Company successfully deleted' });
+    expect(res).toEqual({
+      success: true,
+      message: 'Company successfully deleted',
+    });
   });
 });

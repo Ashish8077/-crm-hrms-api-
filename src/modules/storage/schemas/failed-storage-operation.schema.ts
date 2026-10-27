@@ -1,7 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
-export type FailedStorageOperationDocument = HydratedDocument<FailedStorageOperation>;
+export type FailedStorageOperationDocument =
+  HydratedDocument<FailedStorageOperation>;
 
 export enum StorageOperationType {
   DELETE = 'DELETE',
@@ -48,7 +49,9 @@ export class FailedStorageOperation {
   lastError?: string | null;
 }
 
-export const FailedStorageOperationSchema = SchemaFactory.createForClass(FailedStorageOperation);
+export const FailedStorageOperationSchema = SchemaFactory.createForClass(
+  FailedStorageOperation,
+);
 
 FailedStorageOperationSchema.index(
   { status: 1, nextRetryAt: 1 },

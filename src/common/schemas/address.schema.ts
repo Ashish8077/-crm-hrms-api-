@@ -18,4 +18,5 @@ export class AddressSubdocument {
   country?: string | null;
 }
 
-export const AddressSubdocumentSchema = SchemaFactory.createForClass(AddressSubdocument);
+export const AddressSubdocumentSchema =
+  SchemaFactory.createForClass(AddressSubdocument);

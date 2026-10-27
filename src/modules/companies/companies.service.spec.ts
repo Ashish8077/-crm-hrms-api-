@@ -3,13 +3,17 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 import { CompaniesService } from './companies.service';
-import { CompanyRepository, CompanyLean } from './repositories/company.repository';
+import {
+  CompanyRepository,
+  CompanyLean,
+} from './repositories/company.repository';
 import { UserRepository } from '../users/repositories/user.repository';
 import { RoleRepository } from '../roles/repositories/role.repository';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { StorageService } from '../storage/storage.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { CrmActivityRepository } from '../../common/repositories/crm-activity.repository';
+import { ActivityEntityType } from '../../common/schemas/crm-activity.schema';
 import { FailedStorageOperation } from '../storage/schemas/failed-storage-operation.schema';
 import { CompanyIndustry } from './constants/company-industry.constant';
 import { CompanyType } from './constants/company-type.constant';
@@ -26,8 +30,6 @@ describe('CompaniesService', () => {
   let userRepository: jest.Mocked<UserRepository>;
   let roleRepository: jest.Mocked<RoleRepository>;
   let auditLogsService: jest.Mocked<AuditLogsService>;
-  let storageService: jest.Mocked<StorageService>;
-  let redisService: jest.Mocked<RedisService>;
   let crmActivityRepository: jest.Mocked<CrmActivityRepository>;
 
   const mockSession = {
@@ -170,8 +172,6 @@ describe('CompaniesService', () => {
     userRepository = module.get(UserRepository);
     roleRepository = module.get(RoleRepository);
     auditLogsService = module.get(AuditLogsService);
-    storageService = module.get(StorageService);
-    redisService = module.get(RedisService);
     crmActivityRepository = module.get(CrmActivityRepository);
 
     jest.clearAllMocks();
@@ -206,7 +206,9 @@ describe('CompaniesService', () => {
         registrationNumber: 'US 1234-5678',
       };
 
-      await expect(service.create(dto, actorId, clientMetadata)).rejects.toMatchObject({
+      await expect(
+        service.create(dto, actorId, clientMetadata),
+      ).rejects.toMatchObject({
         code: ErrorCode.RESOURCE_ALREADY_EXISTS,
       });
     });
@@ -221,7 +223,9 @@ describe('CompaniesService', () => {
         parentCompanyId: parentId.toString(),
       };
 
-      await expect(service.create(dto, actorId, clientMetadata)).rejects.toMatchObject({
+      await expect(
+        service.create(dto, actorId, clientMetadata),
+      ).rejects.toMatchObject({
         code: ErrorCode.RESOURCE_NOT_FOUND,
       });
     });
@@ -235,7 +239,9 @@ describe('CompaniesService', () => {
         parentCompanyId: companyId.toString(),
       };
 
-      await expect(service.update(companyId, dto, actorId, clientMetadata)).rejects.toMatchObject({
+      await expect(
+        service.update(companyId, dto, actorId, clientMetadata),
+      ).rejects.toMatchObject({
         code: ErrorCode.VALIDATION_ERROR,
       });
     });
@@ -253,7 +259,9 @@ describe('CompaniesService', () => {
         parentCompanyId: parentId.toString(),
       };
 
-      await expect(service.update(companyId, dto, actorId, clientMetadata)).rejects.toMatchObject({
+      await expect(
+        service.update(companyId, dto, actorId, clientMetadata),
+      ).rejects.toMatchObject({
         code: ErrorCode.VALIDATION_ERROR,
       });
     });
@@ -271,11 +279,16 @@ describe('CompaniesService', () => {
 
       companyRepository.findById.mockResolvedValue({
         ...mockCompanyLean,
-        notes: hundredNotes as any,
+        notes: hundredNotes as unknown as NonNullable<CompanyLean['notes']>,
       });
 
       await expect(
-        service.addNote(companyId, { content: 'Exceeding note' }, actorId, clientMetadata),
+        service.addNote(
+          companyId,
+          { content: 'Exceeding note' },
+          actorId,
+          clientMetadata,
+        ),
       ).rejects.toMatchObject({
         code: ErrorCode.VALIDATION_ERROR,
       });
@@ -289,7 +302,7 @@ describe('CompaniesService', () => {
     it('allows author to update activity', async () => {
       crmActivityRepository.findById.mockResolvedValue({
         _id: activityId,
-        entityType: 'COMPANY' as any,
+        entityType: ActivityEntityType.COMPANY,
         entityId: companyId,
         performedBy: actorId,
       } as any);
@@ -315,7 +328,7 @@ describe('CompaniesService', () => {
     it('allows admin to delete another user activity', async () => {
       crmActivityRepository.findById.mockResolvedValue({
         _id: activityId,
-        entityType: 'COMPANY' as any,
+        entityType: ActivityEntityType.COMPANY,
         entityId: companyId,
         performedBy: otherUserId,
       } as any);
@@ -332,13 +345,16 @@ describe('CompaniesService', () => {
         service.deleteActivity(companyId, activityId, actorId),
       ).resolves.not.toThrow();
 
-      expect(crmActivityRepository.softDelete).toHaveBeenCalledWith(activityId, actorId);
+      expect(crmActivityRepository.softDelete).toHaveBeenCalledWith(
+        activityId,
+        actorId,
+      );
     });
 
     it('rejects non-author non-admin user from deleting activity', async () => {
       crmActivityRepository.findById.mockResolvedValue({
         _id: activityId,
-        entityType: 'COMPANY' as any,
+        entityType: ActivityEntityType.COMPANY,
         entityId: companyId,
         performedBy: otherUserId,
       } as any);

@@ -68,7 +68,9 @@ export class ContactsController {
   @Post()
   @ApiOperation({ summary: 'Create a new contact' })
   @ApiCreatedResponse({ description: 'Contact successfully created.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.CREATE))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.CREATE),
+  )
   async create(
     @Body() dto: CreateContactDto,
     @Req() request: AuthenticatedRequest,
@@ -85,9 +87,13 @@ export class ContactsController {
 
   // 19. List Contacts
   @Get()
-  @ApiOperation({ summary: 'List contacts with filters, search, and pagination' })
+  @ApiOperation({
+    summary: 'List contacts with filters, search, and pagination',
+  })
   @ApiOkResponse({ description: 'List of contacts.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.VIEW))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.VIEW),
+  )
   async list(@Query() query: ListContactsQueryDto) {
     const result = await this.contactsService.list(query);
     return { success: true, data: result.data, meta: result.meta };
@@ -97,7 +103,9 @@ export class ContactsController {
   @Post('check-duplicate')
   @ApiOperation({ summary: 'Check if email or phone already exists' })
   @ApiOkResponse({ description: 'Duplicate check result.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.VIEW))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.VIEW),
+  )
   async checkDuplicate(@Body() dto: CheckDuplicateContactDto) {
     const result = await this.contactsService.checkDuplicate(dto);
     return { success: true, data: result };
@@ -108,7 +116,9 @@ export class ContactsController {
   @ApiOperation({ summary: 'Get contact details by ID' })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiOkResponse({ description: 'Contact details.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.VIEW))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.VIEW),
+  )
   async getById(@Param('id', ParseObjectIdPipe) id: Types.ObjectId) {
     const contact = await this.contactsService.getById(id);
     return { success: true, data: contact };
@@ -119,7 +129,9 @@ export class ContactsController {
   @ApiOperation({ summary: 'Update contact details' })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiOkResponse({ description: 'Contact updated successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT),
+  )
   async update(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: UpdateContactDto,
@@ -141,18 +153,19 @@ export class ContactsController {
   @ApiOperation({ summary: 'Soft delete a contact' })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiOkResponse({ description: 'Contact successfully deleted.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.DELETE))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.DELETE),
+  )
   async delete(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Req() request: AuthenticatedRequest,
   ) {
     const ipAddress = request.ip ?? null;
     const userAgent = request.headers['user-agent'] ?? null;
-    await this.contactsService.softDelete(
-      id,
-      request.user.userId,
-      { ipAddress, userAgent },
-    );
+    await this.contactsService.softDelete(id, request.user.userId, {
+      ipAddress,
+      userAgent,
+    });
     return { success: true, message: 'Contact successfully deleted' };
   }
 
@@ -161,7 +174,9 @@ export class ContactsController {
   @ApiOperation({ summary: 'Link or transfer contact to a company' })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiOkResponse({ description: 'Contact linked to company successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT),
+  )
   async linkCompany(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: LinkCompanyDto,
@@ -183,7 +198,9 @@ export class ContactsController {
   @ApiOperation({ summary: 'Unlink contact from company' })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiOkResponse({ description: 'Contact unlinked from company successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT),
+  )
   async unlinkCompany(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Req() request: AuthenticatedRequest,
@@ -203,7 +220,9 @@ export class ContactsController {
   @ApiOperation({ summary: 'Reassign contact sales representative' })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiOkResponse({ description: 'Owner reassigned successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT),
+  )
   async assignOwner(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: AssignContactDto,
@@ -225,7 +244,9 @@ export class ContactsController {
   @ApiOperation({ summary: 'Add a note to the contact' })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiCreatedResponse({ description: 'Note added successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT),
+  )
   async addNote(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: AddContactNoteDto,
@@ -248,7 +269,9 @@ export class ContactsController {
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiParam({ name: 'noteId', description: 'Note ID', type: String })
   @ApiOkResponse({ description: 'Note successfully deleted.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.DELETE))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.DELETE),
+  )
   async deleteNote(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Param('noteId', ParseObjectIdPipe) noteId: Types.ObjectId,
@@ -256,12 +279,10 @@ export class ContactsController {
   ) {
     const ipAddress = request.ip ?? null;
     const userAgent = request.headers['user-agent'] ?? null;
-    await this.contactsService.deleteNote(
-      id,
-      noteId,
-      request.user.userId,
-      { ipAddress, userAgent },
-    );
+    await this.contactsService.deleteNote(id, noteId, request.user.userId, {
+      ipAddress,
+      userAgent,
+    });
     return { success: true, message: 'Note successfully deleted' };
   }
 
@@ -293,13 +314,19 @@ export class ContactsController {
       type: 'object',
       required: ['file'],
       properties: {
-        file: { type: 'string', format: 'binary', description: 'Document (PDF, JPEG, PNG, DOCX max 10MB)' },
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Document (PDF, JPEG, PNG, DOCX max 10MB)',
+        },
         fileName: { type: 'string', description: 'Custom document name' },
       },
     },
   })
   @ApiCreatedResponse({ description: 'Document uploaded successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT),
+  )
   async uploadDocument(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @UploadedFile() file: Express.Multer.File,
@@ -320,11 +347,15 @@ export class ContactsController {
 
   // 30. Download Document
   @Get(':id/documents/:docId/download')
-  @ApiOperation({ summary: 'Generate pre-signed S3 download URL for contact document' })
+  @ApiOperation({
+    summary: 'Generate pre-signed S3 download URL for contact document',
+  })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiParam({ name: 'docId', description: 'Document ID', type: String })
   @ApiOkResponse({ description: 'Pre-signed download URL.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.VIEW))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.VIEW),
+  )
   async downloadDocument(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Param('docId', ParseObjectIdPipe) docId: Types.ObjectId,
@@ -339,7 +370,9 @@ export class ContactsController {
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiParam({ name: 'docId', description: 'Document ID', type: String })
   @ApiOkResponse({ description: 'Document successfully deleted.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.DELETE))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.DELETE),
+  )
   async deleteDocument(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Param('docId', ParseObjectIdPipe) docId: Types.ObjectId,
@@ -347,12 +380,10 @@ export class ContactsController {
   ) {
     const ipAddress = request.ip ?? null;
     const userAgent = request.headers['user-agent'] ?? null;
-    await this.contactsService.deleteDocument(
-      id,
-      docId,
-      request.user.userId,
-      { ipAddress, userAgent },
-    );
+    await this.contactsService.deleteDocument(id, docId, request.user.userId, {
+      ipAddress,
+      userAgent,
+    });
     return { success: true, message: 'Document successfully deleted' };
   }
 
@@ -361,7 +392,9 @@ export class ContactsController {
   @ApiOperation({ summary: 'Log a communication / activity for the contact' })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiCreatedResponse({ description: 'Activity logged successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT),
+  )
   async logActivity(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: LogContactActivityDto,
@@ -380,10 +413,14 @@ export class ContactsController {
 
   // 33. Get Activities Timeline
   @Get(':id/activities')
-  @ApiOperation({ summary: 'Get paginated communication timeline for the contact' })
+  @ApiOperation({
+    summary: 'Get paginated communication timeline for the contact',
+  })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiOkResponse({ description: 'Paginated timeline activities.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.VIEW))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.VIEW),
+  )
   async getActivities(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Query() query: PaginationQueryDto,
@@ -394,11 +431,15 @@ export class ContactsController {
 
   // 34. Update Activity
   @Patch(':id/activities/:activityId')
-  @ApiOperation({ summary: 'Update an activity for the contact (Author or Admin only)' })
+  @ApiOperation({
+    summary: 'Update an activity for the contact (Author or Admin only)',
+  })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiParam({ name: 'activityId', description: 'Activity ID', type: String })
   @ApiOkResponse({ description: 'Activity updated successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.EDIT),
+  )
   async updateActivity(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Param('activityId', ParseObjectIdPipe) activityId: Types.ObjectId,
@@ -416,11 +457,15 @@ export class ContactsController {
 
   // 35. Delete Activity
   @Delete(':id/activities/:activityId')
-  @ApiOperation({ summary: 'Delete an activity for the contact (Author or Admin only)' })
+  @ApiOperation({
+    summary: 'Delete an activity for the contact (Author or Admin only)',
+  })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiParam({ name: 'activityId', description: 'Activity ID', type: String })
   @ApiOkResponse({ description: 'Activity successfully deleted.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.DELETE))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.CONTACTS, PermissionAction.DELETE),
+  )
   async deleteActivity(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Param('activityId', ParseObjectIdPipe) activityId: Types.ObjectId,

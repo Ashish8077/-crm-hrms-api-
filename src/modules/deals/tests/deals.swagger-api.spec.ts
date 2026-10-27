@@ -1,10 +1,10 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unnecessary-type-assertion */
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { DealsController } from '../deals.controller';
 import { DealsService } from '../deals.service';
 import { DealStage } from '../constants/deal-stage.constant';
 import { DealStatus } from '../constants/deal-status.constant';
+import { DealPriority } from '../constants/deal.constant';
 import {
   ActivityOutcome,
   ActivityType,
@@ -138,7 +138,7 @@ describe('Deals & Opportunities - Complete Swagger API Test Suite (All Fields)',
     lostReason: null,
     lostCompetitor: null,
     tags: ['enterprise', 'multi-cloud', 'high-priority', 'q4-target'],
-    priority: 'HIGH',
+    priority: DealPriority.HIGH,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
   };
@@ -198,7 +198,7 @@ describe('Deals & Opportunities - Complete Swagger API Test Suite (All Fields)',
         },
       ],
       tags: ['enterprise', 'multi-cloud', 'high-priority', 'q4-target'],
-      priority: 'HIGH',
+      priority: DealPriority.HIGH,
     };
 
     const result = await controller.create(fullCreateDto, mockReq);
@@ -238,8 +238,8 @@ describe('Deals & Opportunities - Complete Swagger API Test Suite (All Fields)',
     const fullQueryDto: ListDealsQueryDto = {
       page: 1,
       limit: 25,
-      sort: 'amount',
-      order: 'desc',
+      sortBy: 'amount',
+      sortOrder: 'desc',
       search: 'Modernization',
       pipeline: 'STANDARD',
       stage: DealStage.NEW,
@@ -250,7 +250,7 @@ describe('Deals & Opportunities - Complete Swagger API Test Suite (All Fields)',
       minAmount: 1000000,
       maxAmount: 20000000,
       currency: 'USD',
-      priority: 'HIGH',
+      priority: DealPriority.HIGH,
       tag: 'enterprise',
       startDate: '2026-01-01',
       endDate: '2026-12-31',
@@ -353,7 +353,7 @@ describe('Deals & Opportunities - Complete Swagger API Test Suite (All Fields)',
       pipeline: 'STANDARD',
       stage: DealStage.NEW,
       status: DealStatus.OPEN,
-      priority: 'HIGH',
+      priority: DealPriority.HIGH,
       currency: 'USD',
       minAmount: 5000000,
       maxAmount: 25000000,
@@ -428,7 +428,7 @@ describe('Deals & Opportunities - Complete Swagger API Test Suite (All Fields)',
       ...mockComprehensiveDealResponse,
       title: 'Enterprise Multi-Cloud Architecture Modernization - Phase 2',
       amount: 18000000,
-      priority: 'CRITICAL',
+      priority: DealPriority.URGENT,
     };
     mockDealsService.update.mockResolvedValue(updatedDealResponse);
 
@@ -436,14 +436,12 @@ describe('Deals & Opportunities - Complete Swagger API Test Suite (All Fields)',
       title: 'Enterprise Multi-Cloud Architecture Modernization - Phase 2',
       description: 'Extended scope with disaster recovery orchestration.',
       pipeline: 'STANDARD',
-      stage: DealStage.DEMO_MEETING,
       amount: 18000000,
       currency: 'USD',
       probability: 40,
       expectedCloseDate: '2027-03-31T23:59:59.000Z',
       companyId: companyId.toString(),
       contactId: contactId.toString(),
-      ownerId: ownerId.toString(),
       leadId: leadId.toString(),
       products: [
         {
@@ -464,7 +462,7 @@ describe('Deals & Opportunities - Complete Swagger API Test Suite (All Fields)',
         },
       ],
       tags: ['enterprise', 'multi-cloud', 'phase-2', 'critical'],
-      priority: 'CRITICAL',
+      priority: DealPriority.URGENT,
     };
 
     const result = await controller.update(dealId, fullUpdateDto, mockReq);
@@ -533,11 +531,7 @@ describe('Deals & Opportunities - Complete Swagger API Test Suite (All Fields)',
       ownerId: ownerId.toString(),
     };
 
-    const result = await controller.assignOwner(
-      dealId,
-      fullAssignDto,
-      mockReq,
-    );
+    const result = await controller.assignOwner(dealId, fullAssignDto, mockReq);
 
     expect(result).toEqual({
       success: true,
@@ -572,8 +566,7 @@ describe('Deals & Opportunities - Complete Swagger API Test Suite (All Fields)',
 
     const fullCloseDto: CloseDealDto = {
       stage: DealStage.CLOSED_LOST,
-      lostReason:
-        'Competitor provided 25% lower pricing on software licensing',
+      lostReason: 'Competitor provided 25% lower pricing on software licensing',
       lostCompetitor: 'Contoso Cloud Systems Ltd.',
     };
 
@@ -664,8 +657,7 @@ describe('Deals & Opportunities - Complete Swagger API Test Suite (All Fields)',
     });
     expect(mockDealsService.softDelete).toHaveBeenCalledWith(dealId, actorId, {
       ipAddress: '192.168.1.100',
-      userAgent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Swagger-Client/1.0',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Swagger-Client/1.0',
     });
   });
 
@@ -709,7 +701,9 @@ describe('Deals & Opportunities - Complete Swagger API Test Suite (All Fields)',
   // 15. DELETE /deals/:id/notes/:noteId — Delete Deal Note
   // ──────────────────────────────────────────────────────────────────────────
   it('15. DELETE /deals/:id/notes/:noteId -> soft deletes specified note from deal', async () => {
-    mockDealsService.deleteNote.mockResolvedValue(mockComprehensiveDealResponse);
+    mockDealsService.deleteNote.mockResolvedValue(
+      mockComprehensiveDealResponse,
+    );
 
     const result = await controller.deleteNote(dealId, noteId, mockReq);
 
@@ -885,11 +879,7 @@ describe('Deals & Opportunities - Complete Swagger API Test Suite (All Fields)',
   it('19. DELETE /deals/:id/activities/:activityId -> deletes logged activity from deal', async () => {
     mockDealsService.deleteActivity.mockResolvedValue(undefined);
 
-    const result = await controller.deleteActivity(
-      dealId,
-      activityId,
-      mockReq,
-    );
+    const result = await controller.deleteActivity(dealId, activityId, mockReq);
 
     expect(result).toEqual({
       success: true,

@@ -26,7 +26,7 @@ export class CompanyRepository {
     session?: ClientSession,
   ): Promise<CompanyLean> {
     const docs = await this.companyModel.create([data], { session });
-    return docs[0].toObject() as CompanyLean;
+    return docs[0].toObject();
   }
 
   async findById(
@@ -260,15 +260,18 @@ export class CompanyRepository {
     companyId: Types.ObjectId,
     documentId: Types.ObjectId,
   ): Promise<CompanyDocument | null> {
-    const company = await this.companyModel.findOne(
-      {
-        _id: companyId,
-        deletedAt: null,
-        'documents._id': documentId,
-        'documents.deletedAt': null,
-      },
-      { 'documents.$': 1 },
-    ).lean<CompanyLean>().exec();
+    const company = await this.companyModel
+      .findOne(
+        {
+          _id: companyId,
+          deletedAt: null,
+          'documents._id': documentId,
+          'documents.deletedAt': null,
+        },
+        { 'documents.$': 1 },
+      )
+      .lean<CompanyLean>()
+      .exec();
 
     if (!company || !company.documents || company.documents.length === 0) {
       return null;

@@ -14,7 +14,9 @@ export const COMPANY_SORTABLE_FIELDS = [
 ] as const;
 
 export class ListCompaniesQueryDto extends PaginationQueryDto {
-  @ApiPropertyOptional({ description: 'Search term across name, domain, email, and phone' })
+  @ApiPropertyOptional({
+    description: 'Search term across name, domain, email, and phone',
+  })
   @IsString()
   @IsOptional()
   search?: string;
