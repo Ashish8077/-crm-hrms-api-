@@ -7,12 +7,19 @@ import {
   CompanyRepository,
   CompanyLean,
 } from './repositories/company.repository';
-import { UserRepository } from '../users/repositories/user.repository';
+import {
+  UserRepository,
+  UserLean,
+} from '../users/repositories/user.repository';
 import { RoleRepository } from '../roles/repositories/role.repository';
+import { RoleLean } from '../roles/types/role.repository.types';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { StorageService } from '../storage/storage.service';
 import { RedisService } from '../../common/redis/redis.service';
-import { CrmActivityRepository } from '../../common/repositories/crm-activity.repository';
+import {
+  CrmActivityLean,
+  CrmActivityRepository,
+} from '../../common/repositories/crm-activity.repository';
 import { ActivityEntityType } from '../../common/schemas/crm-activity.schema';
 import { FailedStorageOperation } from '../storage/schemas/failed-storage-operation.schema';
 import { CompanyIndustry } from './constants/company-industry.constant';
@@ -182,7 +189,7 @@ describe('CompaniesService', () => {
       userRepository.findById.mockResolvedValue({
         _id: ownerId,
         status: UserStatus.ACTIVE,
-      } as any);
+      } as unknown as UserLean);
       companyRepository.checkDuplicate.mockResolvedValue(null);
       companyRepository.create.mockResolvedValue(mockCompanyLean);
 
@@ -253,7 +260,7 @@ describe('CompaniesService', () => {
         _id: parentId,
         name: 'Parent',
         parentCompanyId: companyId,
-      } as any); // for proposed parent check
+      } as unknown as CompanyLean); // for proposed parent check
 
       const dto = {
         parentCompanyId: parentId.toString(),
@@ -305,15 +312,15 @@ describe('CompaniesService', () => {
         entityType: ActivityEntityType.COMPANY,
         entityId: companyId,
         performedBy: actorId,
-      } as any);
+      } as unknown as CrmActivityLean);
       userRepository.findById.mockResolvedValue({
         _id: actorId,
         roleIds: [],
-      } as any);
+      } as unknown as UserLean);
       crmActivityRepository.updateById.mockResolvedValue({
         _id: activityId,
         subject: 'Updated subject',
-      } as any);
+      } as unknown as CrmActivityLean);
 
       const result = await service.updateActivity(
         companyId,
@@ -331,15 +338,15 @@ describe('CompaniesService', () => {
         entityType: ActivityEntityType.COMPANY,
         entityId: companyId,
         performedBy: otherUserId,
-      } as any);
+      } as unknown as CrmActivityLean);
       const adminRoleId = new Types.ObjectId();
       userRepository.findById.mockResolvedValue({
         _id: actorId,
         roleIds: [adminRoleId],
-      } as any);
+      } as unknown as UserLean);
       roleRepository.findActiveByIds.mockResolvedValue([
         { _id: adminRoleId, key: SystemRole.SUPER_ADMIN },
-      ] as any);
+      ] as unknown as RoleLean[]);
 
       await expect(
         service.deleteActivity(companyId, activityId, actorId),
@@ -357,11 +364,11 @@ describe('CompaniesService', () => {
         entityType: ActivityEntityType.COMPANY,
         entityId: companyId,
         performedBy: otherUserId,
-      } as any);
+      } as unknown as CrmActivityLean);
       userRepository.findById.mockResolvedValue({
         _id: actorId,
         roleIds: [],
-      } as any);
+      } as unknown as UserLean);
 
       await expect(
         service.deleteActivity(companyId, activityId, actorId),
