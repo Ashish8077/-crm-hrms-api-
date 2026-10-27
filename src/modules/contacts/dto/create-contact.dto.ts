@@ -13,7 +13,10 @@ import {
 import { Type } from 'class-transformer';
 import { DecisionRole } from '../constants/decision-role.constant';
 import { ContactStatus } from '../constants/contact-status.constant';
-import { AddressDto, SocialLinksDto } from '../../companies/dto/create-company.dto';
+import {
+  AddressDto,
+  SocialLinksDto,
+} from '../../companies/dto/create-company.dto';
 
 export class LabeledEntryDto {
   @ApiProperty({ example: 'Mobile' })
@@ -77,7 +80,10 @@ export class CreateContactDto {
   @IsOptional()
   additionalEmails?: LabeledEntryDto[];
 
-  @ApiPropertyOptional({ example: '507f1f77bcf86cd799439011', description: 'Linked company ID' })
+  @ApiPropertyOptional({
+    example: '507f1f77bcf86cd799439011',
+    description: 'Linked company ID',
+  })
   @IsMongoId()
   @IsOptional()
   companyId?: string;
@@ -92,7 +98,10 @@ export class CreateContactDto {
   @IsOptional()
   department?: string;
 
-  @ApiPropertyOptional({ example: true, description: 'True if main POC for company' })
+  @ApiPropertyOptional({
+    example: true,
+    description: 'True if main POC for company',
+  })
   @IsBoolean()
   @IsOptional()
   isPrimaryContact?: boolean;
@@ -119,7 +128,10 @@ export class CreateContactDto {
   @IsOptional()
   ownerId?: string;
 
-  @ApiPropertyOptional({ example: '507f1f77bcf86cd799439013', description: 'Origin lead ID if converted' })
+  @ApiPropertyOptional({
+    example: '507f1f77bcf86cd799439013',
+    description: 'Origin lead ID if converted',
+  })
   @IsMongoId()
   @IsOptional()
   leadId?: string;

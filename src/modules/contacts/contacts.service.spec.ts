@@ -3,14 +3,28 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 import { ContactsService } from './contacts.service';
-import { ContactRepository, ContactLean } from './repositories/contact.repository';
-import { CompanyRepository } from '../companies/repositories/company.repository';
-import { UserRepository } from '../users/repositories/user.repository';
+import {
+  ContactRepository,
+  ContactLean,
+} from './repositories/contact.repository';
+import {
+  CompanyRepository,
+  CompanyLean,
+} from '../companies/repositories/company.repository';
+import {
+  UserRepository,
+  UserLean,
+} from '../users/repositories/user.repository';
 import { RoleRepository } from '../roles/repositories/role.repository';
+import { RoleLean } from '../roles/types/role.repository.types';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { StorageService } from '../storage/storage.service';
 import { RedisService } from '../../common/redis/redis.service';
-import { CrmActivityRepository } from '../../common/repositories/crm-activity.repository';
+import {
+  CrmActivityLean,
+  CrmActivityRepository,
+} from '../../common/repositories/crm-activity.repository';
+import { ActivityEntityType } from '../../common/schemas/crm-activity.schema';
 import { FailedStorageOperation } from '../storage/schemas/failed-storage-operation.schema';
 import { ContactStatus } from './constants/contact-status.constant';
 import { DecisionRole } from './constants/decision-role.constant';
@@ -26,7 +40,6 @@ describe('ContactsService', () => {
   let userRepository: jest.Mocked<UserRepository>;
   let roleRepository: jest.Mocked<RoleRepository>;
   let auditLogsService: jest.Mocked<AuditLogsService>;
-  let storageService: jest.Mocked<StorageService>;
   let redisService: jest.Mocked<RedisService>;
   let crmActivityRepository: jest.Mocked<CrmActivityRepository>;
 
@@ -178,7 +191,6 @@ describe('ContactsService', () => {
     userRepository = module.get(UserRepository);
     roleRepository = module.get(RoleRepository);
     auditLogsService = module.get(AuditLogsService);
-    storageService = module.get(StorageService);
     redisService = module.get(RedisService);
     crmActivityRepository = module.get(CrmActivityRepository);
 
@@ -190,11 +202,11 @@ describe('ContactsService', () => {
       userRepository.findById.mockResolvedValue({
         _id: ownerId,
         status: UserStatus.ACTIVE,
-      } as any);
+      } as unknown as UserLean);
       companyRepository.findById.mockResolvedValue({
         _id: companyId,
         deletedAt: null,
-      } as any);
+      } as unknown as CompanyLean);
       contactRepository.checkEmailCollision.mockResolvedValue(null);
       contactRepository.checkDuplicate.mockResolvedValue(null);
       contactRepository.create.mockResolvedValue(mockContactLean);
@@ -225,7 +237,9 @@ describe('ContactsService', () => {
         phone: '+1-555-9999',
       };
 
-      await expect(service.create(dto, actorId, clientMetadata)).rejects.toMatchObject({
+      await expect(
+        service.create(dto, actorId, clientMetadata),
+      ).rejects.toMatchObject({
         code: ErrorCode.RESOURCE_ALREADY_EXISTS,
       });
     });
@@ -238,7 +252,7 @@ describe('ContactsService', () => {
       companyRepository.findById.mockResolvedValue({
         _id: newCompanyId,
         deletedAt: null,
-      } as any);
+      } as unknown as CompanyLean);
       contactRepository.transferCompanyAndPrimary.mockResolvedValue({
         ...mockContactLean,
         companyId: newCompanyId,
@@ -275,7 +289,11 @@ describe('ContactsService', () => {
         isPrimaryContact: false,
       });
 
-      const result = await service.unlinkCompany(contactId, actorId, clientMetadata);
+      const result = await service.unlinkCompany(
+        contactId,
+        actorId,
+        clientMetadata,
+      );
       expect(result.companyId).toBeNull();
       expect(contactRepository.unlinkCompany).toHaveBeenCalledWith(
         contactId,
@@ -297,11 +315,16 @@ describe('ContactsService', () => {
 
       contactRepository.findById.mockResolvedValue({
         ...mockContactLean,
-        notes: hundredNotes as any,
+        notes: hundredNotes as unknown as NonNullable<ContactLean['notes']>,
       });
 
       await expect(
-        service.addNote(contactId, { content: 'Exceeding note' }, actorId, clientMetadata),
+        service.addNote(
+          contactId,
+          { content: 'Exceeding note' },
+          actorId,
+          clientMetadata,
+        ),
       ).rejects.toMatchObject({
         code: ErrorCode.VALIDATION_ERROR,
       });
@@ -315,18 +338,18 @@ describe('ContactsService', () => {
     it('allows author to update activity', async () => {
       crmActivityRepository.findById.mockResolvedValue({
         _id: activityId,
-        entityType: 'CONTACT' as any,
+        entityType: ActivityEntityType.CONTACT,
         entityId: contactId,
         performedBy: actorId,
-      } as any);
+      } as unknown as CrmActivityLean);
       userRepository.findById.mockResolvedValue({
         _id: actorId,
         roleIds: [],
-      } as any);
+      } as unknown as UserLean);
       crmActivityRepository.updateById.mockResolvedValue({
         _id: activityId,
         subject: 'Updated subject',
-      } as any);
+      } as unknown as CrmActivityLean);
 
       const result = await service.updateActivity(
         contactId,
@@ -341,37 +364,40 @@ describe('ContactsService', () => {
     it('allows admin to delete another user activity', async () => {
       crmActivityRepository.findById.mockResolvedValue({
         _id: activityId,
-        entityType: 'CONTACT' as any,
+        entityType: ActivityEntityType.CONTACT,
         entityId: contactId,
         performedBy: otherUserId,
-      } as any);
+      } as unknown as CrmActivityLean);
       const adminRoleId = new Types.ObjectId();
       userRepository.findById.mockResolvedValue({
         _id: actorId,
         roleIds: [adminRoleId],
-      } as any);
+      } as unknown as UserLean);
       roleRepository.findActiveByIds.mockResolvedValue([
         { _id: adminRoleId, key: SystemRole.ADMIN },
-      ] as any);
+      ] as unknown as RoleLean[]);
 
       await expect(
         service.deleteActivity(contactId, activityId, actorId),
       ).resolves.not.toThrow();
 
-      expect(crmActivityRepository.softDelete).toHaveBeenCalledWith(activityId, actorId);
+      expect(crmActivityRepository.softDelete).toHaveBeenCalledWith(
+        activityId,
+        actorId,
+      );
     });
 
     it('rejects non-author non-admin from updating activity', async () => {
       crmActivityRepository.findById.mockResolvedValue({
         _id: activityId,
-        entityType: 'CONTACT' as any,
+        entityType: ActivityEntityType.CONTACT,
         entityId: contactId,
         performedBy: otherUserId,
-      } as any);
+      } as unknown as CrmActivityLean);
       userRepository.findById.mockResolvedValue({
         _id: actorId,
         roleIds: [],
-      } as any);
+      } as unknown as UserLean);
 
       await expect(
         service.updateActivity(

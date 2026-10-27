@@ -7,6 +7,8 @@ export enum ActivityEntityType {
   COMPANY = 'Company',
   CONTACT = 'Contact',
   DEAL = 'Deal',
+  LEAD = 'Lead',
+  TASK = 'Task',
 }
 
 export enum ActivityType {

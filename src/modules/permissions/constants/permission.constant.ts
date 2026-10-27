@@ -211,4 +211,38 @@ export const PermissionKeys = {
     PermissionModule.DEALS,
     PermissionAction.EXPORT,
   ),
+
+  // Tasks
+  TASKS_VIEW: PermissionKey.of(PermissionModule.TASKS, PermissionAction.VIEW),
+  TASKS_CREATE: PermissionKey.of(
+    PermissionModule.TASKS,
+    PermissionAction.CREATE,
+  ),
+  TASKS_EDIT: PermissionKey.of(PermissionModule.TASKS, PermissionAction.EDIT),
+  TASKS_DELETE: PermissionKey.of(
+    PermissionModule.TASKS,
+    PermissionAction.DELETE,
+  ),
+  TASKS_ASSIGN: PermissionKey.of(
+    PermissionModule.TASKS,
+    PermissionAction.ASSIGN,
+  ),
+
+  // Activities
+  ACTIVITIES_VIEW: PermissionKey.of(
+    PermissionModule.ACTIVITIES,
+    PermissionAction.VIEW,
+  ),
+  ACTIVITIES_CREATE: PermissionKey.of(
+    PermissionModule.ACTIVITIES,
+    PermissionAction.CREATE,
+  ),
+  ACTIVITIES_EDIT: PermissionKey.of(
+    PermissionModule.ACTIVITIES,
+    PermissionAction.EDIT,
+  ),
+  ACTIVITIES_DELETE: PermissionKey.of(
+    PermissionModule.ACTIVITIES,
+    PermissionAction.DELETE,
+  ),
 } as const;

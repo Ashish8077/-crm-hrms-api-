@@ -2,7 +2,11 @@ import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Types, ClientSession, Model } from 'mongoose';
 import { CompanyRepository } from './repositories/company.repository';
-import { CompanyLean, CompanyMapper, CompanyResponse } from './mappers/company.mapper';
+import {
+  CompanyLean,
+  CompanyMapper,
+  CompanyResponse,
+} from './mappers/company.mapper';
 import { UserRepository } from '../users/repositories/user.repository';
 import { UserStatus } from '../users/constants/user-status.constant';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
@@ -44,7 +48,6 @@ import {
   ActivityEntityType,
   CrmActivity,
 } from '../../common/schemas/crm-activity.schema';
-import { normalizeRegistrationNumber } from '../../common/utils/string-normalization.util';
 import { PaginationQueryDto } from '../../common/pagination/dto/pagination-query.dto';
 import { RoleRepository } from '../roles/repositories/role.repository';
 import { SystemRole } from '../roles/constants/role.constant';
@@ -121,7 +124,10 @@ export class CompaniesService {
       );
     }
 
-    const parent = await this.companyRepository.findById(proposedParentId, session);
+    const parent = await this.companyRepository.findById(
+      proposedParentId,
+      session,
+    );
     if (!parent) {
       throw new AppError(
         ErrorCode.RESOURCE_NOT_FOUND,
@@ -130,7 +136,8 @@ export class CompaniesService {
       );
     }
 
-    let currentAncestorId: Types.ObjectId | null | undefined = parent.parentCompanyId;
+    let currentAncestorId: Types.ObjectId | null | undefined =
+      parent.parentCompanyId;
     let depth = 0;
     while (currentAncestorId && depth < 5) {
       if (currentAncestorId.equals(companyId)) {
@@ -140,7 +147,10 @@ export class CompaniesService {
           HttpStatus.BAD_REQUEST,
         );
       }
-      const ancestor = await this.companyRepository.findById(currentAncestorId, session);
+      const ancestor = await this.companyRepository.findById(
+        currentAncestorId,
+        session,
+      );
       currentAncestorId = ancestor?.parentCompanyId;
       depth++;
     }
@@ -186,7 +196,9 @@ export class CompaniesService {
       await this.validateOwnerUser(new Types.ObjectId(dto.ownerId));
     }
     if (dto.parentCompanyId) {
-      const parent = await this.companyRepository.findById(new Types.ObjectId(dto.parentCompanyId));
+      const parent = await this.companyRepository.findById(
+        new Types.ObjectId(dto.parentCompanyId),
+      );
       if (!parent) {
         throw new AppError(
           ErrorCode.RESOURCE_NOT_FOUND,
@@ -229,7 +241,9 @@ export class CompaniesService {
     return CompanyMapper.toResponse(result!);
   }
 
-  async list(queryDto: ListCompaniesQueryDto): Promise<PaginatedResult<CompanyResponse>> {
+  async list(
+    queryDto: ListCompaniesQueryDto,
+  ): Promise<PaginatedResult<CompanyResponse>> {
     const paginated = await this.companyRepository.findList(queryDto);
 
     return {
@@ -239,10 +253,12 @@ export class CompaniesService {
   }
 
   async getById(id: Types.ObjectId): Promise<CompanyResponse> {
-    const cached = await this.redisService.get(COMPANY_CACHE_KEYS.DETAIL(id.toString()));
+    const cached = await this.redisService.get(
+      COMPANY_CACHE_KEYS.DETAIL(id.toString()),
+    );
     if (cached) {
       try {
-        return JSON.parse(cached);
+        return JSON.parse(cached) as CompanyResponse;
       } catch {
         // Fall through to DB
       }
@@ -264,10 +280,17 @@ export class CompaniesService {
 
     let parentCompany = null;
     if (company.parentCompanyId) {
-      parentCompany = await this.companyRepository.findById(company.parentCompanyId);
+      parentCompany = await this.companyRepository.findById(
+        company.parentCompanyId,
+      );
     }
 
-    const response = CompanyMapper.toResponse(company, null, owner, parentCompany);
+    const response = CompanyMapper.toResponse(
+      company,
+      null,
+      owner,
+      parentCompany,
+    );
 
     await this.redisService.set(
       COMPANY_CACHE_KEYS.DETAIL(id.toString()),
@@ -313,7 +336,10 @@ export class CompaniesService {
       await this.validateOwnerUser(new Types.ObjectId(dto.ownerId));
     }
     if (dto.parentCompanyId) {
-      await this.validateCompanyHierarchy(id, new Types.ObjectId(dto.parentCompanyId));
+      await this.validateCompanyHierarchy(
+        id,
+        new Types.ObjectId(dto.parentCompanyId),
+      );
     }
 
     const session = await this.connection.startSession();
@@ -322,7 +348,11 @@ export class CompaniesService {
     try {
       await session.withTransaction(async (session: ClientSession) => {
         const updateData = CompanyMapper.toUpdateData(dto, actorId);
-        const updated = await this.companyRepository.updateById(id, updateData, session);
+        const updated = await this.companyRepository.updateById(
+          id,
+          updateData,
+          session,
+        );
         if (!updated) {
           throw new AppError(
             ErrorCode.RESOURCE_NOT_FOUND,
@@ -420,7 +450,12 @@ export class CompaniesService {
 
     try {
       await session.withTransaction(async (session: ClientSession) => {
-        const updated = await this.companyRepository.updateOwner(id, newOwnerId, actorId, session);
+        const updated = await this.companyRepository.updateOwner(
+          id,
+          newOwnerId,
+          actorId,
+          session,
+        );
         result = updated!;
 
         await this.auditLogsService.createAuditLog(
@@ -499,7 +534,9 @@ export class CompaniesService {
       await session.endSession();
     }
 
-    await this.redisService.del(COMPANY_CACHE_KEYS.DETAIL(companyId.toString()));
+    await this.redisService.del(
+      COMPANY_CACHE_KEYS.DETAIL(companyId.toString()),
+    );
     return CompanyMapper.toResponse(result!);
   }
 
@@ -532,7 +569,12 @@ export class CompaniesService {
     const session = await this.connection.startSession();
     try {
       await session.withTransaction(async (session: ClientSession) => {
-        await this.companyRepository.softDeleteNote(companyId, noteId, actorId, session);
+        await this.companyRepository.softDeleteNote(
+          companyId,
+          noteId,
+          actorId,
+          session,
+        );
 
         await this.auditLogsService.createAuditLog(
           {
@@ -551,7 +593,9 @@ export class CompaniesService {
       await session.endSession();
     }
 
-    await this.redisService.del(COMPANY_CACHE_KEYS.DETAIL(companyId.toString()));
+    await this.redisService.del(
+      COMPANY_CACHE_KEYS.DETAIL(companyId.toString()),
+    );
   }
 
   async uploadDocument(
@@ -639,7 +683,9 @@ export class CompaniesService {
       await session.endSession();
     }
 
-    await this.redisService.del(COMPANY_CACHE_KEYS.DETAIL(companyId.toString()));
+    await this.redisService.del(
+      COMPANY_CACHE_KEYS.DETAIL(companyId.toString()),
+    );
     return CompanyMapper.toResponse(result!);
   }
 
@@ -665,7 +711,10 @@ export class CompaniesService {
       );
     }
 
-    const downloadUrl = await this.storageService.getSignedDownloadUrl(doc.fileKey, 3600);
+    const downloadUrl = await this.storageService.getSignedDownloadUrl(
+      doc.fileKey,
+      3600,
+    );
     return { downloadUrl, expiresIn: 3600 };
   }
 
@@ -696,7 +745,12 @@ export class CompaniesService {
     const session = await this.connection.startSession();
     try {
       await session.withTransaction(async (session: ClientSession) => {
-        await this.companyRepository.softDeleteDocument(companyId, docId, actorId, session);
+        await this.companyRepository.softDeleteDocument(
+          companyId,
+          docId,
+          actorId,
+          session,
+        );
 
         await this.auditLogsService.createAuditLog(
           {
@@ -726,10 +780,14 @@ export class CompaniesService {
         lastError: (s3Error as Error).message,
         nextRetryAt: new Date(Date.now() + 60000),
       });
-      this.logger.warn(`S3 physical deletion failed for ${doc.fileKey}, queued to outbox.`);
+      this.logger.warn(
+        `S3 physical deletion failed for ${doc.fileKey}, queued to outbox.`,
+      );
     }
 
-    await this.redisService.del(COMPANY_CACHE_KEYS.DETAIL(companyId.toString()));
+    await this.redisService.del(
+      COMPANY_CACHE_KEYS.DETAIL(companyId.toString()),
+    );
   }
 
   async logActivity(
@@ -759,9 +817,10 @@ export class CompaniesService {
             type: dto.type,
             subject: dto.subject.trim(),
             description: dto.description ? dto.description.trim() : null,
-            activityDate: dto.activityDate || dto.performedAt
-              ? new Date(dto.activityDate || dto.performedAt!)
-              : new Date(),
+            activityDate:
+              dto.activityDate || dto.performedAt
+                ? new Date(dto.activityDate || dto.performedAt!)
+                : new Date(),
             durationMinutes: dto.durationMinutes ?? 0,
             outcome: dto.outcome ?? null,
             performedBy: actorId,
@@ -840,13 +899,19 @@ export class CompaniesService {
 
     const updateData: Partial<CrmActivity> = {};
     if (dto.subject !== undefined) updateData.subject = dto.subject.trim();
-    if (dto.description !== undefined) updateData.description = dto.description ? dto.description.trim() : null;
-    if (dto.durationMinutes !== undefined) updateData.durationMinutes = dto.durationMinutes;
+    if (dto.description !== undefined)
+      updateData.description = dto.description ? dto.description.trim() : null;
+    if (dto.durationMinutes !== undefined)
+      updateData.durationMinutes = dto.durationMinutes;
     if (dto.outcome !== undefined) updateData.outcome = dto.outcome;
     const dateToUpdate = dto.activityDate || dto.performedAt;
-    if (dateToUpdate !== undefined) updateData.activityDate = new Date(dateToUpdate);
+    if (dateToUpdate !== undefined)
+      updateData.activityDate = new Date(dateToUpdate);
 
-    const updated = await this.crmActivityRepository.updateById(activityId, updateData);
+    const updated = await this.crmActivityRepository.updateById(
+      activityId,
+      updateData,
+    );
     return updated!;
   }
 

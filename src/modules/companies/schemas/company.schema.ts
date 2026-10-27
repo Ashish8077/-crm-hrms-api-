@@ -5,9 +5,18 @@ import { CompanyType } from '../constants/company-type.constant';
 import { CompanyTier } from '../constants/company-tier.constant';
 import { CompanyStatus } from '../constants/company-status.constant';
 import { CompanyNote, CompanyNoteSchema } from './company-note.schema';
-import { CompanyDocument, CompanyDocumentSchema } from './company-document.schema';
-import { AddressSubdocument, AddressSubdocumentSchema } from '../../../common/schemas/address.schema';
-import { SocialLinksSubdocument, SocialLinksSubdocumentSchema } from '../../../common/schemas/social-links.schema';
+import {
+  CompanyDocument,
+  CompanyDocumentSchema,
+} from './company-document.schema';
+import {
+  AddressSubdocument,
+  AddressSubdocumentSchema,
+} from '../../../common/schemas/address.schema';
+import {
+  SocialLinksSubdocument,
+  SocialLinksSubdocumentSchema,
+} from '../../../common/schemas/social-links.schema';
 
 export type CompanyDocumentType = HydratedDocument<Company>;
 
@@ -60,13 +69,25 @@ export class Company {
   })
   tier!: CompanyTier;
 
-  @Prop({ type: String, trim: true, lowercase: true, default: null, index: true })
+  @Prop({
+    type: String,
+    trim: true,
+    lowercase: true,
+    default: null,
+    index: true,
+  })
   domain?: string | null;
 
   @Prop({ type: String, trim: true, default: null })
   website?: string | null;
 
-  @Prop({ type: String, lowercase: true, trim: true, default: null, index: true })
+  @Prop({
+    type: String,
+    lowercase: true,
+    trim: true,
+    default: null,
+    index: true,
+  })
   email?: string | null;
 
   @Prop({ type: String, trim: true, default: null, index: true })
@@ -165,7 +186,19 @@ CompanySchema.index(
 );
 
 // Performance Compound Indexes
-CompanySchema.index({ name: 1, deletedAt: 1 }, { name: 'idx_companies_name_deleted' });
-CompanySchema.index({ ownerId: 1, status: 1, deletedAt: 1 }, { name: 'idx_companies_owner_status' });
-CompanySchema.index({ domain: 1, deletedAt: 1 }, { name: 'idx_companies_domain' });
-CompanySchema.index({ industry: 1, type: 1, deletedAt: 1 }, { name: 'idx_companies_industry_type' });
+CompanySchema.index(
+  { name: 1, deletedAt: 1 },
+  { name: 'idx_companies_name_deleted' },
+);
+CompanySchema.index(
+  { ownerId: 1, status: 1, deletedAt: 1 },
+  { name: 'idx_companies_owner_status' },
+);
+CompanySchema.index(
+  { domain: 1, deletedAt: 1 },
+  { name: 'idx_companies_domain' },
+);
+CompanySchema.index(
+  { industry: 1, type: 1, deletedAt: 1 },
+  { name: 'idx_companies_industry_type' },
+);

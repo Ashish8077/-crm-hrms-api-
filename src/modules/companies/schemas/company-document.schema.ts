@@ -33,4 +33,5 @@ export class CompanyDocument {
   updatedAt?: Date;
 }
 
-export const CompanyDocumentSchema = SchemaFactory.createForClass(CompanyDocument);
+export const CompanyDocumentSchema =
+  SchemaFactory.createForClass(CompanyDocument);

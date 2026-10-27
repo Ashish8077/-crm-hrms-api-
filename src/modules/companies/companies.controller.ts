@@ -72,7 +72,9 @@ export class CompaniesController {
   @Post()
   @ApiOperation({ summary: 'Create a new company' })
   @ApiCreatedResponse({ description: 'Company successfully created.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.CREATE))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.CREATE),
+  )
   async create(
     @Body() dto: CreateCompanyDto,
     @Req() request: AuthenticatedRequest,
@@ -89,9 +91,13 @@ export class CompaniesController {
 
   // 2. List Companies
   @Get()
-  @ApiOperation({ summary: 'List companies with filters, search, and pagination' })
+  @ApiOperation({
+    summary: 'List companies with filters, search, and pagination',
+  })
   @ApiOkResponse({ description: 'List of companies.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.VIEW))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.VIEW),
+  )
   async list(@Query() query: ListCompaniesQueryDto) {
     const result = await this.companiesService.list(query);
     return { success: true, data: result.data, meta: result.meta };
@@ -99,9 +105,13 @@ export class CompaniesController {
 
   // 17. Check Duplicate
   @Post('check-duplicate')
-  @ApiOperation({ summary: 'Check if registration number, domain, or email already exists' })
+  @ApiOperation({
+    summary: 'Check if registration number, domain, or email already exists',
+  })
   @ApiOkResponse({ description: 'Duplicate check result.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.VIEW))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.VIEW),
+  )
   async checkDuplicate(@Body() dto: CheckDuplicateCompanyDto) {
     const result = await this.companiesService.checkDuplicate(dto);
     return { success: true, data: result };
@@ -112,10 +122,13 @@ export class CompaniesController {
   @ApiOperation({ summary: 'Get company details by ID' })
   @ApiParam({ name: 'id', description: 'Company ID', type: String })
   @ApiOkResponse({ description: 'Company details.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.VIEW))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.VIEW),
+  )
   async getById(@Param('id', ParseObjectIdPipe) id: Types.ObjectId) {
     const company = await this.companiesService.getById(id);
-    const primaryContact = await this.contactRepository.findPrimaryContactByCompanyId(id);
+    const primaryContact =
+      await this.contactRepository.findPrimaryContactByCompanyId(id);
     if (primaryContact) {
       company.primaryContact = {
         id: primaryContact._id.toString(),
@@ -134,7 +147,9 @@ export class CompaniesController {
   @ApiOperation({ summary: 'Update company details' })
   @ApiParam({ name: 'id', description: 'Company ID', type: String })
   @ApiOkResponse({ description: 'Company updated successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EDIT),
+  )
   async update(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: UpdateCompanyDto,
@@ -156,18 +171,19 @@ export class CompaniesController {
   @ApiOperation({ summary: 'Soft delete a company' })
   @ApiParam({ name: 'id', description: 'Company ID', type: String })
   @ApiOkResponse({ description: 'Company successfully deleted.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.DELETE))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.DELETE),
+  )
   async delete(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Req() request: AuthenticatedRequest,
   ) {
     const ipAddress = request.ip ?? null;
     const userAgent = request.headers['user-agent'] ?? null;
-    await this.companiesService.softDelete(
-      id,
-      request.user.userId,
-      { ipAddress, userAgent },
-    );
+    await this.companiesService.softDelete(id, request.user.userId, {
+      ipAddress,
+      userAgent,
+    });
     return { success: true, message: 'Company successfully deleted' };
   }
 
@@ -176,7 +192,9 @@ export class CompaniesController {
   @ApiOperation({ summary: 'Get all contacts linked to a company' })
   @ApiParam({ name: 'id', description: 'Company ID', type: String })
   @ApiOkResponse({ description: 'List of contacts linked to this company.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.VIEW))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.VIEW),
+  )
   async getContacts(@Param('id', ParseObjectIdPipe) id: Types.ObjectId) {
     const contacts = await this.contactRepository.findByCompanyId(id);
     return {
@@ -190,7 +208,9 @@ export class CompaniesController {
   @ApiOperation({ summary: 'Reassign company account manager' })
   @ApiParam({ name: 'id', description: 'Company ID', type: String })
   @ApiOkResponse({ description: 'Owner reassigned successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EDIT),
+  )
   async assignOwner(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: AssignCompanyDto,
@@ -212,7 +232,9 @@ export class CompaniesController {
   @ApiOperation({ summary: 'Add a note to the company' })
   @ApiParam({ name: 'id', description: 'Company ID', type: String })
   @ApiCreatedResponse({ description: 'Note added successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EDIT),
+  )
   async addNote(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: AddCompanyNoteDto,
@@ -235,7 +257,9 @@ export class CompaniesController {
   @ApiParam({ name: 'id', description: 'Company ID', type: String })
   @ApiParam({ name: 'noteId', description: 'Note ID', type: String })
   @ApiOkResponse({ description: 'Note successfully deleted.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.DELETE))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.DELETE),
+  )
   async deleteNote(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Param('noteId', ParseObjectIdPipe) noteId: Types.ObjectId,
@@ -243,12 +267,10 @@ export class CompaniesController {
   ) {
     const ipAddress = request.ip ?? null;
     const userAgent = request.headers['user-agent'] ?? null;
-    await this.companiesService.deleteNote(
-      id,
-      noteId,
-      request.user.userId,
-      { ipAddress, userAgent },
-    );
+    await this.companiesService.deleteNote(id, noteId, request.user.userId, {
+      ipAddress,
+      userAgent,
+    });
     return { success: true, message: 'Note successfully deleted' };
   }
 
@@ -280,13 +302,19 @@ export class CompaniesController {
       type: 'object',
       required: ['file'],
       properties: {
-        file: { type: 'string', format: 'binary', description: 'Document (PDF, JPEG, PNG, DOCX max 10MB)' },
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Document (PDF, JPEG, PNG, DOCX max 10MB)',
+        },
         fileName: { type: 'string', description: 'Custom document name' },
       },
     },
   })
   @ApiCreatedResponse({ description: 'Document uploaded successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EDIT),
+  )
   async uploadDocument(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @UploadedFile() file: Express.Multer.File,
@@ -307,16 +335,23 @@ export class CompaniesController {
 
   // 11. Download Document
   @Get(':id/documents/:docId/download')
-  @ApiOperation({ summary: 'Generate pre-signed S3 download URL for company document' })
+  @ApiOperation({
+    summary: 'Generate pre-signed S3 download URL for company document',
+  })
   @ApiParam({ name: 'id', description: 'Company ID', type: String })
   @ApiParam({ name: 'docId', description: 'Document ID', type: String })
   @ApiOkResponse({ description: 'Pre-signed download URL.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.VIEW))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.VIEW),
+  )
   async downloadDocument(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Param('docId', ParseObjectIdPipe) docId: Types.ObjectId,
   ) {
-    const result = await this.companiesService.getDocumentDownloadUrl(id, docId);
+    const result = await this.companiesService.getDocumentDownloadUrl(
+      id,
+      docId,
+    );
     return { success: true, data: result };
   }
 
@@ -326,7 +361,9 @@ export class CompaniesController {
   @ApiParam({ name: 'id', description: 'Company ID', type: String })
   @ApiParam({ name: 'docId', description: 'Document ID', type: String })
   @ApiOkResponse({ description: 'Document successfully deleted.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.DELETE))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.DELETE),
+  )
   async deleteDocument(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Param('docId', ParseObjectIdPipe) docId: Types.ObjectId,
@@ -334,12 +371,10 @@ export class CompaniesController {
   ) {
     const ipAddress = request.ip ?? null;
     const userAgent = request.headers['user-agent'] ?? null;
-    await this.companiesService.deleteDocument(
-      id,
-      docId,
-      request.user.userId,
-      { ipAddress, userAgent },
-    );
+    await this.companiesService.deleteDocument(id, docId, request.user.userId, {
+      ipAddress,
+      userAgent,
+    });
     return { success: true, message: 'Document successfully deleted' };
   }
 
@@ -348,7 +383,9 @@ export class CompaniesController {
   @ApiOperation({ summary: 'Log a communication / activity for the company' })
   @ApiParam({ name: 'id', description: 'Company ID', type: String })
   @ApiCreatedResponse({ description: 'Activity logged successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EDIT),
+  )
   async logActivity(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: LogCompanyActivityDto,
@@ -367,10 +404,14 @@ export class CompaniesController {
 
   // 14. Get Activities Timeline
   @Get(':id/activities')
-  @ApiOperation({ summary: 'Get paginated communication timeline for the company' })
+  @ApiOperation({
+    summary: 'Get paginated communication timeline for the company',
+  })
   @ApiParam({ name: 'id', description: 'Company ID', type: String })
   @ApiOkResponse({ description: 'Paginated timeline activities.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.VIEW))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.VIEW),
+  )
   async getActivities(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Query() query: PaginationQueryDto,
@@ -381,11 +422,15 @@ export class CompaniesController {
 
   // 15. Update Activity
   @Patch(':id/activities/:activityId')
-  @ApiOperation({ summary: 'Update an activity for the company (Author or Admin only)' })
+  @ApiOperation({
+    summary: 'Update an activity for the company (Author or Admin only)',
+  })
   @ApiParam({ name: 'id', description: 'Company ID', type: String })
   @ApiParam({ name: 'activityId', description: 'Activity ID', type: String })
   @ApiOkResponse({ description: 'Activity updated successfully.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EDIT))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.EDIT),
+  )
   async updateActivity(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Param('activityId', ParseObjectIdPipe) activityId: Types.ObjectId,
@@ -403,11 +448,15 @@ export class CompaniesController {
 
   // 16. Delete Activity
   @Delete(':id/activities/:activityId')
-  @ApiOperation({ summary: 'Delete an activity for the company (Author or Admin only)' })
+  @ApiOperation({
+    summary: 'Delete an activity for the company (Author or Admin only)',
+  })
   @ApiParam({ name: 'id', description: 'Company ID', type: String })
   @ApiParam({ name: 'activityId', description: 'Activity ID', type: String })
   @ApiOkResponse({ description: 'Activity successfully deleted.' })
-  @RequirePermissions(PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.DELETE))
+  @RequirePermissions(
+    PermissionKey.of(PermissionModule.COMPANIES, PermissionAction.DELETE),
+  )
   async deleteActivity(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Param('activityId', ParseObjectIdPipe) activityId: Types.ObjectId,

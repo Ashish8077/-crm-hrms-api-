@@ -25,7 +25,9 @@ export class LogContactActivityDto {
   @IsNotEmpty()
   subject!: string;
 
-  @ApiPropertyOptional({ example: 'Reviewed enterprise SLA terms and implementation dates.' })
+  @ApiPropertyOptional({
+    example: 'Reviewed enterprise SLA terms and implementation dates.',
+  })
   @IsString()
   @IsOptional()
   description?: string;
@@ -35,7 +37,10 @@ export class LogContactActivityDto {
   @IsOptional()
   activityDate?: string;
 
-  @ApiPropertyOptional({ example: '2026-10-15T15:00:00.000Z', description: 'Alias for activityDate' })
+  @ApiPropertyOptional({
+    example: '2026-10-15T15:00:00.000Z',
+    description: 'Alias for activityDate',
+  })
   @IsDateString()
   @IsOptional()
   performedAt?: string;
@@ -46,11 +51,17 @@ export class LogContactActivityDto {
   @IsOptional()
   durationMinutes?: number;
 
-  @ApiPropertyOptional({ enum: ActivityOutcome, example: ActivityOutcome.COMPLETED })
-  @Transform(({ value }) => {
+  @ApiPropertyOptional({
+    enum: ActivityOutcome,
+    example: ActivityOutcome.COMPLETED,
+  })
+  @Transform(({ value }: { value: unknown }) => {
     if (value === null || value === undefined || value === '') return undefined;
     if (typeof value === 'string') {
-      const v = value.trim().toUpperCase().replace(/[\s-]+/g, '_');
+      const v = value
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, '_');
       return v === '' ? undefined : v;
     }
     return value;
