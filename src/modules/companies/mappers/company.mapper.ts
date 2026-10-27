@@ -3,6 +3,27 @@ import { Company } from '../schemas/company.schema';
 import { CreateCompanyDto } from '../dto/create-company.dto';
 import { UpdateCompanyDto } from '../dto/update-company.dto';
 import { normalizeRegistrationNumber } from '../../../common/utils/string-normalization.util';
+import { CompanyStatus } from '../constants/company-status.constant';
+
+export interface CompanyOwnerRef {
+  _id?: Types.ObjectId | string;
+  id?: string;
+  email?: string;
+}
+
+export interface ParentCompanyRef {
+  _id: Types.ObjectId | string;
+  name: string;
+}
+
+export interface PrimaryContactRef {
+  _id: Types.ObjectId | string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  jobTitle?: string | null;
+}
 
 export type CompanyLean = Company & { _id: Types.ObjectId };
 
@@ -101,7 +122,7 @@ export class CompanyMapper {
       legalName: dto.legalName ? dto.legalName.trim() : null,
       registrationNumber: regNumber,
       taxId: taxIdValue,
-      status: dto.status ?? ('ACTIVE' as any),
+      status: dto.status ?? CompanyStatus.ACTIVE,
       industry: dto.industry,
       type: dto.type,
       tier: dto.tier,
@@ -109,8 +130,8 @@ export class CompanyMapper {
       website: dto.website ? dto.website.trim() : null,
       email: dto.email ? dto.email.trim().toLowerCase() : null,
       phone: dto.phone ? dto.phone.trim() : null,
-      additionalPhones: (dto.additionalPhones as any) ?? [],
-      additionalEmails: (dto.additionalEmails as any) ?? [],
+      additionalPhones: dto.additionalPhones ?? [],
+      additionalEmails: dto.additionalEmails ?? [],
       address: mainAddress,
       billingAddress: billing,
       shippingAddress: shipping,
@@ -212,9 +233,9 @@ export class CompanyMapper {
 
   static toResponse(
     company: CompanyLean,
-    primaryContact?: any,
-    owner?: any,
-    parentCompany?: any,
+    primaryContact?: PrimaryContactRef | null,
+    owner?: CompanyOwnerRef | null,
+    parentCompany?: ParentCompanyRef | null,
   ): CompanyResponse {
     const activeNotes = (company.notes || []).filter((n) => !n.deletedAt);
     const activeDocuments = (company.documents || []).filter(
@@ -226,7 +247,7 @@ export class CompanyMapper {
       name: company.name,
       legalName: company.legalName ?? null,
       registrationNumber: company.registrationNumber ?? null,
-      taxId: (company as any).taxId ?? null,
+      taxId: company.taxId ?? null,
       status: company.status,
       industry: company.industry,
       type: company.type,
@@ -235,20 +256,20 @@ export class CompanyMapper {
       website: company.website ?? null,
       email: company.email ?? null,
       phone: company.phone ?? null,
-      additionalPhones: (company as any).additionalPhones || [],
-      additionalEmails: (company as any).additionalEmails || [],
-      address: (company as any).address || {},
+      additionalPhones: company.additionalPhones || [],
+      additionalEmails: company.additionalEmails || [],
+      address: company.address || {},
       billingAddress: company.billingAddress || {},
       shippingAddress: company.shippingAddress || {},
       socialLinks: company.socialLinks || {},
       annualRevenue: company.annualRevenue ?? 0,
       currency: company.currency || 'USD',
-      employeeCount: (company as any).employeeCount ?? null,
+      employeeCount: company.employeeCount ?? null,
       employeeCountRange: company.employeeCountRange ?? null,
       ownerId: company.ownerId ? company.ownerId.toString() : null,
       owner: owner
         ? {
-            id: owner._id ? owner._id.toString() : owner.id,
+            id: owner._id ? owner._id.toString() : (owner.id ?? ''),
             email: owner.email,
           }
         : company.ownerId

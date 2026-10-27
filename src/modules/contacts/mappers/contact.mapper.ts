@@ -5,6 +5,19 @@ import { CreateContactDto } from '../dto/create-contact.dto';
 import { UpdateContactDto } from '../dto/update-contact.dto';
 import { normalizeEmail } from '../../../common/utils/string-normalization.util';
 
+export interface ContactCompanyRef {
+  _id: Types.ObjectId | string;
+  name: string;
+  domain?: string | null;
+  deletedAt?: Date | null;
+}
+
+export interface ContactOwnerRef {
+  _id?: Types.ObjectId | string;
+  id?: string;
+  email?: string;
+}
+
 export type ContactLean = Contact & { _id: Types.ObjectId };
 
 export interface ContactResponse {
@@ -164,8 +177,8 @@ export class ContactMapper {
 
   static toResponse(
     contact: ContactLean,
-    company?: any,
-    owner?: any,
+    company?: ContactCompanyRef | null,
+    owner?: ContactOwnerRef | null,
   ): ContactResponse {
     const activeNotes = (contact.notes || []).filter((n) => !n.deletedAt);
     const activeDocuments = (contact.documents || []).filter(
@@ -202,7 +215,7 @@ export class ContactMapper {
       ownerId: contact.ownerId ? contact.ownerId.toString() : null,
       owner: owner
         ? {
-            id: owner._id ? owner._id.toString() : owner.id,
+            id: owner._id ? owner._id.toString() : (owner.id ?? ''),
             email: owner.email,
           }
         : contact.ownerId
