@@ -2,9 +2,14 @@
  * Canonical registration number normalization.
  * Trims, converts to uppercase, and removes all whitespace, hyphens, and underscores.
  */
-export function normalizeRegistrationNumber(raw?: string | null): string | null {
+export function normalizeRegistrationNumber(
+  raw?: string | null,
+): string | null {
   if (!raw) return null;
-  const normalized = raw.trim().toUpperCase().replace(/[\s\-_]/g, '');
+  const normalized = raw
+    .trim()
+    .toUpperCase()
+    .replace(/[\s\-_]/g, '');
   return normalized.length > 0 ? normalized : null;
 }
 

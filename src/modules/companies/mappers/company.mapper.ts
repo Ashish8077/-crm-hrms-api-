@@ -34,7 +34,14 @@ export interface CompanyResponse {
   owner?: { id: string; email?: string } | null;
   parentCompanyId?: string | null;
   parentCompany?: { id: string; name: string } | null;
-  primaryContact?: { id: string; firstName: string; lastName: string; email: string; phone: string; jobTitle?: string | null } | null;
+  primaryContact?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    jobTitle?: string | null;
+  } | null;
   tags: string[];
   notesCount: number;
   documentsCount: number;
@@ -61,7 +68,9 @@ export class CompanyMapper {
     dto: CreateCompanyDto,
     actorId: Types.ObjectId,
   ): Partial<Company> {
-    const regNumber = normalizeRegistrationNumber(dto.registrationNumber || dto.taxId);
+    const regNumber = normalizeRegistrationNumber(
+      dto.registrationNumber || dto.taxId,
+    );
     const taxIdValue = dto.taxId ? dto.taxId.trim().toUpperCase() : regNumber;
 
     const mainAddress = dto.address ?? dto.billingAddress ?? {};
@@ -69,7 +78,9 @@ export class CompanyMapper {
     const shipping = dto.shippingAddress ?? dto.address ?? {};
 
     let empCount: number | null = null;
-    let empRange = dto.employeeCountRange ? dto.employeeCountRange.trim() : null;
+    let empRange = dto.employeeCountRange
+      ? dto.employeeCountRange.trim()
+      : null;
     if (dto.employeeCount !== undefined && dto.employeeCount !== null) {
       const parsed = Number(dto.employeeCount);
       if (!isNaN(parsed)) {
@@ -109,8 +120,12 @@ export class CompanyMapper {
       employeeCount: empCount,
       employeeCountRange: empRange,
       ownerId: dto.ownerId ? new Types.ObjectId(dto.ownerId) : null,
-      parentCompanyId: dto.parentCompanyId ? new Types.ObjectId(dto.parentCompanyId) : null,
-      tags: dto.tags ? Array.from(new Set(dto.tags.map((t) => t.trim().toLowerCase()))) : [],
+      parentCompanyId: dto.parentCompanyId
+        ? new Types.ObjectId(dto.parentCompanyId)
+        : null,
+      tags: dto.tags
+        ? Array.from(new Set(dto.tags.map((t) => t.trim().toLowerCase())))
+        : [],
       notes: [],
       documents: [],
       deletedAt: null,
@@ -128,9 +143,12 @@ export class CompanyMapper {
     };
 
     if (dto.name !== undefined) data.name = dto.name.trim();
-    if (dto.legalName !== undefined) data.legalName = dto.legalName ? dto.legalName.trim() : null;
+    if (dto.legalName !== undefined)
+      data.legalName = dto.legalName ? dto.legalName.trim() : null;
     if (dto.registrationNumber !== undefined) {
-      data.registrationNumber = normalizeRegistrationNumber(dto.registrationNumber);
+      data.registrationNumber = normalizeRegistrationNumber(
+        dto.registrationNumber,
+      );
     }
     if (dto.taxId !== undefined) {
       data.taxId = dto.taxId ? dto.taxId.trim().toUpperCase() : null;
@@ -142,36 +160,51 @@ export class CompanyMapper {
     if (dto.industry !== undefined) data.industry = dto.industry;
     if (dto.type !== undefined) data.type = dto.type;
     if (dto.tier !== undefined) data.tier = dto.tier;
-    if (dto.domain !== undefined) data.domain = dto.domain ? dto.domain.trim().toLowerCase() : null;
-    if (dto.website !== undefined) data.website = dto.website ? dto.website.trim() : null;
-    if (dto.email !== undefined) data.email = dto.email ? dto.email.trim().toLowerCase() : null;
-    if (dto.phone !== undefined) data.phone = dto.phone ? dto.phone.trim() : null;
-    if (dto.additionalPhones !== undefined) data.additionalPhones = dto.additionalPhones;
-    if (dto.additionalEmails !== undefined) data.additionalEmails = dto.additionalEmails;
+    if (dto.domain !== undefined)
+      data.domain = dto.domain ? dto.domain.trim().toLowerCase() : null;
+    if (dto.website !== undefined)
+      data.website = dto.website ? dto.website.trim() : null;
+    if (dto.email !== undefined)
+      data.email = dto.email ? dto.email.trim().toLowerCase() : null;
+    if (dto.phone !== undefined)
+      data.phone = dto.phone ? dto.phone.trim() : null;
+    if (dto.additionalPhones !== undefined)
+      data.additionalPhones = dto.additionalPhones;
+    if (dto.additionalEmails !== undefined)
+      data.additionalEmails = dto.additionalEmails;
     if (dto.address !== undefined) {
       data.address = dto.address;
       if (!data.billingAddress) data.billingAddress = dto.address;
     }
-    if (dto.billingAddress !== undefined) data.billingAddress = dto.billingAddress;
-    if (dto.shippingAddress !== undefined) data.shippingAddress = dto.shippingAddress;
+    if (dto.billingAddress !== undefined)
+      data.billingAddress = dto.billingAddress;
+    if (dto.shippingAddress !== undefined)
+      data.shippingAddress = dto.shippingAddress;
     if (dto.socialLinks !== undefined) data.socialLinks = dto.socialLinks;
     if (dto.annualRevenue !== undefined) data.annualRevenue = dto.annualRevenue;
-    if (dto.currency !== undefined) data.currency = dto.currency ? dto.currency.trim().toUpperCase() : 'USD';
+    if (dto.currency !== undefined)
+      data.currency = dto.currency ? dto.currency.trim().toUpperCase() : 'USD';
     if (dto.employeeCount !== undefined) {
       const parsed = Number(dto.employeeCount);
       data.employeeCount = isNaN(parsed) ? null : parsed;
     }
     if (dto.employeeCountRange !== undefined) {
-      data.employeeCountRange = dto.employeeCountRange ? dto.employeeCountRange.trim() : null;
+      data.employeeCountRange = dto.employeeCountRange
+        ? dto.employeeCountRange.trim()
+        : null;
     }
     if (dto.ownerId !== undefined) {
       data.ownerId = dto.ownerId ? new Types.ObjectId(dto.ownerId) : null;
     }
     if (dto.parentCompanyId !== undefined) {
-      data.parentCompanyId = dto.parentCompanyId ? new Types.ObjectId(dto.parentCompanyId) : null;
+      data.parentCompanyId = dto.parentCompanyId
+        ? new Types.ObjectId(dto.parentCompanyId)
+        : null;
     }
     if (dto.tags !== undefined) {
-      data.tags = Array.from(new Set(dto.tags.map((t) => t.trim().toLowerCase())));
+      data.tags = Array.from(
+        new Set(dto.tags.map((t) => t.trim().toLowerCase())),
+      );
     }
 
     return data;
@@ -184,7 +217,9 @@ export class CompanyMapper {
     parentCompany?: any,
   ): CompanyResponse {
     const activeNotes = (company.notes || []).filter((n) => !n.deletedAt);
-    const activeDocuments = (company.documents || []).filter((d) => !d.deletedAt);
+    const activeDocuments = (company.documents || []).filter(
+      (d) => !d.deletedAt,
+    );
 
     return {
       id: company._id.toString(),
@@ -212,11 +247,16 @@ export class CompanyMapper {
       employeeCountRange: company.employeeCountRange ?? null,
       ownerId: company.ownerId ? company.ownerId.toString() : null,
       owner: owner
-        ? { id: owner._id ? owner._id.toString() : owner.id, email: owner.email }
+        ? {
+            id: owner._id ? owner._id.toString() : owner.id,
+            email: owner.email,
+          }
         : company.ownerId
           ? { id: company.ownerId.toString() }
           : null,
-      parentCompanyId: company.parentCompanyId ? company.parentCompanyId.toString() : null,
+      parentCompanyId: company.parentCompanyId
+        ? company.parentCompanyId.toString()
+        : null,
       parentCompany: parentCompany
         ? { id: parentCompany._id.toString(), name: parentCompany.name }
         : null,

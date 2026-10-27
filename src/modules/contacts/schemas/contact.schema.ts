@@ -3,9 +3,18 @@ import { HydratedDocument, Types } from 'mongoose';
 import { ContactStatus } from '../constants/contact-status.constant';
 import { DecisionRole } from '../constants/decision-role.constant';
 import { ContactNote, ContactNoteSchema } from './contact-note.schema';
-import { ContactDocument, ContactDocumentSchema } from './contact-document.schema';
-import { AddressSubdocument, AddressSubdocumentSchema } from '../../../common/schemas/address.schema';
-import { SocialLinksSubdocument, SocialLinksSubdocumentSchema } from '../../../common/schemas/social-links.schema';
+import {
+  ContactDocument,
+  ContactDocumentSchema,
+} from './contact-document.schema';
+import {
+  AddressSubdocument,
+  AddressSubdocumentSchema,
+} from '../../../common/schemas/address.schema';
+import {
+  SocialLinksSubdocument,
+  SocialLinksSubdocumentSchema,
+} from '../../../common/schemas/social-links.schema';
 
 export type ContactDocumentType = HydratedDocument<Contact>;
 
@@ -158,7 +167,19 @@ ContactSchema.index(
 );
 
 // Performance Compound Indexes
-ContactSchema.index({ phone: 1, deletedAt: 1 }, { name: 'idx_contacts_phone_deleted' });
-ContactSchema.index({ companyId: 1, deletedAt: 1 }, { name: 'idx_contacts_company_deleted' });
-ContactSchema.index({ ownerId: 1, status: 1, deletedAt: 1 }, { name: 'idx_contacts_owner_status' });
-ContactSchema.index({ tags: 1, deletedAt: 1 }, { name: 'idx_contacts_tags_deleted' });
+ContactSchema.index(
+  { phone: 1, deletedAt: 1 },
+  { name: 'idx_contacts_phone_deleted' },
+);
+ContactSchema.index(
+  { companyId: 1, deletedAt: 1 },
+  { name: 'idx_contacts_company_deleted' },
+);
+ContactSchema.index(
+  { ownerId: 1, status: 1, deletedAt: 1 },
+  { name: 'idx_contacts_owner_status' },
+);
+ContactSchema.index(
+  { tags: 1, deletedAt: 1 },
+  { name: 'idx_contacts_tags_deleted' },
+);

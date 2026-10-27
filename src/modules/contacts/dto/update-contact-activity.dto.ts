@@ -16,7 +16,9 @@ export class UpdateContactActivityDto {
   @IsOptional()
   subject?: string;
 
-  @ApiPropertyOptional({ example: 'Confirmed meeting for contract signing next Tuesday.' })
+  @ApiPropertyOptional({
+    example: 'Confirmed meeting for contract signing next Tuesday.',
+  })
   @IsString()
   @IsOptional()
   description?: string;
@@ -26,7 +28,10 @@ export class UpdateContactActivityDto {
   @IsOptional()
   activityDate?: string;
 
-  @ApiPropertyOptional({ example: '2026-10-15T15:00:00.000Z', description: 'Alias for activityDate' })
+  @ApiPropertyOptional({
+    example: '2026-10-15T15:00:00.000Z',
+    description: 'Alias for activityDate',
+  })
   @IsDateString()
   @IsOptional()
   performedAt?: string;
@@ -37,11 +42,17 @@ export class UpdateContactActivityDto {
   @IsOptional()
   durationMinutes?: number;
 
-  @ApiPropertyOptional({ enum: ActivityOutcome, example: ActivityOutcome.COMPLETED })
-  @Transform(({ value }) => {
+  @ApiPropertyOptional({
+    enum: ActivityOutcome,
+    example: ActivityOutcome.COMPLETED,
+  })
+  @Transform(({ value }: { value: unknown }) => {
     if (value === null || value === undefined || value === '') return undefined;
     if (typeof value === 'string') {
-      const v = value.trim().toUpperCase().replace(/[\s-]+/g, '_');
+      const v = value
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, '_');
       return v === '' ? undefined : v;
     }
     return value;
