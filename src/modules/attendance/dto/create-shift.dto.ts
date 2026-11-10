@@ -118,15 +118,14 @@ export class CreateShiftDto {
     ATTENDANCE_CONSTANTS.DEFAULT_HALF_DAY_MINUTES;
 
   @ApiPropertyOptional({
-    description: 'Work minutes threshold after which overtime is calculated',
-    default: ATTENDANCE_CONSTANTS.DEFAULT_OVERTIME_THRESHOLD_MINUTES,
+    description:
+      'Work minutes threshold after which overtime is calculated (defaults to scheduled net work duration)',
   })
   @IsOptional()
   @IsInt()
   @Min(ATTENDANCE_CONSTANTS.MIN_OVERTIME_THRESHOLD_MINUTES)
   @Max(ATTENDANCE_CONSTANTS.MAX_OVERTIME_THRESHOLD_MINUTES)
-  overtimeThresholdMinutes?: number =
-    ATTENDANCE_CONSTANTS.DEFAULT_OVERTIME_THRESHOLD_MINUTES;
+  overtimeThresholdMinutes?: number;
 
   @ApiPropertyOptional({
     description: 'Set this shift as organization default',

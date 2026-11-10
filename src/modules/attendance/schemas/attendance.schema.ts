@@ -1,10 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 import {
+  ATTENDANCE_CONSTANTS,
   AttendanceSource,
   AttendanceStatus,
-  AttendanceType,
   BreakType,
+  WorkMode,
 } from '../constants/attendance.constant';
 
 export type AttendanceDocument = HydratedDocument<Attendance>;
@@ -51,6 +52,12 @@ export class ShiftSnapshot {
   @Prop({ type: Number, required: true })
   gracePeriodMinutes!: number;
 
+  @Prop({
+    type: Number,
+    default: ATTENDANCE_CONSTANTS.DEFAULT_BREAK_DURATION_MINUTES,
+  })
+  breakDurationMinutes?: number;
+
   @Prop({ type: Number, required: true })
   minWorkMinutesForFullDay!: number;
 
@@ -69,8 +76,41 @@ export class GeoLocation {
   @Prop({ type: Number })
   longitude?: number;
 
+  @Prop({ type: Number })
+  accuracyMeters?: number;
+
   @Prop({ type: String, trim: true })
   address?: string;
+
+  @Prop({ type: Boolean, default: null })
+  isWithinGeofence?: boolean | null;
+
+  @Prop({ type: Boolean, default: null })
+  isGeofenceVerified?: boolean | null;
+
+  @Prop({ type: Boolean, default: null })
+  isIpVerified?: boolean | null;
+
+  @Prop({ type: Number, default: null })
+  distanceMeters?: number | null;
+}
+
+@Schema({ _id: false })
+export class DeviceInfo {
+  @Prop({ type: String, trim: true })
+  deviceId?: string;
+
+  @Prop({ type: String, trim: true })
+  deviceName?: string;
+
+  @Prop({ type: String, trim: true })
+  platform?: string;
+
+  @Prop({ type: String, trim: true })
+  osVersion?: string;
+
+  @Prop({ type: String, trim: true })
+  appVersion?: string;
 }
 
 @Schema({
@@ -110,11 +150,11 @@ export class Attendance {
 
   @Prop({
     type: String,
-    enum: Object.values(AttendanceType),
+    enum: Object.values(WorkMode),
     required: true,
-    default: AttendanceType.REGULAR,
+    default: WorkMode.OFFICE,
   })
-  attendanceType!: AttendanceType;
+  workMode!: WorkMode;
 
   @Prop({ type: [BreakSession], default: [] })
   breaks!: BreakSession[];
@@ -170,6 +210,12 @@ export class Attendance {
 
   @Prop({ type: String, trim: true })
   checkOutNotes?: string;
+
+  @Prop({ type: DeviceInfo })
+  checkInDeviceInfo?: DeviceInfo;
+
+  @Prop({ type: DeviceInfo })
+  checkOutDeviceInfo?: DeviceInfo;
 
   @Prop({
     type: Types.ObjectId,

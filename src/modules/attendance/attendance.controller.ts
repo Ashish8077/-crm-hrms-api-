@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -22,24 +21,25 @@ import {
 import { Types } from 'mongoose';
 import { ParseObjectIdPipe } from '@nestjs/mongoose';
 import { AttendanceService } from './services/attendance.service';
-import { ShiftService } from './services/shift.service';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { PermissionKeys } from '../permissions/constants/permission.constant';
 import type { AuthenticatedRequest } from '../auth/types/auth-request.type';
 import { CheckInDto } from './dto/check-in.dto';
+import { AdminManualAttendanceDto } from './dto/admin-manual-attendance.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { StartBreakDto } from './dto/start-break.dto';
 import { EndBreakDto } from './dto/end-break.dto';
-import { CreateShiftDto } from './dto/create-shift.dto';
-import { UpdateShiftDto } from './dto/update-shift.dto';
-import { AssignShiftDto } from './dto/assign-shift.dto';
 import { CreateRegularizationDto } from './dto/create-regularization.dto';
 import { ReviewRegularizationDto } from './dto/review-regularization.dto';
+import { RejectRegularizationDto } from './dto/reject-regularization.dto';
+import { UpdateRegularizationStatusDto } from './dto/update-regularization-status.dto';
 import { ListAttendanceQueryDto } from './dto/list-attendance-query.dto';
 import { AttendanceCalendarQueryDto } from './dto/attendance-calendar-query.dto';
 import { AttendanceSummaryQueryDto } from './dto/attendance-summary-query.dto';
 import { ListRegularizationQueryDto } from './dto/list-regularization-query.dto';
-import { ListShiftsQueryDto } from './dto/list-shifts-query.dto';
+import { RegularizationStatus } from './constants/attendance.constant';
+import { AppError } from '../../common/errors/app-error';
+import { ErrorCode } from '../../common/errors/error-codes';
 
 @ApiTags('Attendance')
 @ApiBearerAuth('access-token')
@@ -48,10 +48,7 @@ import { ListShiftsQueryDto } from './dto/list-shifts-query.dto';
   version: '1',
 })
 export class AttendanceController {
-  constructor(
-    private readonly attendanceService: AttendanceService,
-    private readonly shiftService: ShiftService,
-  ) {}
+  constructor(private readonly attendanceService: AttendanceService) {}
 
   // ── 1. Attendance Capture ──────────────────────────────────────────
 
@@ -63,6 +60,28 @@ export class AttendanceController {
     const ipAddress = request.ip ?? null;
     const userAgent = request.headers['user-agent'] ?? null;
     const result = await this.attendanceService.checkIn(
+      request.user.userId,
+      dto,
+      { ipAddress, userAgent },
+    );
+    return { success: true, data: result };
+  }
+
+  @Post('manual')
+  @ApiOperation({
+    summary: 'Admin/HR manual attendance entry or backdated override',
+  })
+  @ApiCreatedResponse({
+    description: 'Manual attendance recorded successfully.',
+  })
+  @RequirePermissions(PermissionKeys.ATTENDANCE_CREATE)
+  async recordManualAttendance(
+    @Body() dto: AdminManualAttendanceDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const ipAddress = request.ip ?? null;
+    const userAgent = request.headers['user-agent'] ?? null;
+    const result = await this.attendanceService.recordManualAttendance(
       request.user.userId,
       dto,
       { ipAddress, userAgent },
@@ -218,7 +237,10 @@ export class AttendanceController {
   }
 
   @Patch('regularizations/:id/approve')
-  @ApiOperation({ summary: 'Approve an attendance regularization request' })
+  @ApiOperation({
+    summary:
+      'Approve an attendance regularization request (REST Option 1 - Action-based PATCH)',
+  })
   @ApiParam({
     name: 'id',
     description: 'Regularization Request ID',
@@ -243,7 +265,10 @@ export class AttendanceController {
   }
 
   @Patch('regularizations/:id/reject')
-  @ApiOperation({ summary: 'Reject an attendance regularization request' })
+  @ApiOperation({
+    summary:
+      'Reject an attendance regularization request (REST Option 1 - Action-based PATCH)',
+  })
   @ApiParam({
     name: 'id',
     description: 'Regularization Request ID',
@@ -253,7 +278,7 @@ export class AttendanceController {
   @RequirePermissions(PermissionKeys.ATTENDANCE_APPROVE)
   async rejectRegularization(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
-    @Body() dto: ReviewRegularizationDto,
+    @Body() dto: RejectRegularizationDto,
     @Req() request: AuthenticatedRequest,
   ) {
     const ipAddress = request.ip ?? null;
@@ -267,112 +292,62 @@ export class AttendanceController {
     return { success: true, data: result };
   }
 
-  // ── 4. Shift Management ───────────────────────────────────────────
-
-  @Post('shifts')
-  @ApiTags('Shifts')
-  @ApiOperation({ summary: 'Create a new shift' })
-  @ApiCreatedResponse({ description: 'Shift created successfully.' })
-  @RequirePermissions(PermissionKeys.ATTENDANCE_CREATE)
-  async createShift(
-    @Body() dto: CreateShiftDto,
-    @Req() request: AuthenticatedRequest,
-  ) {
-    const ipAddress = request.ip ?? null;
-    const userAgent = request.headers['user-agent'] ?? null;
-    const result = await this.shiftService.create(dto, request.user.userId, {
-      ipAddress,
-      userAgent,
-    });
-    return { success: true, data: result };
-  }
-
-  @Get('shifts')
-  @ApiTags('Shifts')
+  @Patch('regularizations/:id/status')
   @ApiOperation({
     summary:
-      'List shifts (returns active and inactive shifts; excludes soft-deleted)',
+      'Update regularization status (REST Option 2 - Pure RESTful State Update)',
   })
-  @ApiOkResponse({ description: 'List of shifts.' })
-  @RequirePermissions(PermissionKeys.ATTENDANCE_VIEW)
-  async listShifts(@Query() query: ListShiftsQueryDto) {
-    const filter =
-      query.isActive !== undefined ? { isActive: query.isActive } : undefined;
-    const result = await this.shiftService.list(filter);
-    return { success: true, data: result };
-  }
-
-  @Get('shifts/:id')
-  @ApiTags('Shifts')
-  @ApiOperation({ summary: 'Get shift by ID' })
-  @ApiParam({ name: 'id', description: 'Shift ID', type: String })
-  @ApiOkResponse({ description: 'Shift details.' })
-  @RequirePermissions(PermissionKeys.ATTENDANCE_VIEW)
-  async getShiftById(@Param('id', ParseObjectIdPipe) id: Types.ObjectId) {
-    const result = await this.shiftService.getById(id);
-    return { success: true, data: result };
-  }
-
-  @Patch('shifts/:id')
-  @ApiTags('Shifts')
-  @ApiOperation({ summary: 'Update shift details' })
-  @ApiParam({ name: 'id', description: 'Shift ID', type: String })
-  @ApiOkResponse({ description: 'Shift updated successfully.' })
-  @RequirePermissions(PermissionKeys.ATTENDANCE_EDIT)
-  async updateShift(
+  @ApiParam({
+    name: 'id',
+    description: 'Regularization Request ID',
+    type: String,
+  })
+  @ApiOkResponse({
+    description: 'Regularization status transitioned successfully.',
+  })
+  @RequirePermissions(PermissionKeys.ATTENDANCE_APPROVE)
+  async updateRegularizationStatus(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
-    @Body() dto: UpdateShiftDto,
+    @Body() dto: UpdateRegularizationStatusDto,
     @Req() request: AuthenticatedRequest,
   ) {
     const ipAddress = request.ip ?? null;
     const userAgent = request.headers['user-agent'] ?? null;
-    const result = await this.shiftService.update(
-      id,
-      dto,
-      request.user.userId,
-      { ipAddress, userAgent },
+    const reviewRemarks =
+      dto.comments ?? dto.notes ?? dto.reason ?? dto.reviewRemarks;
+
+    if (dto.status === RegularizationStatus.APPROVED) {
+      const result = await this.attendanceService.approveRegularization(
+        id,
+        request.user.userId,
+        {
+          reviewRemarks,
+          notes: dto.notes,
+          comments: dto.comments,
+        },
+        { ipAddress, userAgent },
+      );
+      return { success: true, data: result };
+    }
+
+    if (dto.status === RegularizationStatus.REJECTED) {
+      const result = await this.attendanceService.rejectRegularization(
+        id,
+        request.user.userId,
+        {
+          reason: dto.reason ?? reviewRemarks ?? '',
+          reviewRemarks,
+          comments: dto.comments,
+        },
+        { ipAddress, userAgent },
+      );
+      return { success: true, data: result };
+    }
+
+    throw new AppError(
+      ErrorCode.VALIDATION_ERROR,
+      `Invalid target status: ${dto.status}. Only APPROVED or REJECTED are permitted.`,
+      HttpStatus.BAD_REQUEST,
     );
-    return { success: true, data: result };
-  }
-
-  @Delete('shifts/:id')
-  @ApiTags('Shifts')
-  @ApiOperation({ summary: 'Delete a shift' })
-  @ApiParam({ name: 'id', description: 'Shift ID', type: String })
-  @ApiOkResponse({ description: 'Shift deleted successfully.' })
-  @RequirePermissions(PermissionKeys.ATTENDANCE_EDIT)
-  async deleteShift(
-    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
-    @Req() request: AuthenticatedRequest,
-  ) {
-    const ipAddress = request.ip ?? null;
-    const userAgent = request.headers['user-agent'] ?? null;
-    await this.shiftService.delete(id, request.user.userId, {
-      ipAddress,
-      userAgent,
-    });
-    return { success: true, message: 'Shift successfully deleted' };
-  }
-
-  @Post('shifts/assign')
-  @ApiTags('Shifts')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Assign a shift to an employee' })
-  @ApiOkResponse({ description: 'Shift assigned to employee successfully.' })
-  @RequirePermissions(PermissionKeys.ATTENDANCE_EDIT)
-  async assignShift(
-    @Body() dto: AssignShiftDto,
-    @Req() request: AuthenticatedRequest,
-  ) {
-    const ipAddress = request.ip ?? null;
-    const userAgent = request.headers['user-agent'] ?? null;
-    await this.shiftService.assignShift(dto, request.user.userId, {
-      ipAddress,
-      userAgent,
-    });
-    return {
-      success: true,
-      message: 'Shift successfully assigned to employee',
-    };
   }
 }

@@ -17,6 +17,12 @@ import { AppError } from '../../../common/errors/app-error';
 import { ErrorCode } from '../../../common/errors/error-codes';
 import { ClientMetadata } from '../../../common/types/client-metadata.type';
 
+export interface ShiftResolutionContext {
+  employeeId?: Types.ObjectId;
+  attendanceDate?: string;
+  isAdminOverride?: boolean;
+}
+
 @Injectable()
 export class ShiftService {
   private readonly logger = new Logger(ShiftService.name);
@@ -114,11 +120,11 @@ export class ShiftService {
       );
     }
 
-    // 5. Overtime threshold >= Full day
-    if (shift.overtimeThresholdMinutes < shift.minWorkMinutesForFullDay) {
+    // 5. Overtime threshold >= scheduled net work duration
+    if (shift.overtimeThresholdMinutes < netWorkDurationMinutes) {
       throw new AppError(
         ErrorCode.VALIDATION_ERROR,
-        `Overtime threshold minutes (${shift.overtimeThresholdMinutes}m) cannot be less than full-day work minutes (${shift.minWorkMinutesForFullDay}m)`,
+        `Overtime threshold minutes (${shift.overtimeThresholdMinutes}m) cannot be less than scheduled net work duration (${netWorkDurationMinutes}m, after deducting ${shift.breakDurationMinutes}m break)`,
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -129,22 +135,35 @@ export class ShiftService {
     actorId: Types.ObjectId,
     metadata: ClientMetadata,
   ): Promise<ShiftResponse> {
+    const isOvernight = dto.isOvernight ?? false;
+    const breakDurationMinutes =
+      dto.breakDurationMinutes ??
+      ATTENDANCE_CONSTANTS.DEFAULT_BREAK_DURATION_MINUTES;
+    const startMinutes = this.parseTimeToMinutes(dto.startTime);
+    const endMinutes = this.parseTimeToMinutes(dto.endTime);
+    const shiftDurationMinutes = !isOvernight
+      ? endMinutes - startMinutes
+      : 1440 - startMinutes + endMinutes;
+    const scheduledNetMinutes = Math.max(
+      0,
+      shiftDurationMinutes - breakDurationMinutes,
+    );
+
+    const overtimeThresholdMinutes =
+      dto.overtimeThresholdMinutes ?? scheduledNetMinutes;
+
     this.validateShiftConfiguration({
       startTime: dto.startTime,
       endTime: dto.endTime,
-      isOvernight: dto.isOvernight ?? false,
-      breakDurationMinutes:
-        dto.breakDurationMinutes ??
-        ATTENDANCE_CONSTANTS.DEFAULT_BREAK_DURATION_MINUTES,
+      isOvernight,
+      breakDurationMinutes,
       minWorkMinutesForFullDay:
         dto.minWorkMinutesForFullDay ??
         ATTENDANCE_CONSTANTS.DEFAULT_FULL_DAY_MINUTES,
       minWorkMinutesForHalfDay:
         dto.minWorkMinutesForHalfDay ??
         ATTENDANCE_CONSTANTS.DEFAULT_HALF_DAY_MINUTES,
-      overtimeThresholdMinutes:
-        dto.overtimeThresholdMinutes ??
-        ATTENDANCE_CONSTANTS.DEFAULT_OVERTIME_THRESHOLD_MINUTES,
+      overtimeThresholdMinutes,
       isDefault: dto.isDefault ?? false,
       isActive: dto.isActive ?? true,
     });
@@ -167,7 +186,10 @@ export class ShiftService {
           await this.shiftRepository.clearDefault(undefined, session);
         }
 
-        const createData = ShiftMapper.toCreateData(dto, actorId);
+        const createData = ShiftMapper.toCreateData(
+          { ...dto, overtimeThresholdMinutes },
+          actorId,
+        );
         createdShift = await this.shiftRepository.create(createData, session);
 
         await this.auditLogsService.createAuditLog(
@@ -222,6 +244,47 @@ export class ShiftService {
       );
     }
 
+    let replacementShiftId: Types.ObjectId | null = null;
+    if (existing.isDefault && dto.isDefault === false) {
+      if (!dto.replacementDefaultShiftId) {
+        throw new AppError(
+          ErrorCode.VALIDATION_ERROR,
+          'Cannot unset the default organization shift. Please designate another shift as default first.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      if (dto.replacementDefaultShiftId === id.toString()) {
+        throw new AppError(
+          ErrorCode.VALIDATION_ERROR,
+          'Replacement default shift cannot be the shift currently being updated.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      replacementShiftId = new Types.ObjectId(dto.replacementDefaultShiftId);
+      const replacement =
+        await this.shiftRepository.findById(replacementShiftId);
+      if (!replacement || !replacement.isActive) {
+        throw new AppError(
+          ErrorCode.VALIDATION_ERROR,
+          'Designated replacement default shift not found or is inactive.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+
+    if (dto.isActive === false && existing.isActive) {
+      const assignedCount = await this.employeeRepository.countByShiftId(id);
+      if (assignedCount > 0) {
+        throw new AppError(
+          ErrorCode.VALIDATION_ERROR,
+          `Cannot deactivate shift '${existing.name}' because ${assignedCount} active employee(s) are currently assigned to it. Please reassign them to another shift first.`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+
     const mergedConfig = {
       startTime: dto.startTime ?? existing.startTime,
       endTime: dto.endTime ?? existing.endTime,
@@ -255,7 +318,14 @@ export class ShiftService {
 
     try {
       await session.withTransaction(async (s: ClientSession) => {
-        if (dto.isDefault) {
+        if (replacementShiftId) {
+          await this.shiftRepository.clearDefault(replacementShiftId, s);
+          await this.shiftRepository.updateById(
+            replacementShiftId,
+            { isDefault: true, updatedBy: actorId },
+            s,
+          );
+        } else if (dto.isDefault) {
           await this.shiftRepository.clearDefault(id, s);
         }
 
@@ -312,6 +382,15 @@ export class ShiftService {
       );
     }
 
+    const assignedCount = await this.employeeRepository.countByShiftId(id);
+    if (assignedCount > 0) {
+      throw new AppError(
+        ErrorCode.VALIDATION_ERROR,
+        `Cannot delete shift '${existing.name}' because ${assignedCount} active employee(s) are currently assigned to it. Please reassign them to another shift first.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
     const session = await this.connection.startSession();
     try {
       await session.withTransaction(async (session: ClientSession) => {
@@ -341,11 +420,11 @@ export class ShiftService {
     metadata: ClientMetadata,
   ): Promise<void> {
     const employeeId = new Types.ObjectId(dto.employeeId);
-    const shiftId = new Types.ObjectId(dto.shiftId);
+    const shiftId = dto.shiftId ? new Types.ObjectId(dto.shiftId) : null;
 
     const [employee, shift] = await Promise.all([
       this.employeeRepository.findById(employeeId),
-      this.shiftRepository.findById(shiftId),
+      shiftId ? this.shiftRepository.findById(shiftId) : Promise.resolve(null),
     ]);
 
     if (!employee) {
@@ -356,7 +435,7 @@ export class ShiftService {
       );
     }
 
-    if (!shift || !shift.isActive) {
+    if (shiftId && (!shift || !shift.isActive)) {
       throw new AppError(
         ErrorCode.RESOURCE_NOT_FOUND,
         'Shift not found or inactive',
@@ -384,12 +463,16 @@ export class ShiftService {
         await this.auditLogsService.createAuditLog(
           {
             actorId,
-            action: AuditAction.SHIFT_ASSIGNED,
+            action: shiftId
+              ? AuditAction.SHIFT_ASSIGNED
+              : AuditAction.SHIFT_UNASSIGNED,
             targetId: employeeId,
             targetModel: AuditTargetModel.EMPLOYEE,
             ipAddress: metadata.ipAddress,
             userAgent: metadata.userAgent,
-            details: { shiftId: dto.shiftId, shiftCode: shift.code },
+            details: shiftId
+              ? { shiftId: dto.shiftId, shiftCode: shift?.code }
+              : { previousShiftId: employee.shiftId?.toString() ?? null },
           },
           session,
         );
@@ -400,41 +483,57 @@ export class ShiftService {
   }
 
   /**
-   * Resolves the active shift for an employee (explicit > employee assigned > organization default).
+   * Resolves the active shift for an employee using the strict 4-Step Shift Resolution Hierarchy:
+   *
+   * 1. Daily Roster / Override: Manager-assigned rotational/temporary shift for this specific date or authorized Admin manual override.
+   * 2. Employee Assigned Shift: employee.shiftId on employee profile (must be active and not deleted).
+   * 3. Company Default Shift: Organization fallback general shift (isDefault: true, isActive: true).
+   * 4. Hard Error (422 Unprocessable Entity): If all three fail (or the resolved shift is inactive/deleted).
    */
   async resolveShift(
     employeeShiftId?: Types.ObjectId | null,
     explicitShiftId?: Types.ObjectId | null,
+    context?: ShiftResolutionContext,
   ): Promise<ShiftLean> {
-    if (explicitShiftId) {
-      const explicit = await this.shiftRepository.findById(explicitShiftId);
-      if (explicit && explicit.isActive) {
-        return explicit;
+    // Step 1: Daily Roster / Explicit Override
+    // Only accept explicitShiftId when authorized (e.g. Admin manual override or date-specific roster assignment)
+    const effectiveExplicitId =
+      context?.isAdminOverride === false ? null : explicitShiftId;
+
+    if (effectiveExplicitId) {
+      const explicit = await this.shiftRepository.findById(effectiveExplicitId);
+      if (!explicit || !explicit.isActive) {
+        throw new AppError(
+          ErrorCode.RESOURCE_NOT_FOUND,
+          'Specified shift not found or inactive',
+          HttpStatus.NOT_FOUND,
+        );
       }
+      return explicit;
     }
 
+    // Step 2: Employee Assigned Shift
     if (employeeShiftId) {
       const assigned = await this.shiftRepository.findById(employeeShiftId);
       if (assigned && assigned.isActive) {
         return assigned;
       }
+      // If employee.shiftId is inactive/deleted, fall through to company default shift
     }
 
+    // Step 3: Company Default Shift
+    // Fallback prevents onboarding bottlenecks (e.g., HR forgot to assign shift on Day 1)
     const defaultShift = await this.shiftRepository.findDefault();
-    if (defaultShift) {
+    if (defaultShift && defaultShift.isActive) {
       return defaultShift;
     }
 
-    // Fallback: any active shift
-    const anyActive = await this.shiftRepository.findActive();
-    if (anyActive.length > 0) {
-      return anyActive[0];
-    }
-
+    // Step 4: Hard Error (422 Unprocessable Entity)
+    // If all three fail, block punch-in with unprocessable entity error as final safety net
     throw new AppError(
-      ErrorCode.RESOURCE_NOT_FOUND,
-      'No active shift found. Please configure a default shift.',
-      HttpStatus.BAD_REQUEST,
+      ErrorCode.VALIDATION_ERROR,
+      'No applicable shift found for employee attendance. Please assign a shift or configure an active company default shift.',
+      HttpStatus.UNPROCESSABLE_ENTITY,
     );
   }
 }

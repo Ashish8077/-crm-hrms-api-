@@ -50,6 +50,22 @@ export class EmployeeRepository {
     return query.lean().exec();
   }
 
+  async countByShiftId(
+    shiftId: Types.ObjectId | string,
+    session?: ClientSession,
+  ): Promise<number> {
+    const targetId =
+      typeof shiftId === 'string' ? new Types.ObjectId(shiftId) : shiftId;
+    const query = this.employeeModel.countDocuments({
+      shiftId: targetId,
+      deletedAt: null,
+    });
+    if (session) {
+      query.session(session);
+    }
+    return query.exec();
+  }
+
   async findByWorkEmail(
     workEmail: string,
     excludeId?: Types.ObjectId,
@@ -217,7 +233,44 @@ export class EmployeeRepository {
       }
     }
 
-    return `EMP-${String(seq).padStart(4, '0')}`;
+    let code = `EMP-${String(seq).padStart(4, '0')}`;
+
+    // Self-healing guard: If the counter generated a code that already exists in employees
+    // (due to past seeded records, manual insertions, or desynchronized counter),
+    // find the highest existing employeeCode in the database and advance the sequence.
+    const collision = await this.employeeModel
+      .findOne({ employeeCode: code })
+      .collation({ locale: 'en', strength: 2 })
+      .lean()
+      .exec();
+
+    if (collision) {
+      const allCodes = await this.employeeModel
+        .find({ employeeCode: /^EMP-\d+$/i }, { employeeCode: 1 })
+        .lean()
+        .exec();
+
+      let maxSeq = seq;
+      for (const doc of allCodes) {
+        const match = doc.employeeCode?.match(/^EMP-(\d+)$/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num > maxSeq) {
+            maxSeq = num;
+          }
+        }
+      }
+
+      const nextSeq = maxSeq + 1;
+      await collection.updateOne(
+        { _id: 'employeeCode' },
+        { $set: { seq: nextSeq } },
+        { upsert: true },
+      );
+      code = `EMP-${String(nextSeq).padStart(4, '0')}`;
+    }
+
+    return code;
   }
 
   async linkUser(

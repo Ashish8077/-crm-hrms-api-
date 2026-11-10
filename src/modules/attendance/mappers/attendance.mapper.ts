@@ -1,17 +1,54 @@
 import { Types } from 'mongoose';
 import {
+  ATTENDANCE_CONSTANTS,
   AttendanceSource,
   AttendanceStatus,
-  AttendanceType,
   BreakType,
+  WorkMode,
 } from '../constants/attendance.constant';
 import { AttendanceLean } from '../repositories/attendance.repository';
 import {
   Attendance,
   BreakSession,
+  DeviceInfo,
   GeoLocation,
   ShiftSnapshot,
 } from '../schemas/attendance.schema';
+import { CheckInDto, GeoLocationDto } from '../dto/check-in.dto';
+import { CheckOutDto } from '../dto/check-out.dto';
+import { StartBreakDto } from '../dto/start-break.dto';
+import { AttendanceCalculationUtil } from '../utils/attendance-calculation.util';
+
+export interface ShiftSnapshotSource {
+  name: string;
+  code: string;
+  startTime: string;
+  endTime: string;
+  isOvernight: boolean;
+  gracePeriodMinutes: number;
+  breakDurationMinutes?: number;
+  minWorkMinutesForFullDay: number;
+  minWorkMinutesForHalfDay: number;
+  overtimeThresholdMinutes: number;
+}
+
+export interface CheckInCreateInput {
+  employeeId: Types.ObjectId | string;
+  attendanceDate: string;
+  shift: ShiftSnapshotSource & { _id: Types.ObjectId | string };
+  checkInTime: Date;
+  isLate: boolean;
+  lateMinutes: number;
+  dto: CheckInDto;
+  ipAddress?: string | null;
+  resolvedSource?: AttendanceSource;
+  geofenceResult?: {
+    isWithinGeofence: boolean | null;
+    isGeofenceVerified: boolean;
+    isIpVerified: boolean;
+    distanceMeters: number | null;
+  } | null;
+}
 
 export interface CreateAttendanceInput {
   employeeId: Types.ObjectId | string;
@@ -21,7 +58,7 @@ export interface CreateAttendanceInput {
   shiftSnapshot: ShiftSnapshot;
   checkInTime: Date;
   status?: AttendanceStatus;
-  attendanceType?: AttendanceType;
+  workMode?: WorkMode;
   breaks?: BreakSession[];
   isLate?: boolean;
   lateMinutes?: number;
@@ -41,16 +78,38 @@ export interface CheckOutUpdateInput {
   overtimeMinutes: number;
   isEarlyDeparture: boolean;
   earlyDepartureMinutes: number;
+  dto?: CheckOutDto;
+  ipAddress?: string | null;
   checkOutSource?: AttendanceSource;
-  checkOutIp?: string;
-  checkOutLocation?: GeoLocation;
+  checkOutIp?: string | null;
+  checkOutLocation?: GeoLocationDto | GeoLocation;
   checkOutNotes?: string;
+}
+
+export interface RegularizedAttendanceCreateInput {
+  employeeId: Types.ObjectId | string;
+  attendanceDate: string;
+  shift: ShiftSnapshotSource & { _id: Types.ObjectId | string };
+  checkInTime: Date;
+  checkOutTime: Date;
+  status?: AttendanceStatus;
+  totalBreakMinutes?: number;
+  totalWorkMinutes: number;
+  overtimeMinutes: number;
+  isLate: boolean;
+  lateMinutes: number;
+  isEarlyDeparture: boolean;
+  earlyDepartureMinutes: number;
+  regularizationId: Types.ObjectId | string;
+  checkInSource?: AttendanceSource;
+  checkOutSource?: AttendanceSource;
 }
 
 export interface RegularizedAttendanceUpdateInput {
   checkInTime: Date;
   checkOutTime: Date;
   status: AttendanceStatus;
+  totalBreakMinutes?: number;
   totalWorkMinutes: number;
   overtimeMinutes: number;
   isLate: boolean;
@@ -61,8 +120,8 @@ export interface RegularizedAttendanceUpdateInput {
 }
 
 export interface BreakSessionResponse {
-  startTime: Date;
-  endTime: Date | null;
+  startTime: string | Date;
+  endTime: string | Date | null;
   durationMinutes: number | null;
   type: BreakType;
   note?: string;
@@ -75,6 +134,7 @@ export interface ShiftSnapshotResponse {
   endTime: string;
   isOvernight: boolean;
   gracePeriodMinutes: number;
+  breakDurationMinutes?: number;
   minWorkMinutesForFullDay: number;
   minWorkMinutesForHalfDay: number;
   overtimeThresholdMinutes: number;
@@ -84,13 +144,14 @@ export interface AttendanceResponse {
   id: string;
   employeeId: string;
   attendanceDate: string;
-  date: Date;
+  date: string | Date;
   shiftId: string;
   shiftSnapshot: ShiftSnapshotResponse;
-  checkInTime: Date | null;
-  checkOutTime: Date | null;
+  checkInTime: string | Date | null;
+  checkOutTime: string | Date | null;
   status: AttendanceStatus;
-  attendanceType: AttendanceType;
+  workMode: WorkMode;
+  attendanceType?: string;
   breaks: BreakSessionResponse[];
   totalBreakMinutes: number;
   totalWorkMinutes: number;
@@ -101,11 +162,15 @@ export interface AttendanceResponse {
   overtimeMinutes: number;
   checkInSource: AttendanceSource;
   checkOutSource?: AttendanceSource;
+  checkInLocation?: GeoLocation;
+  checkOutLocation?: GeoLocation;
+  checkInDeviceInfo?: DeviceInfo;
+  checkOutDeviceInfo?: DeviceInfo;
   checkInNotes?: string;
   checkOutNotes?: string;
   regularizationId: string | null;
-  createdAt?: Date;
-  updatedAt?: Date;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
 }
 
 export interface TodayAttendanceStatusResponse {
@@ -116,7 +181,123 @@ export interface TodayAttendanceStatusResponse {
 
 export class AttendanceMapper {
   /**
-   * Maps request and calculation data to persistence input for creating an attendance record.
+   * Transforms shift configuration into an embedded ShiftSnapshot schema document.
+   */
+  static toShiftSnapshot(shift: ShiftSnapshotSource): ShiftSnapshot {
+    return {
+      name: shift.name,
+      code: shift.code,
+      startTime: shift.startTime,
+      endTime: shift.endTime,
+      isOvernight: shift.isOvernight,
+      gracePeriodMinutes: shift.gracePeriodMinutes,
+      breakDurationMinutes:
+        shift.breakDurationMinutes ??
+        ATTENDANCE_CONSTANTS.DEFAULT_BREAK_DURATION_MINUTES,
+      minWorkMinutesForFullDay: shift.minWorkMinutesForFullDay,
+      minWorkMinutesForHalfDay: shift.minWorkMinutesForHalfDay,
+      overtimeThresholdMinutes: shift.overtimeThresholdMinutes,
+    };
+  }
+
+  /**
+   * Transforms break start DTO into an embedded BreakSession document.
+   */
+  static toBreakSession(
+    dto: StartBreakDto,
+    startTime: Date = new Date(),
+  ): BreakSession {
+    return {
+      startTime,
+      endTime: null,
+      durationMinutes: null,
+      type: dto.type ?? BreakType.LUNCH,
+      note: dto.note?.trim(),
+    };
+  }
+
+  /**
+   * Maps check-in context, DTO, and calculations into a persistence document for creation.
+   */
+  static toCheckInCreateData(input: CheckInCreateInput): Partial<Attendance> {
+    const shiftSnapshot = AttendanceMapper.toShiftSnapshot(input.shift);
+
+    let resolvedWorkMode = input.dto.workMode ?? WorkMode.OFFICE;
+    if (
+      (input.dto.attendanceType as string) === 'WORK_FROM_HOME' ||
+      input.dto.workMode === WorkMode.WORK_FROM_HOME
+    ) {
+      resolvedWorkMode = WorkMode.WORK_FROM_HOME;
+    } else if (
+      (input.dto.attendanceType as string) === 'ON_DUTY' ||
+      input.dto.workMode === WorkMode.ON_DUTY
+    ) {
+      resolvedWorkMode = WorkMode.ON_DUTY;
+    }
+
+    const checkInLocation: GeoLocation | undefined = input.dto.location
+      ? {
+          latitude: input.dto.location.latitude,
+          longitude: input.dto.location.longitude,
+          accuracyMeters: input.dto.location.accuracyMeters,
+          address: input.dto.location.address?.trim(),
+          isWithinGeofence: input.geofenceResult?.isWithinGeofence ?? null,
+          isGeofenceVerified: input.geofenceResult?.isGeofenceVerified ?? false,
+          isIpVerified: input.geofenceResult?.isIpVerified ?? false,
+          distanceMeters: input.geofenceResult?.distanceMeters ?? null,
+        }
+      : input.geofenceResult
+        ? {
+            isWithinGeofence: input.geofenceResult.isWithinGeofence ?? null,
+            isGeofenceVerified: input.geofenceResult.isGeofenceVerified,
+            isIpVerified: input.geofenceResult.isIpVerified,
+            distanceMeters: input.geofenceResult.distanceMeters,
+          }
+        : undefined;
+
+    const sanitizedNotes = input.dto.notes
+      ? input.dto.notes
+          .replace(/<[^>]*>/g, '')
+          .trim()
+          .slice(0, 200)
+      : undefined;
+
+    return {
+      employeeId:
+        input.employeeId instanceof Types.ObjectId
+          ? input.employeeId
+          : new Types.ObjectId(input.employeeId),
+      attendanceDate: input.attendanceDate,
+      date: AttendanceCalculationUtil.getNormalizedDate(input.attendanceDate),
+      shiftId:
+        input.shift._id instanceof Types.ObjectId
+          ? input.shift._id
+          : new Types.ObjectId(input.shift._id),
+      shiftSnapshot,
+      checkInTime: input.checkInTime,
+      checkOutTime: null,
+      status: AttendanceStatus.CHECKED_IN,
+      workMode: resolvedWorkMode,
+      breaks: [],
+      totalBreakMinutes: 0,
+      totalWorkMinutes: 0,
+      isLate: input.isLate,
+      lateMinutes: input.lateMinutes,
+      isEarlyDeparture: false,
+      earlyDepartureMinutes: 0,
+      overtimeMinutes: 0,
+      checkInSource:
+        input.resolvedSource ?? input.dto.source ?? AttendanceSource.WEB,
+      checkInIp: input.ipAddress || undefined,
+      checkInLocation,
+      checkInNotes: sanitizedNotes,
+      checkInDeviceInfo: input.dto.deviceInfo,
+      regularizationId: null,
+    };
+  }
+
+  /**
+   * Maps general creation data to persistence input for creating an attendance record.
    */
   static toCreateData(input: CreateAttendanceInput): Partial<Attendance> {
     return {
@@ -144,7 +325,7 @@ export class AttendanceMapper {
       checkInTime: input.checkInTime,
       checkOutTime: null,
       status: input.status ?? AttendanceStatus.CHECKED_IN,
-      attendanceType: input.attendanceType ?? AttendanceType.REGULAR,
+      workMode: input.workMode ?? WorkMode.OFFICE,
       breaks: input.breaks ?? [],
       totalBreakMinutes: 0,
       totalWorkMinutes: 0,
@@ -166,7 +347,7 @@ export class AttendanceMapper {
   }
 
   /**
-   * Maps check-out inputs and calculations to persistence update data.
+   * Maps check-out inputs and calculations to persistence update dictionary.
    */
   static toCheckOutUpdateData(
     input: CheckOutUpdateInput,
@@ -180,25 +361,72 @@ export class AttendanceMapper {
       overtimeMinutes: input.overtimeMinutes,
       isEarlyDeparture: input.isEarlyDeparture,
       earlyDepartureMinutes: input.earlyDepartureMinutes,
-      checkOutSource: input.checkOutSource ?? AttendanceSource.WEB,
+      checkOutSource:
+        input.dto?.source ?? input.checkOutSource ?? AttendanceSource.WEB,
     };
 
-    if (input.checkOutIp !== undefined) data.checkOutIp = input.checkOutIp;
-    if (input.checkOutLocation !== undefined)
-      data.checkOutLocation = input.checkOutLocation;
-    if (input.checkOutNotes !== undefined)
-      data.checkOutNotes = input.checkOutNotes.trim();
+    const ip = input.ipAddress || input.checkOutIp;
+    if (ip) data.checkOutIp = ip;
+
+    const loc = input.dto?.location ?? input.checkOutLocation;
+    if (loc !== undefined) data.checkOutLocation = loc;
+
+    const notes = input.dto?.notes?.trim() ?? input.checkOutNotes?.trim();
+    if (notes !== undefined) data.checkOutNotes = notes;
+
+    if (input.dto?.deviceInfo !== undefined) {
+      data.checkOutDeviceInfo = input.dto.deviceInfo;
+    }
 
     return data;
   }
 
   /**
-   * Maps regularization approval calculation to persistence update data.
+   * Maps a new regularized attendance record (when employee was absent and regularization approved) to persistence input.
+   */
+  static toRegularizedCreateData(
+    input: RegularizedAttendanceCreateInput,
+  ): Partial<Attendance> {
+    return {
+      employeeId:
+        input.employeeId instanceof Types.ObjectId
+          ? input.employeeId
+          : new Types.ObjectId(input.employeeId),
+      attendanceDate: input.attendanceDate,
+      date: AttendanceCalculationUtil.getNormalizedDate(input.attendanceDate),
+      shiftId:
+        input.shift._id instanceof Types.ObjectId
+          ? input.shift._id
+          : new Types.ObjectId(input.shift._id),
+      shiftSnapshot: AttendanceMapper.toShiftSnapshot(input.shift),
+      checkInTime: input.checkInTime,
+      checkOutTime: input.checkOutTime,
+      status: input.status ?? AttendanceStatus.REGULARIZED,
+      workMode: WorkMode.OFFICE,
+      breaks: [],
+      totalBreakMinutes: input.totalBreakMinutes ?? 0,
+      totalWorkMinutes: input.totalWorkMinutes,
+      overtimeMinutes: input.overtimeMinutes,
+      isLate: input.isLate,
+      lateMinutes: input.lateMinutes,
+      isEarlyDeparture: input.isEarlyDeparture,
+      earlyDepartureMinutes: input.earlyDepartureMinutes,
+      checkInSource: input.checkInSource ?? AttendanceSource.SYSTEM,
+      checkOutSource: input.checkOutSource ?? AttendanceSource.SYSTEM,
+      regularizationId:
+        input.regularizationId instanceof Types.ObjectId
+          ? input.regularizationId
+          : new Types.ObjectId(input.regularizationId),
+    };
+  }
+
+  /**
+   * Maps regularization approval calculation to persistence update dictionary for existing record.
    */
   static toRegularizedUpdateData(
     input: RegularizedAttendanceUpdateInput,
   ): Record<string, unknown> {
-    return {
+    const data: Record<string, unknown> = {
       checkInTime: input.checkInTime,
       checkOutTime: input.checkOutTime,
       status: input.status,
@@ -213,6 +441,12 @@ export class AttendanceMapper {
           ? input.regularizationId
           : new Types.ObjectId(input.regularizationId),
     };
+
+    if (input.totalBreakMinutes !== undefined) {
+      data.totalBreakMinutes = input.totalBreakMinutes;
+    }
+
+    return data;
   }
 
   /**
@@ -223,7 +457,10 @@ export class AttendanceMapper {
       id: doc._id.toString(),
       employeeId: doc.employeeId.toString(),
       attendanceDate: doc.attendanceDate,
-      date: doc.date,
+      date:
+        AttendanceCalculationUtil.formatZonedISO(
+          AttendanceCalculationUtil.getNormalizedDate(doc.attendanceDate),
+        ) ?? doc.attendanceDate,
       shiftId: doc.shiftId.toString(),
       shiftSnapshot: {
         name: doc.shiftSnapshot.name,
@@ -232,17 +469,23 @@ export class AttendanceMapper {
         endTime: doc.shiftSnapshot.endTime,
         isOvernight: doc.shiftSnapshot.isOvernight,
         gracePeriodMinutes: doc.shiftSnapshot.gracePeriodMinutes,
+        breakDurationMinutes:
+          doc.shiftSnapshot.breakDurationMinutes ??
+          ATTENDANCE_CONSTANTS.DEFAULT_BREAK_DURATION_MINUTES,
         minWorkMinutesForFullDay: doc.shiftSnapshot.minWorkMinutesForFullDay,
         minWorkMinutesForHalfDay: doc.shiftSnapshot.minWorkMinutesForHalfDay,
         overtimeThresholdMinutes: doc.shiftSnapshot.overtimeThresholdMinutes,
       },
-      checkInTime: doc.checkInTime,
-      checkOutTime: doc.checkOutTime,
+      checkInTime: AttendanceCalculationUtil.formatZonedISO(doc.checkInTime),
+      checkOutTime: AttendanceCalculationUtil.formatZonedISO(doc.checkOutTime),
       status: doc.status,
-      attendanceType: doc.attendanceType,
+      workMode: doc.workMode ?? WorkMode.OFFICE,
+      attendanceType: doc.workMode ?? WorkMode.OFFICE,
       breaks: (doc.breaks || []).map((b) => ({
-        startTime: b.startTime,
-        endTime: b.endTime,
+        startTime:
+          AttendanceCalculationUtil.formatZonedISO(b.startTime) ??
+          b.startTime.toISOString(),
+        endTime: AttendanceCalculationUtil.formatZonedISO(b.endTime),
         durationMinutes: b.durationMinutes,
         type: b.type,
         note: b.note,
@@ -256,13 +499,19 @@ export class AttendanceMapper {
       overtimeMinutes: doc.overtimeMinutes ?? 0,
       checkInSource: doc.checkInSource,
       checkOutSource: doc.checkOutSource,
+      checkInLocation: doc.checkInLocation,
+      checkOutLocation: doc.checkOutLocation,
+      checkInDeviceInfo: doc.checkInDeviceInfo,
+      checkOutDeviceInfo: doc.checkOutDeviceInfo,
       checkInNotes: doc.checkInNotes,
       checkOutNotes: doc.checkOutNotes,
       regularizationId: doc.regularizationId
         ? doc.regularizationId.toString()
         : null,
-      createdAt: doc.createdAt,
-      updatedAt: doc.updatedAt,
+      createdAt:
+        AttendanceCalculationUtil.formatZonedISO(doc.createdAt) ?? undefined,
+      updatedAt:
+        AttendanceCalculationUtil.formatZonedISO(doc.updatedAt) ?? undefined,
     };
   }
 

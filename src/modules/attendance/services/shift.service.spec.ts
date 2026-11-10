@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/unbound-method */
+import { HttpStatus } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { getConnectionToken } from '@nestjs/mongoose';
@@ -9,6 +10,7 @@ import {
   EmployeeRepository,
 } from '../../employees/repositories/employee.repository';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
+import { AuditAction } from '../../audit-logs/constants/audit-log.constant';
 import { AppError } from '../../../common/errors/app-error';
 import { ErrorCode } from '../../../common/errors/error-codes';
 import { CreateShiftDto } from '../dto/create-shift.dto';
@@ -81,6 +83,7 @@ describe('ShiftService', () => {
           useValue: {
             findById: jest.fn(),
             updateById: jest.fn(),
+            countByShiftId: jest.fn(),
           },
         },
         {
@@ -100,6 +103,8 @@ describe('ShiftService', () => {
     shiftRepo = module.get(ShiftRepository);
     employeeRepo = module.get(EmployeeRepository);
     auditLogsService = module.get(AuditLogsService);
+
+    employeeRepo.countByShiftId.mockResolvedValue(0);
   });
 
   describe('create', () => {
@@ -186,13 +191,18 @@ describe('ShiftService', () => {
       });
     });
 
-    it('should throw VALIDATION_ERROR if overtime threshold < full-day minutes', async () => {
+    it('should throw VALIDATION_ERROR if overtime threshold < scheduled net work duration', async () => {
+      // 09:00 -> 18:00 (540m) - 60m break = 480m net scheduled.
+      // full-day required is 420m, but setting overtimeThreshold to 450m (< 480m net) must be rejected
       await expect(
         service.create(
           {
             ...dto,
-            minWorkMinutesForFullDay: 480,
-            overtimeThresholdMinutes: 300,
+            startTime: '09:00',
+            endTime: '18:00',
+            breakDurationMinutes: 60,
+            minWorkMinutesForFullDay: 420,
+            overtimeThresholdMinutes: 450,
           },
           actorId,
           clientMetadata,
@@ -200,6 +210,37 @@ describe('ShiftService', () => {
       ).rejects.toMatchObject({
         code: ErrorCode.VALIDATION_ERROR,
       });
+    });
+
+    it('should default overtime threshold to scheduled net work duration when omitted', async () => {
+      // 09:00 -> 17:00 (480m) - 60m break = 420m net scheduled.
+      const customDto = {
+        ...dto,
+        startTime: '09:00',
+        endTime: '17:00',
+        breakDurationMinutes: 60,
+        minWorkMinutesForFullDay: 420,
+        minWorkMinutesForHalfDay: 210,
+        overtimeThresholdMinutes: undefined,
+      };
+
+      shiftRepo.findByCode.mockResolvedValue(null);
+      shiftRepo.create.mockResolvedValue({
+        ...mockShift,
+        startTime: '09:00',
+        endTime: '17:00',
+        breakDurationMinutes: 60,
+        overtimeThresholdMinutes: 420,
+      });
+
+      const result = await service.create(customDto, actorId, clientMetadata);
+      expect(result).toBeDefined();
+      expect(shiftRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overtimeThresholdMinutes: 420,
+        }),
+        expect.anything(),
+      );
     });
 
     it('should throw VALIDATION_ERROR if full-day minutes exceed shift duration', async () => {
@@ -376,6 +417,157 @@ describe('ShiftService', () => {
       expect(auditLogsService.createAuditLog).toHaveBeenCalled();
       expect(result.name).toBe('Updated Shift');
     });
+
+    it('should throw VALIDATION_ERROR if attempting to unset default shift without replacement', async () => {
+      shiftRepo.findById.mockResolvedValue({
+        ...mockShift,
+        isDefault: true,
+      });
+
+      await expect(
+        service.update(shiftId, { isDefault: false }, actorId, clientMetadata),
+      ).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION_ERROR,
+      });
+    });
+
+    it('should throw VALIDATION_ERROR if replacement default shift is the current shift itself', async () => {
+      shiftRepo.findById.mockResolvedValue({
+        ...mockShift,
+        isDefault: true,
+      });
+
+      await expect(
+        service.update(
+          shiftId,
+          {
+            isDefault: false,
+            replacementDefaultShiftId: shiftId.toString(),
+          },
+          actorId,
+          clientMetadata,
+        ),
+      ).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION_ERROR,
+      });
+    });
+
+    it('should throw VALIDATION_ERROR if replacement default shift is inactive or does not exist', async () => {
+      const replacementId = new Types.ObjectId();
+      shiftRepo.findById.mockImplementation((id) => {
+        if (id.toString() === shiftId.toString()) {
+          return Promise.resolve({ ...mockShift, isDefault: true });
+        }
+        if (id.toString() === replacementId.toString()) {
+          return Promise.resolve({
+            ...mockShift,
+            _id: replacementId,
+            isActive: false,
+          });
+        }
+        return Promise.resolve(null);
+      });
+
+      await expect(
+        service.update(
+          shiftId,
+          {
+            isDefault: false,
+            replacementDefaultShiftId: replacementId.toString(),
+          },
+          actorId,
+          clientMetadata,
+        ),
+      ).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION_ERROR,
+      });
+    });
+
+    it('should successfully unset default when a valid replacement default shift is designated', async () => {
+      const replacementId = new Types.ObjectId();
+      const replacementShift: ShiftLean = {
+        ...mockShift,
+        _id: replacementId,
+        isDefault: false,
+        isActive: true,
+      };
+
+      shiftRepo.findById.mockImplementation((id) => {
+        if (id.toString() === shiftId.toString()) {
+          return Promise.resolve({ ...mockShift, isDefault: true });
+        }
+        if (id.toString() === replacementId.toString()) {
+          return Promise.resolve(replacementShift);
+        }
+        return Promise.resolve(null);
+      });
+      shiftRepo.findByCode.mockResolvedValue(null);
+      shiftRepo.updateById.mockImplementation((id) => {
+        if (id.toString() === shiftId.toString()) {
+          return Promise.resolve({ ...mockShift, isDefault: false });
+        }
+        return Promise.resolve({ ...replacementShift, isDefault: true });
+      });
+
+      const result = await service.update(
+        shiftId,
+        {
+          isDefault: false,
+          replacementDefaultShiftId: replacementId.toString(),
+        },
+        actorId,
+        clientMetadata,
+      );
+
+      expect(shiftRepo.clearDefault).toHaveBeenCalledWith(
+        replacementId,
+        expect.anything(),
+      );
+      expect(shiftRepo.updateById).toHaveBeenCalledWith(
+        replacementId,
+        expect.objectContaining({ isDefault: true }),
+        expect.anything(),
+      );
+      expect(result.isDefault).toBe(false);
+    });
+
+    it('should throw VALIDATION_ERROR if attempting to deactivate shift with active assigned employees', async () => {
+      shiftRepo.findById.mockResolvedValue({
+        ...mockShift,
+        isDefault: false,
+        isActive: true,
+      });
+      employeeRepo.countByShiftId.mockResolvedValue(2);
+
+      await expect(
+        service.update(shiftId, { isActive: false }, actorId, clientMetadata),
+      ).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION_ERROR,
+      });
+    });
+
+    it('should allow deactivating a shift when 0 active employees are assigned', async () => {
+      shiftRepo.findById.mockResolvedValue({
+        ...mockShift,
+        isDefault: false,
+        isActive: true,
+      });
+      employeeRepo.countByShiftId.mockResolvedValue(0);
+      shiftRepo.updateById.mockResolvedValue({
+        ...mockShift,
+        isDefault: false,
+        isActive: false,
+      });
+
+      const result = await service.update(
+        shiftId,
+        { isActive: false },
+        actorId,
+        clientMetadata,
+      );
+
+      expect(result.isActive).toBe(false);
+    });
   });
 
   describe('list', () => {
@@ -439,6 +631,20 @@ describe('ShiftService', () => {
         ...mockShift,
         isDefault: true,
       });
+
+      await expect(
+        service.delete(shiftId, actorId, clientMetadata),
+      ).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION_ERROR,
+      });
+    });
+
+    it('should throw VALIDATION_ERROR if attempting to delete shift with active assigned employees', async () => {
+      shiftRepo.findById.mockResolvedValue({
+        ...mockShift,
+        isDefault: false,
+      });
+      employeeRepo.countByShiftId.mockResolvedValue(3);
 
       await expect(
         service.delete(shiftId, actorId, clientMetadata),
@@ -516,6 +722,38 @@ describe('ShiftService', () => {
       );
       expect(auditLogsService.createAuditLog).toHaveBeenCalled();
     });
+
+    it('should successfully unassign shift when shiftId is null', async () => {
+      const mockEmp = {
+        _id: employeeId,
+        shiftId,
+      } as unknown as EmployeeLean;
+      employeeRepo.findById.mockResolvedValue(mockEmp);
+      employeeRepo.updateById.mockResolvedValue({
+        ...mockEmp,
+        shiftId: null,
+      });
+
+      await service.assignShift(
+        { employeeId: employeeId.toString(), shiftId: null },
+        actorId,
+        clientMetadata,
+      );
+
+      expect(employeeRepo.updateById).toHaveBeenCalledWith(
+        employeeId,
+        expect.objectContaining({ shiftId: null, updatedBy: actorId }),
+        expect.anything(),
+      );
+      expect(auditLogsService.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.SHIFT_UNASSIGNED,
+          targetId: employeeId,
+          details: { previousShiftId: shiftId.toString() },
+        }),
+        expect.anything(),
+      );
+    });
   });
 
   describe('resolveShift', () => {
@@ -526,6 +764,32 @@ describe('ShiftService', () => {
 
       const resolved = await service.resolveShift(null, explicitId);
       expect(resolved.code).toBe('NIGHT');
+    });
+
+    it('should throw RESOURCE_NOT_FOUND if explicit shift ID is not found', async () => {
+      const explicitId = new Types.ObjectId();
+      shiftRepo.findById.mockResolvedValue(null);
+
+      await expect(
+        service.resolveShift(null, explicitId),
+      ).rejects.toMatchObject({
+        code: ErrorCode.RESOURCE_NOT_FOUND,
+      });
+    });
+
+    it('should throw RESOURCE_NOT_FOUND if explicit shift ID is inactive', async () => {
+      const explicitId = new Types.ObjectId();
+      shiftRepo.findById.mockResolvedValue({
+        ...mockShift,
+        _id: explicitId,
+        isActive: false,
+      });
+
+      await expect(
+        service.resolveShift(null, explicitId),
+      ).rejects.toMatchObject({
+        code: ErrorCode.RESOURCE_NOT_FOUND,
+      });
     });
 
     it('should fall back to employee assigned shift ID', async () => {
@@ -540,6 +804,19 @@ describe('ShiftService', () => {
       expect(resolved.code).toBe('ASSIGNED');
     });
 
+    it('should fall back to default shift if employee assigned shift is inactive', async () => {
+      const empShiftId = new Types.ObjectId();
+      shiftRepo.findById.mockResolvedValue({
+        ...mockShift,
+        _id: empShiftId,
+        isActive: false,
+      });
+      shiftRepo.findDefault.mockResolvedValue(mockShift);
+
+      const resolved = await service.resolveShift(empShiftId, null);
+      expect(resolved.code).toBe('GEN');
+    });
+
     it('should fall back to organization default shift', async () => {
       shiftRepo.findDefault.mockResolvedValue(mockShift);
 
@@ -547,11 +824,24 @@ describe('ShiftService', () => {
       expect(resolved.code).toBe('GEN');
     });
 
-    it('should throw RESOURCE_NOT_FOUND if no shifts exist', async () => {
+    it('Step 4: should throw UNPROCESSABLE_ENTITY (422) when all resolution steps fail as a final safety net', async () => {
       shiftRepo.findDefault.mockResolvedValue(null);
-      shiftRepo.findActive.mockResolvedValue([]);
 
-      await expect(service.resolveShift(null, null)).rejects.toThrow(AppError);
+      await expect(service.resolveShift(null, null)).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION_ERROR,
+        statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+      });
+    });
+
+    it('should ignore explicitShiftId when context.isAdminOverride is false (employee self-punch)', async () => {
+      const explicitId = new Types.ObjectId();
+      shiftRepo.findDefault.mockResolvedValue(mockShift);
+
+      const resolved = await service.resolveShift(null, explicitId, {
+        isAdminOverride: false,
+      });
+      expect(resolved.code).toBe('GEN');
+      expect(shiftRepo.findById).not.toHaveBeenCalledWith(explicitId);
     });
   });
 });

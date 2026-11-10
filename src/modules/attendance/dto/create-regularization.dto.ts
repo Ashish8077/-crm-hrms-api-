@@ -1,5 +1,5 @@
 import {
-  IsDateString,
+  IsEnum,
   IsMongoId,
   IsNotEmpty,
   IsOptional,
@@ -8,6 +8,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { RegularizationType } from '../constants/attendance.constant';
 
 export class CreateRegularizationDto {
   @ApiProperty({
@@ -20,21 +21,32 @@ export class CreateRegularizationDto {
   })
   attendanceDate!: string;
 
-  @ApiProperty({
-    description: 'Requested check-in ISO timestamp',
-    example: '2026-10-15T09:00:00.000Z',
+  @ApiPropertyOptional({
+    description: 'Type of regularization',
+    enum: RegularizationType,
+    example: RegularizationType.TIME_CORRECTION,
   })
-  @IsNotEmpty()
-  @IsDateString()
-  requestedCheckInTime!: string;
+  @IsOptional()
+  @IsEnum(RegularizationType)
+  type?: RegularizationType;
 
-  @ApiProperty({
-    description: 'Requested check-out ISO timestamp',
-    example: '2026-10-15T18:00:00.000Z',
+  @ApiPropertyOptional({
+    description:
+      'Requested check-in time or timestamp. Recommended: Simple time string (e.g. "09:00" or "09:00 AM") or local naive ISO ("2026-10-15T09:00:00"). If UTC ISO with Z is passed ("2026-10-15T03:30:00.000Z"), it must be the true UTC timestamp converted from local branch time to prevent late arrival deductions.',
+    example: '09:00',
   })
-  @IsNotEmpty()
-  @IsDateString()
-  requestedCheckOutTime!: string;
+  @IsOptional()
+  @IsString()
+  requestedCheckInTime?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Requested check-out time or timestamp. Recommended: Simple time string (e.g. "18:00" or "06:00 PM") or local naive ISO ("2026-10-15T18:00:00"). If UTC ISO with Z is passed ("2026-10-15T12:30:00.000Z"), it must be the true UTC timestamp converted from local branch time.',
+    example: '18:00',
+  })
+  @IsOptional()
+  @IsString()
+  requestedCheckOutTime?: string | null;
 
   @ApiProperty({
     description: 'Reason for requesting attendance regularization',

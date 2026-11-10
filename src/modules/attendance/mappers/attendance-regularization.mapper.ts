@@ -1,24 +1,31 @@
 import { Types } from 'mongoose';
-import { RegularizationStatus } from '../constants/attendance.constant';
+import {
+  RegularizationStatus,
+  RegularizationType,
+} from '../constants/attendance.constant';
 import { AttendanceRegularizationLean } from '../repositories/attendance-regularization.repository';
 import { AttendanceRegularization } from '../schemas/attendance-regularization.schema';
 import { CreateRegularizationDto } from '../dto/create-regularization.dto';
+import { AttendanceCalculationUtil } from '../utils/attendance-calculation.util';
 
 export interface AttendanceRegularizationResponse {
   id: string;
   employeeId: string;
   attendanceId: string | null;
   attendanceDate: string;
-  requestedCheckInTime: Date;
-  requestedCheckOutTime: Date;
+  type: RegularizationType;
+  originalCheckInTime: string | Date | null;
+  originalCheckOutTime: string | Date | null;
+  requestedCheckInTime: string | Date | null;
+  requestedCheckOutTime: string | Date | null;
   reason: string;
   status: RegularizationStatus;
-  appliedAt: Date;
+  appliedAt: string | Date;
   reviewedBy: string | null;
-  reviewedAt: Date | null;
+  reviewedAt: string | Date | null;
   reviewRemarks?: string;
-  createdAt?: Date;
-  updatedAt?: Date;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
 }
 
 export class AttendanceRegularizationMapper {
@@ -29,13 +36,20 @@ export class AttendanceRegularizationMapper {
     dto: CreateRegularizationDto,
     employeeId: Types.ObjectId,
     attendanceId: Types.ObjectId | null,
+    originalCheckInTime: Date | null,
+    originalCheckOutTime: Date | null,
+    resolvedRequestedCheckInTime: Date | null,
+    resolvedRequestedCheckOutTime: Date | null,
   ): Partial<AttendanceRegularization> {
     return {
       employeeId,
       attendanceId,
       attendanceDate: dto.attendanceDate.trim(),
-      requestedCheckInTime: new Date(dto.requestedCheckInTime),
-      requestedCheckOutTime: new Date(dto.requestedCheckOutTime),
+      type: dto.type ?? RegularizationType.TIME_CORRECTION,
+      originalCheckInTime,
+      originalCheckOutTime,
+      requestedCheckInTime: resolvedRequestedCheckInTime,
+      requestedCheckOutTime: resolvedRequestedCheckOutTime,
       reason: dto.reason.trim(),
       status: RegularizationStatus.PENDING,
       appliedAt: new Date(),
@@ -73,16 +87,31 @@ export class AttendanceRegularizationMapper {
       employeeId: doc.employeeId.toString(),
       attendanceId: doc.attendanceId ? doc.attendanceId.toString() : null,
       attendanceDate: doc.attendanceDate,
-      requestedCheckInTime: doc.requestedCheckInTime,
-      requestedCheckOutTime: doc.requestedCheckOutTime,
+      type: doc.type ?? RegularizationType.TIME_CORRECTION,
+      originalCheckInTime: AttendanceCalculationUtil.formatZonedISO(
+        doc.originalCheckInTime,
+      ),
+      originalCheckOutTime: AttendanceCalculationUtil.formatZonedISO(
+        doc.originalCheckOutTime,
+      ),
+      requestedCheckInTime: AttendanceCalculationUtil.formatZonedISO(
+        doc.requestedCheckInTime,
+      ),
+      requestedCheckOutTime: AttendanceCalculationUtil.formatZonedISO(
+        doc.requestedCheckOutTime,
+      ),
       reason: doc.reason,
       status: doc.status,
-      appliedAt: doc.appliedAt,
+      appliedAt:
+        AttendanceCalculationUtil.formatZonedISO(doc.appliedAt) ??
+        doc.appliedAt,
       reviewedBy: doc.reviewedBy ? doc.reviewedBy.toString() : null,
-      reviewedAt: doc.reviewedAt,
+      reviewedAt: AttendanceCalculationUtil.formatZonedISO(doc.reviewedAt),
       reviewRemarks: doc.reviewRemarks,
-      createdAt: doc.createdAt,
-      updatedAt: doc.updatedAt,
+      createdAt:
+        AttendanceCalculationUtil.formatZonedISO(doc.createdAt) ?? undefined,
+      updatedAt:
+        AttendanceCalculationUtil.formatZonedISO(doc.updatedAt) ?? undefined,
     };
   }
 

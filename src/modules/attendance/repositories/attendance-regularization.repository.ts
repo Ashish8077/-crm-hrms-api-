@@ -114,6 +114,7 @@ export class AttendanceRegularizationRepository {
     const query = this.regularizationModel.findOneAndUpdate(
       {
         _id: typeof id === 'string' ? new Types.ObjectId(id) : id,
+        status: RegularizationStatus.PENDING,
         deletedAt: null,
       },
       { $set: updateData },

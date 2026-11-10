@@ -1,6 +1,7 @@
 import {
   IsBoolean,
   IsInt,
+  IsMongoId,
   IsOptional,
   IsString,
   Matches,
@@ -102,4 +103,13 @@ export class UpdateShiftDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Replacement shift ID to designate as default when unsetting default on the current shift',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @IsOptional()
+  @IsMongoId()
+  replacementDefaultShiftId?: string;
 }
