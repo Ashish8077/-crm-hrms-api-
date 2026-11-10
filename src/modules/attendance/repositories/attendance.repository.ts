@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import {
@@ -21,6 +21,7 @@ export interface MonthlyAttendanceSummary {
   presentDays: number;
   halfDays: number;
   absentDays: number;
+  incompleteDays: number;
   lateDays: number;
   earlyDepartures: number;
   totalWorkingMinutes: number;
@@ -29,11 +30,30 @@ export interface MonthlyAttendanceSummary {
 }
 
 @Injectable()
-export class AttendanceRepository {
+export class AttendanceRepository implements OnModuleInit {
+  private readonly logger = new Logger(AttendanceRepository.name);
+
   constructor(
     @InjectModel(Attendance.name)
     private readonly attendanceModel: Model<AttendanceDocument>,
   ) {}
+
+  /**
+   * Layer 1: Synchronize compound unique index { employeeId: 1, attendanceDate: 1 }
+   * into MongoDB WiredTiger storage engine on startup.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.attendanceModel.syncIndexes();
+      this.logger.log(
+        'Attendance compound unique indexes synchronized with MongoDB WiredTiger',
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to synchronize Attendance indexes: ${(error as Error).message}`,
+      );
+    }
+  }
 
   async create(
     data: Partial<Attendance>,
@@ -71,6 +91,28 @@ export class AttendanceRepository {
       attendanceDate,
       deletedAt: null,
     });
+    if (session) {
+      query.session(session);
+    }
+    return query.lean<AttendanceLean>().exec();
+  }
+
+  async findActiveSessionByEmployee(
+    employeeId: Types.ObjectId | string,
+    session?: ClientSession,
+  ): Promise<AttendanceLean | null> {
+    const query = this.attendanceModel
+      .findOne({
+        employeeId:
+          typeof employeeId === 'string'
+            ? new Types.ObjectId(employeeId)
+            : employeeId,
+        status: {
+          $in: [AttendanceStatus.CHECKED_IN, AttendanceStatus.ON_BREAK],
+        },
+        deletedAt: null,
+      })
+      .sort({ attendanceDate: -1 });
     if (session) {
       query.session(session);
     }
@@ -141,6 +183,33 @@ export class AttendanceRepository {
     return query.lean<AttendanceLean>().exec();
   }
 
+  /**
+   * Layer 3: Atomic check-out transition.
+   * Atomically transitions status only if currently CHECKED_IN or ON_BREAK.
+   * Prevents double-tap race conditions from overwriting checkout time without distributed locks.
+   */
+  async checkOutSession(
+    id: Types.ObjectId | string,
+    data: Record<string, unknown>,
+    session?: ClientSession,
+  ): Promise<AttendanceLean | null> {
+    const query = this.attendanceModel.findOneAndUpdate(
+      {
+        _id: typeof id === 'string' ? new Types.ObjectId(id) : id,
+        status: {
+          $in: [AttendanceStatus.CHECKED_IN, AttendanceStatus.ON_BREAK],
+        },
+        deletedAt: null,
+      },
+      { $set: data },
+      { new: true, runValidators: true },
+    );
+    if (session) {
+      query.session(session);
+    }
+    return query.lean<AttendanceLean>().exec();
+  }
+
   async startBreak(
     id: Types.ObjectId | string,
     breakSession: BreakSession,
@@ -170,7 +239,18 @@ export class AttendanceRepository {
     durationMinutes: number,
     totalBreakMinutes: number,
     session?: ClientSession,
+    note?: string,
   ): Promise<AttendanceLean | null> {
+    const updateSet: Record<string, unknown> = {
+      'breaks.$[elem].endTime': endTime,
+      'breaks.$[elem].durationMinutes': durationMinutes,
+      totalBreakMinutes,
+      status: AttendanceStatus.CHECKED_IN,
+    };
+    if (note) {
+      updateSet['breaks.$[elem].note'] = note;
+    }
+
     const query = this.attendanceModel.findOneAndUpdate(
       {
         _id: typeof id === 'string' ? new Types.ObjectId(id) : id,
@@ -178,12 +258,7 @@ export class AttendanceRepository {
         deletedAt: null,
       },
       {
-        $set: {
-          'breaks.$[elem].endTime': endTime,
-          'breaks.$[elem].durationMinutes': durationMinutes,
-          totalBreakMinutes,
-          status: AttendanceStatus.CHECKED_IN,
-        },
+        $set: updateSet,
       },
       {
         arrayFilters: [{ 'elem.endTime': null }],
@@ -242,6 +317,11 @@ export class AttendanceRepository {
               $cond: [{ $eq: ['$status', AttendanceStatus.ABSENT] }, 1, 0],
             },
           },
+          incompleteDays: {
+            $sum: {
+              $cond: [{ $eq: ['$status', AttendanceStatus.INCOMPLETE] }, 1, 0],
+            },
+          },
           lateDays: {
             $sum: {
               $cond: [{ $eq: ['$isLate', true] }, 1, 0],
@@ -269,6 +349,7 @@ export class AttendanceRepository {
         presentDays: 0,
         halfDays: 0,
         absentDays: 0,
+        incompleteDays: 0,
         lateDays: 0,
         earlyDepartures: 0,
         totalWorkingMinutes: 0,
@@ -283,6 +364,7 @@ export class AttendanceRepository {
       presentDays: item.presentDays ?? 0,
       halfDays: item.halfDays ?? 0,
       absentDays: item.absentDays ?? 0,
+      incompleteDays: item.incompleteDays ?? 0,
       lateDays: item.lateDays ?? 0,
       earlyDepartures: item.earlyDepartures ?? 0,
       totalWorkingMinutes: item.totalWorkingMinutes ?? 0,

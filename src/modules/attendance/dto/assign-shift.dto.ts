@@ -1,4 +1,4 @@
-import { IsMongoId, IsNotEmpty } from 'class-validator';
+import { IsMongoId, IsNotEmpty, ValidateIf } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class AssignShiftDto {
@@ -7,8 +7,15 @@ export class AssignShiftDto {
   @IsMongoId()
   employeeId!: string;
 
-  @ApiProperty({ description: 'Shift ID' })
+  @ApiProperty({
+    description:
+      'Shift ID (pass valid Mongo ID to assign, or null to unassign and inherit organization default shift)',
+    nullable: true,
+    type: String,
+    example: null,
+  })
+  @ValidateIf((_, val) => val !== null)
   @IsNotEmpty()
   @IsMongoId()
-  shiftId!: string;
+  shiftId!: string | null;
 }

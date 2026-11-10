@@ -93,7 +93,7 @@ export class Shift {
   @Prop({ type: Boolean, default: false })
   isDefault!: boolean;
 
-  @Prop({ type: Boolean, default: true, index: true })
+  @Prop({ type: Boolean, default: true })
   isActive!: boolean;
 
   @Prop({ type: Date, default: null, index: true })

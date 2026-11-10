@@ -3,7 +3,7 @@ export default () => ({
     nodeEnv: process.env.NODE_ENV ?? 'development',
     port: Number(process.env.PORT ?? 3000),
     corsOrigin: process.env.CORS_ORIGIN,
-    trustProxy: Number(process.env.TRUST_PROXY ?? 0),
+    trustProxy: Number(process.env.TRUST_PROXY ?? 1),
   },
 
   database: {

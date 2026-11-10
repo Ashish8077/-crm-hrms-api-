@@ -1,6 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { RegularizationStatus } from '../constants/attendance.constant';
+import {
+  RegularizationStatus,
+  RegularizationType,
+} from '../constants/attendance.constant';
 
 export type AttendanceRegularizationDocument =
   HydratedDocument<AttendanceRegularization>;
@@ -11,7 +14,7 @@ export type AttendanceRegularizationDocument =
   versionKey: false,
 })
 export class AttendanceRegularization {
-  @Prop({ type: Types.ObjectId, ref: 'Employee', required: true })
+  @Prop({ type: Types.ObjectId, ref: 'Employee', required: true, index: true })
   employeeId!: Types.ObjectId;
 
   @Prop({
@@ -24,11 +27,25 @@ export class AttendanceRegularization {
   @Prop({ type: String, required: true, trim: true })
   attendanceDate!: string; // YYYY-MM-DD
 
-  @Prop({ type: Date, required: true })
-  requestedCheckInTime!: Date;
+  @Prop({
+    type: String,
+    enum: Object.values(RegularizationType),
+    default: RegularizationType.TIME_CORRECTION,
+    index: true,
+  })
+  type!: RegularizationType;
 
-  @Prop({ type: Date, required: true })
-  requestedCheckOutTime!: Date;
+  @Prop({ type: Date, default: null })
+  originalCheckInTime!: Date | null;
+
+  @Prop({ type: Date, default: null })
+  originalCheckOutTime!: Date | null;
+
+  @Prop({ type: Date, default: null })
+  requestedCheckInTime!: Date | null;
+
+  @Prop({ type: Date, default: null })
+  requestedCheckOutTime!: Date | null;
 
   @Prop({ type: String, required: true, trim: true })
   reason!: string;
@@ -90,4 +107,10 @@ AttendanceRegularizationSchema.index(
 AttendanceRegularizationSchema.index(
   { employeeId: 1, createdAt: -1, deletedAt: 1 },
   { name: 'ix_regularization_emp_created_deleted' },
+);
+
+// Index for attendance link
+AttendanceRegularizationSchema.index(
+  { attendanceId: 1 },
+  { sparse: true, name: 'ix_regularization_attendance_id' },
 );

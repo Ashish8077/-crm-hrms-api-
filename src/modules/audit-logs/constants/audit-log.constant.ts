@@ -70,6 +70,7 @@ export enum AuditAction {
   SHIFT_UPDATED = 'SHIFT_UPDATED',
   SHIFT_DELETED = 'SHIFT_DELETED',
   SHIFT_ASSIGNED = 'SHIFT_ASSIGNED',
+  SHIFT_UNASSIGNED = 'SHIFT_UNASSIGNED',
   // Extensible for future actions...
 }
 

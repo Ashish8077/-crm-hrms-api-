@@ -3,15 +3,13 @@ import {
   IsEnum,
   IsMongoId,
   IsOptional,
+  IsString,
   Matches,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PaginationQueryDto } from '../../../common/pagination/dto/pagination-query.dto';
-import {
-  AttendanceStatus,
-  AttendanceType,
-} from '../constants/attendance.constant';
+import { AttendanceStatus, WorkMode } from '../constants/attendance.constant';
 
 export class ListAttendanceQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ description: 'Filter by specific Employee ID' })
@@ -53,16 +51,28 @@ export class ListAttendanceQueryDto extends PaginationQueryDto {
   status?: AttendanceStatus;
 
   @ApiPropertyOptional({
-    description: 'Filter by attendance type',
-    enum: AttendanceType,
+    description: 'Filter by work mode (OFFICE, WORK_FROM_HOME, ON_DUTY)',
+    enum: WorkMode,
   })
   @IsOptional()
-  @IsEnum(AttendanceType)
-  attendanceType?: AttendanceType;
+  @IsEnum(WorkMode)
+  workMode?: WorkMode;
+
+  @ApiPropertyOptional({
+    description: 'Legacy filter by attendance type (deprecated; use workMode)',
+    deprecated: true,
+  })
+  @IsOptional()
+  @IsString()
+  attendanceType?: string;
 
   @ApiPropertyOptional({ description: 'Filter only late attendance records' })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    return value;
+  })
   @IsBoolean()
   isLate?: boolean;
 }

@@ -7,12 +7,14 @@ import {
   AttendanceRegularizationSchema,
 } from './schemas/attendance-regularization.schema';
 import { AttendanceController } from './attendance.controller';
+import { ShiftController } from './shift.controller';
 import { AttendanceService } from './services/attendance.service';
 import { ShiftService } from './services/shift.service';
 import { AttendanceRepository } from './repositories/attendance.repository';
 import { ShiftRepository } from './repositories/shift.repository';
 import { AttendanceRegularizationRepository } from './repositories/attendance-regularization.repository';
 import { EmployeesModule } from '../employees/employees.module';
+import { BranchesModule } from '../branches/branches.module';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { AuthorizationModule } from '../authorization/authorization.module';
 
@@ -27,10 +29,11 @@ import { AuthorizationModule } from '../authorization/authorization.module';
       },
     ]),
     EmployeesModule,
+    BranchesModule,
     AuditLogsModule,
     AuthorizationModule,
   ],
-  controllers: [AttendanceController],
+  controllers: [AttendanceController, ShiftController],
   providers: [
     AttendanceService,
     ShiftService,

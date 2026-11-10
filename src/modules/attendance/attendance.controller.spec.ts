@@ -3,19 +3,19 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { AttendanceController } from './attendance.controller';
 import { AttendanceService } from './services/attendance.service';
-import { ShiftService } from './services/shift.service';
 import {
   AttendanceSource,
   AttendanceStatus,
-  AttendanceType,
   BreakType,
+  RegularizationStatus,
+  WorkMode,
 } from './constants/attendance.constant';
 import type { AuthenticatedRequest } from '../auth/types/auth-request.type';
+import { CheckInDto } from './dto/check-in.dto';
 
 describe('AttendanceController', () => {
   let controller: AttendanceController;
   let attendanceService: jest.Mocked<AttendanceService>;
-  let shiftService: jest.Mocked<ShiftService>;
 
   const userId = new Types.ObjectId();
   const mockRequest = {
@@ -44,7 +44,7 @@ describe('AttendanceController', () => {
     checkInTime: new Date(),
     checkOutTime: null,
     status: AttendanceStatus.CHECKED_IN,
-    attendanceType: AttendanceType.REGULAR,
+    workMode: WorkMode.OFFICE,
     breaks: [],
     totalBreakMinutes: 0,
     totalWorkMinutes: 0,
@@ -65,6 +65,9 @@ describe('AttendanceController', () => {
           provide: AttendanceService,
           useValue: {
             checkIn: jest.fn().mockResolvedValue(mockAttendanceResponse),
+            recordManualAttendance: jest
+              .fn()
+              .mockResolvedValue(mockAttendanceResponse),
             checkOut: jest.fn().mockResolvedValue(mockAttendanceResponse),
             startBreak: jest.fn().mockResolvedValue(mockAttendanceResponse),
             endBreak: jest.fn().mockResolvedValue(mockAttendanceResponse),
@@ -79,6 +82,7 @@ describe('AttendanceController', () => {
               presentDays: 1,
               halfDays: 0,
               absentDays: 0,
+              incompleteDays: 0,
               lateDays: 0,
               earlyDepartures: 0,
               totalWorkingMinutes: 480,
@@ -92,35 +96,63 @@ describe('AttendanceController', () => {
             listReports: jest.fn(),
           },
         },
-        {
-          provide: ShiftService,
-          useValue: {
-            create: jest.fn(),
-            list: jest.fn(),
-            getById: jest.fn(),
-            update: jest.fn(),
-            delete: jest.fn(),
-            assignShift: jest.fn(),
-          },
-        },
       ],
     }).compile();
 
     controller = module.get<AttendanceController>(AttendanceController);
     attendanceService = module.get(AttendanceService);
-    shiftService = module.get(ShiftService);
   });
 
   describe('checkIn', () => {
     it('should call attendanceService.checkIn and wrap response', async () => {
       const result = await controller.checkIn(
-        { attendanceType: AttendanceType.REGULAR },
+        { workMode: WorkMode.OFFICE },
         mockRequest,
       );
 
       expect(attendanceService.checkIn).toHaveBeenCalledWith(
         userId,
-        { attendanceType: AttendanceType.REGULAR },
+        { workMode: WorkMode.OFFICE },
+        { ipAddress: '127.0.0.1', userAgent: 'JestRunner/1.0' },
+      );
+      expect(result).toEqual({ success: true, data: mockAttendanceResponse });
+    });
+
+    it('TC-11: should derive employee identity strictly from request.user.userId and ignore any employeeId in request body', async () => {
+      const victimEmployeeId = new Types.ObjectId().toString();
+      const maliciousBody = {
+        workMode: WorkMode.OFFICE,
+        employeeId: victimEmployeeId,
+      } as unknown as CheckInDto;
+
+      await controller.checkIn(maliciousBody, mockRequest);
+
+      // The controller derives identity from session (request.user.userId) as first param
+      expect(attendanceService.checkIn).toHaveBeenCalledWith(
+        userId,
+        maliciousBody,
+        { ipAddress: '127.0.0.1', userAgent: 'JestRunner/1.0' },
+      );
+      expect(attendanceService.checkIn).not.toHaveBeenCalledWith(
+        victimEmployeeId,
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+  });
+
+  describe('recordManualAttendance', () => {
+    it('should call attendanceService.recordManualAttendance and wrap response', async () => {
+      const dto = {
+        employeeId: new Types.ObjectId().toString(),
+        attendanceDate: '2026-10-23',
+        checkInTime: '2026-10-23T09:00:00.000Z',
+      };
+      const result = await controller.recordManualAttendance(dto, mockRequest);
+
+      expect(attendanceService.recordManualAttendance).toHaveBeenCalledWith(
+        userId,
+        dto,
         { ipAddress: '127.0.0.1', userAgent: 'JestRunner/1.0' },
       );
       expect(result).toEqual({ success: true, data: mockAttendanceResponse });
@@ -165,15 +197,118 @@ describe('AttendanceController', () => {
     });
   });
 
-  describe('shifts', () => {
-    it('should call shiftService.list and wrap response', async () => {
-      const mockShifts = [{ id: '1', name: 'General', code: 'GEN' } as any];
-      shiftService.list.mockResolvedValue(mockShifts);
+  describe('regularization REST endpoints (Option 1 and Option 2)', () => {
+    const regId = new Types.ObjectId();
+    const mockRegResponse = {
+      id: regId.toString(),
+      employeeId: new Types.ObjectId().toString(),
+      attendanceDate: '2026-10-15',
+      status: RegularizationStatus.APPROVED,
+    };
 
-      const result = await controller.listShifts({});
+    it('should approve regularization via PATCH action (Option 1)', async () => {
+      (attendanceService.approveRegularization as jest.Mock).mockResolvedValue(
+        mockRegResponse,
+      );
 
-      expect(shiftService.list).toHaveBeenCalledWith(undefined);
-      expect(result).toEqual({ success: true, data: mockShifts });
+      const result = await controller.approveRegularization(
+        regId,
+        { notes: 'Approved per email confirmation.' },
+        mockRequest,
+      );
+
+      expect(attendanceService.approveRegularization).toHaveBeenCalledWith(
+        regId,
+        userId,
+        { notes: 'Approved per email confirmation.' },
+        { ipAddress: '127.0.0.1', userAgent: 'JestRunner/1.0' },
+      );
+      expect(result).toEqual({ success: true, data: mockRegResponse });
+    });
+
+    it('should reject regularization via PATCH action (Option 1)', async () => {
+      (attendanceService.rejectRegularization as jest.Mock).mockResolvedValue({
+        ...mockRegResponse,
+        status: RegularizationStatus.REJECTED,
+      });
+
+      const result = await controller.rejectRegularization(
+        regId,
+        { reason: 'No evidence provided.' },
+        mockRequest,
+      );
+
+      expect(attendanceService.rejectRegularization).toHaveBeenCalledWith(
+        regId,
+        userId,
+        { reason: 'No evidence provided.' },
+        { ipAddress: '127.0.0.1', userAgent: 'JestRunner/1.0' },
+      );
+      expect(result.data.status).toBe(RegularizationStatus.REJECTED);
+    });
+
+    it('should update regularization status via pure REST PATCH /status (Option 2) for APPROVED', async () => {
+      (attendanceService.approveRegularization as jest.Mock).mockResolvedValue(
+        mockRegResponse,
+      );
+
+      const result = await controller.updateRegularizationStatus(
+        regId,
+        {
+          status: RegularizationStatus.APPROVED,
+          comments: 'Approved, generating attendance record.',
+        },
+        mockRequest,
+      );
+
+      expect(attendanceService.approveRegularization).toHaveBeenCalledWith(
+        regId,
+        userId,
+        expect.objectContaining({
+          reviewRemarks: 'Approved, generating attendance record.',
+          comments: 'Approved, generating attendance record.',
+        }),
+        { ipAddress: '127.0.0.1', userAgent: 'JestRunner/1.0' },
+      );
+      expect(result.success).toBe(true);
+    });
+
+    it('should update regularization status via pure REST PATCH /status (Option 2) for REJECTED', async () => {
+      (attendanceService.rejectRegularization as jest.Mock).mockResolvedValue({
+        ...mockRegResponse,
+        status: RegularizationStatus.REJECTED,
+      });
+
+      const result = await controller.updateRegularizationStatus(
+        regId,
+        {
+          status: RegularizationStatus.REJECTED,
+          reason: 'No evidence provided.',
+        },
+        mockRequest,
+      );
+
+      expect(attendanceService.rejectRegularization).toHaveBeenCalledWith(
+        regId,
+        userId,
+        expect.objectContaining({
+          reason: 'No evidence provided.',
+        }),
+        { ipAddress: '127.0.0.1', userAgent: 'JestRunner/1.0' },
+      );
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject pure REST PATCH /status if status is invalid', async () => {
+      await expect(
+        controller.updateRegularizationStatus(
+          regId,
+          {
+            status: RegularizationStatus.PENDING,
+          },
+          mockRequest,
+        ),
+      ).rejects.toThrow('Invalid target status');
     });
   });
 });

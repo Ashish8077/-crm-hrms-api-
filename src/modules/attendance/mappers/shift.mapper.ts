@@ -3,6 +3,7 @@ import { CreateShiftData, ShiftLean } from '../repositories/shift.repository';
 import { CreateShiftDto } from '../dto/create-shift.dto';
 import { UpdateShiftDto } from '../dto/update-shift.dto';
 import { ATTENDANCE_CONSTANTS } from '../constants/attendance.constant';
+import { AttendanceCalculationUtil } from '../utils/attendance-calculation.util';
 
 export interface ShiftResponse {
   id: string;
@@ -18,8 +19,8 @@ export interface ShiftResponse {
   overtimeThresholdMinutes: number;
   isDefault: boolean;
   isActive: boolean;
-  createdAt?: Date;
-  updatedAt?: Date;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
 }
 
 export class ShiftMapper {
@@ -30,18 +31,29 @@ export class ShiftMapper {
     dto: CreateShiftDto,
     actorId: Types.ObjectId,
   ): CreateShiftData {
+    const isOvernight = dto.isOvernight ?? false;
+    const [startH, startM] = dto.startTime.split(':').map(Number);
+    const [endH, endM] = dto.endTime.split(':').map(Number);
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    const shiftDuration = !isOvernight
+      ? endMinutes - startMinutes
+      : 1440 - startMinutes + endMinutes;
+    const breakDuration =
+      dto.breakDurationMinutes ??
+      ATTENDANCE_CONSTANTS.DEFAULT_BREAK_DURATION_MINUTES;
+    const scheduledNetMinutes = Math.max(0, shiftDuration - breakDuration);
+
     return {
       name: dto.name.trim(),
       code: dto.code.trim().toUpperCase(),
       startTime: dto.startTime.trim(),
       endTime: dto.endTime.trim(),
-      isOvernight: dto.isOvernight ?? false,
+      isOvernight,
       gracePeriodMinutes:
         dto.gracePeriodMinutes ??
         ATTENDANCE_CONSTANTS.DEFAULT_GRACE_PERIOD_MINUTES,
-      breakDurationMinutes:
-        dto.breakDurationMinutes ??
-        ATTENDANCE_CONSTANTS.DEFAULT_BREAK_DURATION_MINUTES,
+      breakDurationMinutes: breakDuration,
       minWorkMinutesForFullDay:
         dto.minWorkMinutesForFullDay ??
         ATTENDANCE_CONSTANTS.DEFAULT_FULL_DAY_MINUTES,
@@ -49,8 +61,7 @@ export class ShiftMapper {
         dto.minWorkMinutesForHalfDay ??
         ATTENDANCE_CONSTANTS.DEFAULT_HALF_DAY_MINUTES,
       overtimeThresholdMinutes:
-        dto.overtimeThresholdMinutes ??
-        ATTENDANCE_CONSTANTS.DEFAULT_OVERTIME_THRESHOLD_MINUTES,
+        dto.overtimeThresholdMinutes ?? scheduledNetMinutes,
       isDefault: dto.isDefault ?? false,
       isActive: dto.isActive ?? true,
       createdBy: actorId,
@@ -107,8 +118,10 @@ export class ShiftMapper {
       overtimeThresholdMinutes: shift.overtimeThresholdMinutes,
       isDefault: shift.isDefault,
       isActive: shift.isActive,
-      createdAt: shift.createdAt,
-      updatedAt: shift.updatedAt,
+      createdAt:
+        AttendanceCalculationUtil.formatZonedISO(shift.createdAt) ?? undefined,
+      updatedAt:
+        AttendanceCalculationUtil.formatZonedISO(shift.updatedAt) ?? undefined,
     };
   }
 
