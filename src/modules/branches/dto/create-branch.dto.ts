@@ -22,4 +22,14 @@ export class CreateBranchDto {
   @IsString()
   @MaxLength(500)
   address?: string;
+
+  @ApiPropertyOptional({
+    description: 'Local IANA timezone of the branch (e.g. Asia/Kolkata)',
+    example: 'Asia/Kolkata',
+  })
+  @IsOptional()
+  @TrimString()
+  @IsString()
+  @MaxLength(50)
+  timezone?: string;
 }
