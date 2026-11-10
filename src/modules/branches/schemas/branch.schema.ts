@@ -24,6 +24,43 @@ export class Branch {
   address?: string;
 
   @Prop({
+    type: Number,
+    required: false,
+  })
+  latitude?: number;
+
+  @Prop({
+    type: Number,
+    required: false,
+  })
+  longitude?: number;
+
+  @Prop({
+    type: Number,
+    default: 150,
+  })
+  radiusMeters?: number;
+
+  @Prop({
+    type: [String],
+    default: [],
+  })
+  allowedIps?: string[];
+
+  @Prop({
+    type: Boolean,
+    default: true,
+  })
+  enforceIpCheck?: boolean;
+
+  @Prop({
+    type: String,
+    default: 'Asia/Kolkata',
+    trim: true,
+  })
+  timezone?: string;
+
+  @Prop({
     type: Boolean,
     default: true,
     index: true,

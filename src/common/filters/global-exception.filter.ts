@@ -38,6 +38,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let details: unknown;
 
     if (this.isMongoDuplicateKeyError(exception)) {
+      const mongoError = exception as {
+        keyValue?: Record<string, unknown>;
+        keyPattern?: Record<string, unknown>;
+      };
+      this.logger.warn(
+        `[MongoDB E11000 Duplicate Key] Conflict on request ${requestId}: ` +
+          JSON.stringify(mongoError.keyValue ?? mongoError.keyPattern ?? {}),
+      );
       const error = new AppError(
         ErrorCode.RESOURCE_ALREADY_EXISTS,
         'Resource already exists',
