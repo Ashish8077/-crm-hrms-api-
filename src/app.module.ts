@@ -21,6 +21,11 @@ import { EmployeesModule } from './modules/employees/employees.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { CompaniesModule } from './modules/companies/companies.module';
+import { ContactsModule } from './modules/contacts/contacts.module';
+import { DealsModule } from './modules/deals/deals.module';
+import { TasksModule } from './modules/tasks/tasks.module';
+import { ActivitiesModule } from './modules/activities/activities.module';
 import configuration from './config/configuration';
 import { RedisModule } from './common/redis/redis.module';
 import { CsrfGuard } from './common/guards/csrf.guard';
@@ -63,6 +68,11 @@ import { PermissionsGuard } from './modules/authorization/guards/permissions.gua
     BranchesModule,
     EmployeesModule,
     LeadsModule,
+    CompaniesModule,
+    ContactsModule,
+    DealsModule,
+    TasksModule,
+    ActivitiesModule,
     StorageModule,
     AttendanceModule,
   ],
