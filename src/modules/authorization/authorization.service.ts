@@ -90,13 +90,27 @@ export class AuthorizationService {
   }
 
   /**
-   * Evaluates if the user's roles grant the required permission.
+   * Evaluates if a user (by userId) or a list of roles (by roleIds) has the required permission.
    */
   async hasPermission(
-    roleIds: Types.ObjectId[],
+    userOrRoleIds: Types.ObjectId | Types.ObjectId[],
     requiredPermissionKey: string,
   ): Promise<boolean> {
-    return this.hasPermissions(roleIds, [requiredPermissionKey]);
+    if (Array.isArray(userOrRoleIds)) {
+      return this.hasPermissions(userOrRoleIds, [requiredPermissionKey]);
+    }
+
+    const user = await this.userRepository.findById(userOrRoleIds);
+    if (
+      !user ||
+      user.status !== UserStatus.ACTIVE ||
+      user.deletedAt ||
+      !user.roleIds?.length
+    ) {
+      return false;
+    }
+
+    return this.hasPermissions(user.roleIds, [requiredPermissionKey]);
   }
 
   /**
