@@ -19,6 +19,7 @@ import { DesignationsModule } from './modules/designations/designations.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { EmployeesModule } from './modules/employees/employees.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
@@ -75,6 +76,7 @@ import { PermissionsGuard } from './modules/authorization/guards/permissions.gua
     ActivitiesModule,
     ProductsModule,
     StorageModule,
+    AttendanceModule,
   ],
   controllers: [AppController],
   providers: [

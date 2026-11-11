@@ -79,11 +79,17 @@ export class Employee {
   @Prop({ type: Types.ObjectId, ref: 'Employee', default: null })
   reportingManagerId!: Types.ObjectId | null;
 
+  @Prop({ type: Types.ObjectId, ref: 'Shift', default: null })
+  shiftId?: Types.ObjectId | null;
+
   @Prop({ type: String, enum: Object.values(EmploymentType), required: true })
   employmentType!: EmploymentType;
 
   @Prop({ type: String, enum: Object.values(EmploymentStatus), required: true })
   employmentStatus!: EmploymentStatus;
+
+  @Prop({ type: Boolean, default: false })
+  isRemoteAllowed?: boolean;
 
   @Prop({ type: BankDetails, default: null })
   bankDetails!: BankDetails | null;
@@ -174,4 +180,10 @@ EmployeeSchema.index(
 EmployeeSchema.index(
   { reportingManagerId: 1, employmentStatus: 1, deletedAt: 1 },
   { name: 'ix_employees_manager_status_deleted' },
+);
+
+// Shift assignment queries
+EmployeeSchema.index(
+  { shiftId: 1, deletedAt: 1 },
+  { name: 'ix_employees_shift_deleted' },
 );
