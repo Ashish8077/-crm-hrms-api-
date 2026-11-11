@@ -21,7 +21,7 @@ export class CrmActivityRepository {
   constructor(
     @InjectModel(CrmActivity.name)
     private readonly activityModel: Model<CrmActivityDocument>,
-  ) {}
+  ) { }
 
   async create(
     data: Partial<CrmActivity>,

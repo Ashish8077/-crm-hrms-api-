@@ -35,6 +35,7 @@ export function setupSwagger(app: INestApplication): void {
     .addTag('CRM - Deals', 'Deal and pipeline management')
     .addTag('CRM - Tasks', 'Task and to-do item management')
     .addTag('CRM - Activities', 'Activity logging, timeline and scheduling')
+    .addTag('CRM - Products & Services', 'Product and service catalog, CPQ pricing engine')
     .build();
 
   const documentFactory = () => SwaggerModule.createDocument(app, config);

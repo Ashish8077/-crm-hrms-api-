@@ -245,4 +245,22 @@ export const PermissionKeys = {
     PermissionModule.ACTIVITIES,
     PermissionAction.DELETE,
   ),
+
+  // Products & Services
+  PRODUCTS_VIEW: PermissionKey.of(
+    PermissionModule.PRODUCTS,
+    PermissionAction.VIEW,
+  ),
+  PRODUCTS_CREATE: PermissionKey.of(
+    PermissionModule.PRODUCTS,
+    PermissionAction.CREATE,
+  ),
+  PRODUCTS_EDIT: PermissionKey.of(
+    PermissionModule.PRODUCTS,
+    PermissionAction.EDIT,
+  ),
+  PRODUCTS_DELETE: PermissionKey.of(
+    PermissionModule.PRODUCTS,
+    PermissionAction.DELETE,
+  ),
 } as const;

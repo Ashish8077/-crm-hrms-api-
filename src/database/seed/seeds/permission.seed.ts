@@ -35,7 +35,7 @@ const PERMISSION_CATALOG: Record<PermissionModule, PermissionAction[]> = {
   [M.DEALS]: [VIEW, CREATE, EDIT, DELETE, EXPORT, APPROVE, ASSIGN],
   [M.TASKS]: [VIEW, CREATE, EDIT, DELETE, ASSIGN],
   [M.ACTIVITIES]: [VIEW, CREATE, EDIT, DELETE],
-  [M.PRODUCTS]: [VIEW, CREATE, EDIT, DELETE, EXPORT],
+  [M.PRODUCTS]: [VIEW, CREATE, EDIT, DELETE],
   [M.QUOTATIONS]: [VIEW, CREATE, EDIT, DELETE, EXPORT, APPROVE],
 
   // ── HR ───────────────────────────────────────────────────────────
