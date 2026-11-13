@@ -58,3 +58,4 @@ export class QuotationItem {
 }
 
 export const QuotationItemSchema = SchemaFactory.createForClass(QuotationItem);
+

@@ -21,3 +21,4 @@ export class UpdateQuotationStatusDto {
   @MinLength(3)
   rejectionReason?: string;
 }
+

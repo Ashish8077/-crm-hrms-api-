@@ -22,3 +22,4 @@ export class EmailWebhookDto {
   @IsString()
   reason?: string;
 }
+

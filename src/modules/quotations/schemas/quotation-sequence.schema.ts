@@ -13,3 +13,4 @@ export class QuotationSequence {
 }
 
 export const QuotationSequenceSchema = SchemaFactory.createForClass(QuotationSequence);
+
