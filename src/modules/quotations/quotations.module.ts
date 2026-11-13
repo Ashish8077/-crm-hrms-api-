@@ -68,3 +68,4 @@ import { StorageModule } from '../storage/storage.module';
   exports: [QuotationsService, QuotationRepository],
 })
 export class QuotationsModule {}
+

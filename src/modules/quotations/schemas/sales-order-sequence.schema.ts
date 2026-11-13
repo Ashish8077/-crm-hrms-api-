@@ -13,3 +13,4 @@ export class SalesOrderSequence {
 }
 
 export const SalesOrderSequenceSchema = SchemaFactory.createForClass(SalesOrderSequence);
+
