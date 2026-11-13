@@ -43,7 +43,7 @@ import { ConvertToOrderDto } from './dto/convert-to-order.dto';
 import { EmailWebhookDto } from './dto/email-webhook.dto';
 
 @ApiTags('CRM - Quotations')
-@ApiBearerAuth()
+@ApiBearerAuth('access-token')
 @Controller('quotes')
 export class QuotationsController {
   constructor(private readonly quotationsService: QuotationsService) {}
