@@ -28,7 +28,6 @@ export class PdfGeneratorService {
     companyName: string = 'Enterprise CRM',
   ): Promise<Buffer> {
     const currency = quotation.currency || 'INR';
-    const precision = quotation.currencyPrecision ?? 2;
 
     const itemsTableBody = [
       [
@@ -44,16 +43,19 @@ export class PdfGeneratorService {
 
     quotation.items.forEach((item: any, idx: number) => {
       const qtyStr = unscaleQuantity(item.quantityScaled ?? 1000).toString();
-      const unitPriceStr = fromMinorUnits(item.unitPriceMinor ?? 0, precision);
-      const discountStr = fromMinorUnits(item.discountAmountMinor ?? 0, precision);
-      const taxRateStr = `${((item.taxRateBps ?? 0) / 100).toFixed(2)}%`;
-      const lineTotalStr = fromMinorUnits(item.totalMinor ?? 0, precision);
+      const unitPriceStr = fromMinorUnits(item.unitPriceMinor ?? 0, currency);
+      const discountMinor = item.discountMinor ?? item.discountAmountMinor ?? 0;
+      const discountStr = fromMinorUnits(discountMinor, currency);
+      const taxBps = item.taxBasisPoints ?? item.taxRateBps ?? 0;
+      const taxRateStr = `${(taxBps / 100).toFixed(2)}%`;
+      const lineTotalMinor = item.lineGrandTotalMinor ?? item.totalMinor ?? 0;
+      const lineTotalStr = fromMinorUnits(lineTotalMinor, currency);
 
       itemsTableBody.push([
         { text: (idx + 1).toString(), style: 'tableRow', alignment: 'center' },
         {
           stack: [
-            { text: item.description || 'Item', bold: true },
+            { text: item.name || item.description || 'Item', bold: true },
             ...(item.sku ? [{ text: `SKU: ${item.sku}`, fontSize: 8, color: '#666666' }] : []),
           ],
           style: 'tableRow',
@@ -66,14 +68,23 @@ export class PdfGeneratorService {
       ] as any);
     });
 
-    const subtotalStr = fromMinorUnits(quotation.subtotalMinor ?? 0, precision);
-    const discountStr = fromMinorUnits(quotation.totalDiscountMinor ?? 0, precision);
-    const taxableStr = fromMinorUnits(quotation.taxableAmountMinor ?? 0, precision);
-    const cgstStr = fromMinorUnits(quotation.cgstMinor ?? 0, precision);
-    const sgstStr = fromMinorUnits(quotation.sgstMinor ?? 0, precision);
-    const igstStr = fromMinorUnits(quotation.igstMinor ?? 0, precision);
-    const totalTaxStr = fromMinorUnits(quotation.totalTaxMinor ?? 0, precision);
-    const grandTotalStr = fromMinorUnits(quotation.totalAmountMinor ?? 0, precision);
+    const cgstMinor = quotation.cgstAmountMinor ?? quotation.cgstMinor ?? 0;
+    const sgstMinor = quotation.sgstAmountMinor ?? quotation.sgstMinor ?? 0;
+    const igstMinor = quotation.igstAmountMinor ?? quotation.igstMinor ?? 0;
+    const totalTaxMinor = quotation.totalTaxAmountMinor ?? quotation.totalTaxMinor ?? 0;
+    const grandTotalMinor = quotation.grandTotalMinor ?? quotation.totalAmountMinor ?? 0;
+
+    const subtotalStr = fromMinorUnits(quotation.subtotalMinor ?? 0, currency);
+    const discountStr = fromMinorUnits(quotation.totalDiscountMinor ?? 0, currency);
+    const taxableStr = fromMinorUnits(quotation.taxableAmountMinor ?? 0, currency);
+    const cgstStr = fromMinorUnits(cgstMinor, currency);
+    const sgstStr = fromMinorUnits(sgstMinor, currency);
+    const igstStr = fromMinorUnits(igstMinor, currency);
+    const totalTaxStr = fromMinorUnits(totalTaxMinor, currency);
+    const grandTotalStr = fromMinorUnits(grandTotalMinor, currency);
+
+    const expiryDate = quotation.expiryDate || quotation.validUntil;
+    const validUntilStr = expiryDate ? new Date(expiryDate).toISOString().split('T')[0] : 'N/A';
 
     const docDefinition: any = {
       defaultStyle: {
@@ -143,7 +154,7 @@ export class PdfGeneratorService {
                   margin: [0, 2, 0, 0],
                 },
                 {
-                  text: `Valid Until: ${new Date(quotation.validUntil).toISOString().split('T')[0]}`,
+                  text: `Valid Until: ${validUntilStr}`,
                   fontSize: 9,
                   bold: true,
                   alignment: 'right',
@@ -207,7 +218,7 @@ export class PdfGeneratorService {
                     { text: 'Taxable Amount:', style: 'summaryLabel' },
                     { text: `${currency} ${taxableStr}`, style: 'summaryValue' },
                   ],
-                  ...(quotation.cgstMinor > 0
+                  ...(cgstMinor > 0
                     ? [
                         [
                           { text: 'CGST:', style: 'summaryLabel' },
@@ -215,7 +226,7 @@ export class PdfGeneratorService {
                         ],
                       ]
                     : []),
-                  ...(quotation.sgstMinor > 0
+                  ...(sgstMinor > 0
                     ? [
                         [
                           { text: 'SGST:', style: 'summaryLabel' },
@@ -223,7 +234,7 @@ export class PdfGeneratorService {
                         ],
                       ]
                     : []),
-                  ...(quotation.igstMinor > 0
+                  ...(igstMinor > 0
                     ? [
                         [
                           { text: 'IGST:', style: 'summaryLabel' },
