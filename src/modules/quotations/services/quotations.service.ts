@@ -1308,12 +1308,14 @@ export class QuotationsService {
       );
     }
 
+    const requestNote = dto.requestNote || dto.notes || null;
+
     const updated = await this.quotationRepository.updateById(companyId, id, {
       status: QuotationStatus.PENDING_APPROVAL,
       approvalStatus: QuotationApprovalStatus.PENDING_APPROVAL,
       approvalRequestedBy: actorId,
       approvalRequestedAt: new Date(),
-      approvalRequestNote: dto.notes || null,
+      approvalRequestNote: requestNote,
       updatedBy: actorId,
     });
 
@@ -1323,7 +1325,7 @@ export class QuotationsService {
       'APPROVAL_REQUESTED',
       `Quotation submitted for tier-${quote.currentApprovalTier} approval`,
       actorId,
-      { tier: quote.currentApprovalTier, notes: dto.notes },
+      { tier: quote.currentApprovalTier, notes: requestNote },
     );
 
     return QuotationMapper.toResponse(updated!, callerIsAdminOrManager);
