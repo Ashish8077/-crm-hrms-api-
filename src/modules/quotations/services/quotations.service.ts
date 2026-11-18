@@ -764,7 +764,7 @@ export class QuotationsService {
     id: Types.ObjectId,
     dto: SendQuotationEmailDto,
     actorId: Types.ObjectId,
-  ): Promise<{ message: string; outboxId: string }> {
+  ): Promise<{ message: string; outboxId: string; portalToken?: string; portalLink?: string }> {
     const quote = await this.quotationRepository.findById(companyId, id);
     if (!quote) {
       throw new AppError(
@@ -858,6 +858,8 @@ export class QuotationsService {
     return {
       message: 'Quotation email enqueued successfully',
       outboxId: outboxRecord._id.toString(),
+      portalToken: portalTokenRaw,
+      portalLink,
     };
   }
 
@@ -868,7 +870,7 @@ export class QuotationsService {
     companyId: Types.ObjectId,
     id: Types.ObjectId,
     actorId: Types.ObjectId,
-  ): Promise<{ message: string; outboxId: string }> {
+  ): Promise<{ message: string; outboxId: string; portalToken?: string; portalLink?: string }> {
     return this.sendEmail(companyId, id, {}, actorId);
   }
 
