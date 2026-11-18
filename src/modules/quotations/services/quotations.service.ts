@@ -1038,12 +1038,117 @@ export class QuotationsService {
         const portalTokenHash = createHash('sha256').update(portalTokenRaw).digest('hex');
         const expiryDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-        const clonedItems = (dto.items && dto.items.length > 0 ? dto.items : current.items).map(
-          (item: any) => ({
+        let finalItems: QuotationItem[] = [];
+        let subtotalMinor = current.subtotalMinor;
+        let totalDiscountMinor = current.totalDiscountMinor;
+        let taxableAmountMinor = current.taxableAmountMinor;
+        let cgstAmountMinor = current.cgstAmountMinor;
+        let sgstAmountMinor = current.sgstAmountMinor;
+        let igstAmountMinor = current.igstAmountMinor;
+        let totalTaxAmountMinor = current.totalTaxAmountMinor;
+        let grandTotalMinor = current.grandTotalMinor;
+        let totalMrrMinor = current.totalMrrMinor;
+        let totalArrMinor = current.totalArrMinor;
+
+        if (dto.items && dto.items.length > 0) {
+          subtotalMinor = 0;
+          totalDiscountMinor = 0;
+          taxableAmountMinor = 0;
+          cgstAmountMinor = 0;
+          sgstAmountMinor = 0;
+          igstAmountMinor = 0;
+          totalTaxAmountMinor = 0;
+          grandTotalMinor = 0;
+          totalMrrMinor = 0;
+          totalArrMinor = 0;
+
+          for (const itemDto of dto.items) {
+            const productId = new Types.ObjectId(itemDto.productId);
+            const product = await this.productRepository.findById(productId, s);
+            if (!product) {
+              throw new AppError(
+                ErrorCode.RESOURCE_NOT_FOUND,
+                `Product not found: ${itemDto.productId}`,
+                HttpStatus.NOT_FOUND,
+              );
+            }
+
+            const unitPriceMinor = Math.round(Number(product.unitPrice || 0) * 100);
+            const costPriceMinor = Math.round(Number(product.costPrice || 0) * 100);
+            const taxRatePercent = Number(product.taxRate ?? 18);
+            const discountPercent =
+              itemDto.discountPercent !== undefined
+                ? Number(itemDto.discountPercent)
+                : 0;
+            const qty = Number(itemDto.quantity || 1);
+
+            const calc = calculateLineTaxes(
+              unitPriceMinor,
+              costPriceMinor,
+              qty,
+              discountPercent,
+              taxRatePercent,
+              current.isInterState,
+            );
+
+            finalItems.push({
+              _id: new Types.ObjectId(),
+              productId,
+              name: product.name,
+              sku: product.sku,
+              hsnSacCode: product.hsnSacCode ?? null,
+              type: product.type || 'PRODUCT',
+              quantityScaled: calc.quantityScaled,
+              unitPriceMinor: calc.unitPriceMinor,
+              costPriceMinor: calc.costPriceMinor,
+              discountBasisPoints: calc.discountBasisPoints,
+              discountMinor: calc.discountMinor,
+              netLineTotalMinor: calc.netLineTotalMinor,
+              taxBasisPoints: calc.taxBasisPoints,
+              cgstMinor: calc.cgstMinor,
+              sgstMinor: calc.sgstMinor,
+              igstMinor: calc.igstMinor,
+              totalTaxMinor: calc.totalTaxMinor,
+              lineGrandTotalMinor: calc.lineGrandTotalMinor,
+            });
+
+            subtotalMinor += calc.lineSubtotalMinor;
+            totalDiscountMinor += calc.discountMinor;
+            taxableAmountMinor += calc.netLineTotalMinor;
+            cgstAmountMinor += calc.cgstMinor;
+            sgstAmountMinor += calc.sgstMinor;
+            igstAmountMinor += calc.igstMinor;
+            totalTaxAmountMinor += calc.totalTaxMinor;
+            grandTotalMinor += calc.lineGrandTotalMinor;
+
+            if (product.billingCycle) {
+              const cycle = product.billingCycle.toUpperCase();
+              if (cycle === 'MONTHLY') {
+                totalMrrMinor += calc.netLineTotalMinor;
+                totalArrMinor += calc.netLineTotalMinor * 12;
+              } else if (cycle === 'ANNUAL' || cycle === 'YEARLY') {
+                totalMrrMinor += Math.round(calc.netLineTotalMinor / 12);
+                totalArrMinor += calc.netLineTotalMinor;
+              } else if (cycle === 'QUARTERLY') {
+                totalMrrMinor += Math.round(calc.netLineTotalMinor / 3);
+                totalArrMinor += calc.netLineTotalMinor * 4;
+              }
+            }
+          }
+        } else {
+          finalItems = current.items.map((item: any) => ({
             ...item,
             _id: new Types.ObjectId(),
-          }),
+          }));
+        }
+
+        const requiredApprovalTiers = this.determineApprovalTiers(
+          totalDiscountMinor,
+          subtotalMinor,
+          grandTotalMinor,
         );
+
+        const reasonText = dto.revisionReason || dto.reason || 'None provided';
 
         const newRevisionDoc = {
           _id: newQuoteId,
@@ -1059,32 +1164,35 @@ export class QuotationsService {
           dealId: current.dealId ?? null,
           leadId: current.leadId ?? null,
           status: QuotationStatus.DRAFT,
-          approvalStatus: QuotationApprovalStatus.NOT_SUBMITTED,
-          requiredApprovalTiers: current.requiredApprovalTiers,
-          currentApprovalTier: 1,
+          approvalStatus:
+            requiredApprovalTiers.length > 0
+              ? QuotationApprovalStatus.NOT_SUBMITTED
+              : QuotationApprovalStatus.NOT_REQUIRED,
+          requiredApprovalTiers,
+          currentApprovalTier: requiredApprovalTiers.length > 0 ? requiredApprovalTiers[0] : 1,
           quoteDate: new Date(),
           expiryDate,
-          items: clonedItems,
-          subtotalMinor: current.subtotalMinor,
-          totalDiscountMinor: current.totalDiscountMinor,
-          taxableAmountMinor: current.taxableAmountMinor,
-          cgstAmountMinor: current.cgstAmountMinor,
-          sgstAmountMinor: current.sgstAmountMinor,
-          igstAmountMinor: current.igstAmountMinor,
-          totalTaxAmountMinor: current.totalTaxAmountMinor,
-          grandTotalMinor: current.grandTotalMinor,
+          items: finalItems,
+          subtotalMinor,
+          totalDiscountMinor,
+          taxableAmountMinor,
+          cgstAmountMinor,
+          sgstAmountMinor,
+          igstAmountMinor,
+          totalTaxAmountMinor,
+          grandTotalMinor,
           currency: current.currency,
           sellerState: current.sellerState,
           buyerState: current.buyerState,
           isInterState: current.isInterState,
-          totalMrrMinor: current.totalMrrMinor,
-          totalArrMinor: current.totalArrMinor,
+          totalMrrMinor,
+          totalArrMinor,
           portalTokenHash,
           portalTokenExpiresAt: expiryDate,
           portalTokenUsed: false,
           portalTokenRevoked: false,
           termsAndConditions: current.termsAndConditions,
-          notes: current.notes,
+          notes: dto.notes !== undefined ? dto.notes : current.notes,
           createdBy: actorId,
           updatedBy: actorId,
         };
@@ -1095,9 +1203,9 @@ export class QuotationsService {
           companyId,
           newQuoteId,
           'REVISED',
-          `Revision v${nextRevisionNumber} spawned from v${current.revisionNumber}. Reason: ${dto.reason || 'None provided'}`,
+          `Revision v${nextRevisionNumber} spawned from v${current.revisionNumber}. Reason: ${reasonText}`,
           actorId,
-          { parentQuoteId: current._id.toString(), reason: dto.reason },
+          { parentQuoteId: current._id.toString(), reason: reasonText },
           s,
         );
 
@@ -1106,7 +1214,7 @@ export class QuotationsService {
           action: AuditAction.QUOTATION_REVISED,
           targetId: newQuoteId,
           targetModel: AuditTargetModel.QUOTATION,
-          details: { revisionNumber: nextRevisionNumber, reason: dto.reason },
+          details: { revisionNumber: nextRevisionNumber, reason: reasonText },
           ipAddress: null,
           userAgent: null,
         });
