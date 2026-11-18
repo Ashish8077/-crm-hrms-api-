@@ -706,21 +706,29 @@ export class QuotationsService {
 
     const pdfBuffer = await this.pdfGeneratorService.generatePdfBuffer(quote);
 
-    const folder = `quotations/${companyId.toString()}`;
-    const uploadResult = await this.storageService.uploadFile(
-      {
-        buffer: pdfBuffer,
-        mimetype: 'application/pdf',
-        originalname: `${quote.quoteNumber}.pdf`,
-        size: pdfBuffer.length,
-      } as any,
-      folder,
-      ['application/pdf'],
-    );
+    let pdfKey: string | undefined;
+    try {
+      const folder = `employees/quotations/${companyId.toString()}`;
+      const uploadResult = await this.storageService.uploadFile(
+        {
+          buffer: pdfBuffer,
+          mimetype: 'application/pdf',
+          originalname: `${quote.quoteNumber}.pdf`,
+          size: pdfBuffer.length,
+        } as any,
+        folder,
+        ['application/pdf'],
+      );
+      pdfKey = uploadResult.key;
+    } catch (err: any) {
+      this.logger.warn(`Storage upload warning for quote PDF ${id}: ${err.message || err}. Retaining in-memory buffer.`);
+    }
 
-    await this.quotationRepository.updateById(companyId, id, {
-      pdfKey: uploadResult.key,
-    });
+    if (pdfKey) {
+      await this.quotationRepository.updateById(companyId, id, {
+        pdfKey,
+      });
+    }
 
     return pdfBuffer;
   }
