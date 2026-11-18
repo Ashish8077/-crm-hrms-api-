@@ -17,7 +17,10 @@ export const CURRENCY_PRECISION_MAP: Record<string, number> = {
 
 export const QUANTITY_SCALE = 1000; // 3 decimal places for quantities (e.g. 2.500 hrs = 2500)
 
-export function validateCurrency(currency: string): string {
+export function validateCurrency(currency?: string | any): string {
+  if (typeof currency !== 'string') {
+    return 'INR';
+  }
   const code = (currency || 'INR').trim().toUpperCase();
   if (CURRENCY_PRECISION_MAP[code] === undefined) {
     throw new AppError(

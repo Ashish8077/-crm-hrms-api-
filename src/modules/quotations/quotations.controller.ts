@@ -46,7 +46,7 @@ import { EmailWebhookDto } from './dto/email-webhook.dto';
 @ApiBearerAuth('access-token')
 @Controller('quotes')
 export class QuotationsController {
-  constructor(private readonly quotationsService: QuotationsService) {}
+  constructor(private readonly quotationsService: QuotationsService) { }
 
   private resolveCompanyId(
     req: AuthenticatedRequest,
@@ -69,7 +69,7 @@ export class QuotationsController {
   @Public()
   @Get('portal/:token')
   @ApiOperation({ summary: 'Customer Portal: View proposal online by secure token' })
-  @ApiParam({ name: 'token', description: 'Hex-encoded random portal token' })
+  @ApiParam({ name: 'token', description: 'Hex-encoded random portal token', type: String })
   async getPortalView(@Param('token') token: string) {
     return this.quotationsService.getPortalView(token);
   }
@@ -78,7 +78,7 @@ export class QuotationsController {
   @Post('portal/:token/respond')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Customer Portal: Accept or reject quotation proposal' })
-  @ApiParam({ name: 'token', description: 'Hex-encoded random portal token' })
+  @ApiParam({ name: 'token', description: 'Hex-encoded random portal token', type: String })
   async respondPortal(
     @Param('token') token: string,
     @Body() dto: CustomerResponseDto,
@@ -156,7 +156,7 @@ export class QuotationsController {
   @Get(':id')
   @RequirePermissions(PermissionKeys.QUOTES_VIEW)
   @ApiOperation({ summary: 'Get quotation details by ID' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async findById(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Req() req: AuthenticatedRequest,
@@ -169,7 +169,7 @@ export class QuotationsController {
   @Patch(':id')
   @RequirePermissions(PermissionKeys.QUOTES_EDIT)
   @ApiOperation({ summary: 'Update quotation draft (before approval/acceptance)' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async update(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: UpdateQuotationDto,
@@ -189,7 +189,7 @@ export class QuotationsController {
   @Patch(':id/status')
   @RequirePermissions(PermissionKeys.QUOTES_EDIT)
   @ApiOperation({ summary: 'Update quotation status via state machine' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async updateStatus(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: UpdateQuotationStatusDto,
@@ -213,7 +213,7 @@ export class QuotationsController {
   @Post(':id/pdf')
   @RequirePermissions(PermissionKeys.QUOTES_EXPORT)
   @ApiOperation({ summary: 'Generate quotation PDF and persist to storage' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async generatePdf(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Req() req: AuthenticatedRequest,
@@ -226,7 +226,7 @@ export class QuotationsController {
   @Get(':id/pdf')
   @RequirePermissions(PermissionKeys.QUOTES_VIEW)
   @ApiOperation({ summary: 'Download generated quotation PDF document' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async downloadPdf(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Req() req: AuthenticatedRequest,
@@ -249,7 +249,7 @@ export class QuotationsController {
   @Post(':id/send')
   @RequirePermissions(PermissionKeys.QUOTES_EDIT)
   @ApiOperation({ summary: 'Send quotation email to client with portal link & PDF attachment' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async sendEmail(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: SendQuotationEmailDto,
@@ -267,7 +267,7 @@ export class QuotationsController {
   @Post(':id/resend')
   @RequirePermissions(PermissionKeys.QUOTES_EDIT)
   @ApiOperation({ summary: 'Resend quotation email' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async resendEmail(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Req() req: AuthenticatedRequest,
@@ -287,7 +287,7 @@ export class QuotationsController {
   @Post(':id/duplicate')
   @RequirePermissions(PermissionKeys.QUOTES_CREATE)
   @ApiOperation({ summary: 'Duplicate quotation into a new draft' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async duplicate(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Req() req: AuthenticatedRequest,
@@ -305,7 +305,7 @@ export class QuotationsController {
   @Get(':id/revisions')
   @RequirePermissions(PermissionKeys.QUOTES_VIEW)
   @ApiOperation({ summary: 'Get full revision history chain (v1, v2, ...)' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async findRevisions(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Req() req: AuthenticatedRequest,
@@ -318,7 +318,7 @@ export class QuotationsController {
   @Post(':id/revisions')
   @RequirePermissions(PermissionKeys.QUOTES_CREATE)
   @ApiOperation({ summary: 'Spawn a new revision v(n+1) from this quotation' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async spawnRevision(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: SpawnRevisionDto,
@@ -338,7 +338,7 @@ export class QuotationsController {
   @Patch(':id/validity')
   @RequirePermissions(PermissionKeys.QUOTES_EDIT)
   @ApiOperation({ summary: 'Extend validity expiration date of quotation' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async extendValidity(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: ExtendValidityDto,
@@ -362,7 +362,7 @@ export class QuotationsController {
   @Post(':id/approval')
   @RequirePermissions(PermissionKeys.QUOTES_EDIT)
   @ApiOperation({ summary: 'Submit quotation for manager approval' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async submitApproval(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: SubmitApprovalDto,
@@ -382,7 +382,7 @@ export class QuotationsController {
   @Patch(':id/approval')
   @RequirePermissions(PermissionKeys.QUOTES_APPROVE)
   @ApiOperation({ summary: 'Review quotation approval (Approve or Reject)' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async reviewApproval(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: ReviewApprovalDto,
@@ -406,7 +406,7 @@ export class QuotationsController {
   @Post(':id/convert-to-order')
   @RequirePermissions(PermissionKeys.QUOTES_EDIT)
   @ApiOperation({ summary: 'Convert accepted quotation into a confirmed Sales Order' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async convertToOrder(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Body() dto: ConvertToOrderDto,
@@ -430,7 +430,7 @@ export class QuotationsController {
   @Get(':id/emails')
   @RequirePermissions(PermissionKeys.QUOTES_VIEW)
   @ApiOperation({ summary: 'Get quotation email dispatch and delivery history' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async getEmailHistory(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Req() req: AuthenticatedRequest,
@@ -442,7 +442,7 @@ export class QuotationsController {
   @Get(':id/activities')
   @RequirePermissions(PermissionKeys.QUOTES_VIEW)
   @ApiOperation({ summary: 'Get quotation lifecycle activity and audit history' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async getActivityHistory(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Req() req: AuthenticatedRequest,
@@ -458,7 +458,7 @@ export class QuotationsController {
   @Delete(':id')
   @RequirePermissions(PermissionKeys.QUOTES_DELETE)
   @ApiOperation({ summary: 'Soft-delete a quotation (if not accepted/converted)' })
-  @ApiParam({ name: 'id', description: 'Quotation ObjectId' })
+  @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async softDelete(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Req() req: AuthenticatedRequest,
