@@ -1,0 +1,9 @@
+export enum CompanyType {
+  CUSTOMER = 'CUSTOMER',
+  PROSPECT = 'PROSPECT',
+  PARTNER = 'PARTNER',
+  VENDOR = 'VENDOR',
+  RESELLER = 'RESELLER',
+  COMPETITOR = 'COMPETITOR',
+  OTHER = 'OTHER',
+}

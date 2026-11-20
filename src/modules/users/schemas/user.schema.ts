@@ -13,19 +13,25 @@ export class User {
   @Prop({
     type: String,
     required: true,
-    unique: true,
     lowercase: true,
     trim: true,
-    index: true,
   })
-  email: string;
+  email!: string;
 
   @Prop({
     type: String,
     required: true,
     select: false,
   })
-  passwordHash: string;
+  passwordHash!: string;
+
+  @Prop({
+    type: [Types.ObjectId],
+    ref: 'Role',
+    default: [],
+    index: true,
+  })
+  roleIds!: Types.ObjectId[];
 
   @Prop({
     type: String,
@@ -34,41 +40,61 @@ export class User {
     required: true,
     index: true,
   })
-  status: UserStatus;
+  status!: UserStatus;
 
   @Prop({
     type: Date,
     default: null,
   })
-  lastLoginAt: Date | null;
+  lastLoginAt!: Date | null;
 
   @Prop({
     type: Date,
     default: null,
-    index: true,
   })
-  deletedAt: Date | null;
+  deletedAt!: Date | null;
 
   @Prop({
     type: Types.ObjectId,
-    ref: User.name,
+    ref: 'User',
     default: null,
   })
-  createdBy: Types.ObjectId | null;
+  createdBy!: Types.ObjectId | null;
 
   @Prop({
     type: Types.ObjectId,
-    ref: User.name,
+    ref: 'User',
     default: null,
   })
-  updatedBy: Types.ObjectId | null;
+  updatedBy!: Types.ObjectId | null;
 
   @Prop({
     type: Types.ObjectId,
-    ref: User.name,
+    ref: 'User',
     default: null,
   })
-  deletedBy: Types.ObjectId | null;
+  deletedBy!: Types.ObjectId | null;
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+// Partial unique index: ensures active users have unique emails,
+// while allowing soft-deleted users' emails to be reused.
+UserSchema.index(
+  { email: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { deletedAt: null },
+    name: 'idx_users_email_active_unique',
+  },
+);
+
+// Query-pattern index for the primary user list endpoint with reverse chronological sorting
+// Also serves as the index prefix for single { deletedAt: 1 } queries
+UserSchema.index(
+  { deletedAt: 1, createdAt: -1 },
+  { name: 'idx_users_deleted_created' },
+);

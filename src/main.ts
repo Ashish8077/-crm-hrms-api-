@@ -1,13 +1,22 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import {
+  HttpStatus,
+  Logger,
+  ValidationPipe,
+  VersioningType,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { API_PREFIX } from './common/constants/api.constants';
 import helmet from 'helmet';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { setupSwagger } from './config/swagger.config';
+import cookieParser from 'cookie-parser';
+import { ValidationError } from 'class-validator';
+import { AppError } from './common/errors/app-error';
+import { ErrorCode } from './common/errors/error-codes';
+import { mapValidationErrors } from './common/validation/validation-error.mapper';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -16,19 +25,41 @@ async function bootstrap() {
 
   app.use(helmet());
 
-  app.setGlobalPrefix(API_PREFIX);
+  const configService = app.get(ConfigService);
+
+  const trustProxy = configService.getOrThrow<number>('app.trustProxy');
+  if (trustProxy > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+    app.getHttpAdapter().getInstance().set('trust proxy', trustProxy);
+  }
+
+  app.setGlobalPrefix('api');
+
+  app.enableVersioning({
+    type: VersioningType.URI,
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      exceptionFactory: (errors: ValidationError[]) => {
+        const details = mapValidationErrors(errors);
+        return new AppError(
+          ErrorCode.VALIDATION_ERROR,
+          'Request validation failed',
+          HttpStatus.BAD_REQUEST,
+          details,
+        );
+      },
     }),
   );
 
-  const configService = app.get(ConfigService);
+  app.use(cookieParser());
 
   app.enableCors({
     origin: configService.getOrThrow<string>('CORS_ORIGIN'),
+    credentials: true,
   });
 
   app.useGlobalInterceptors(
