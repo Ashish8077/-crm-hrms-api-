@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Request, Response } from 'express';
 
 import { AppError } from '../errors/app-error';
@@ -21,7 +22,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
     const response = ctx.getResponse<Response>();
 
-    const requestId = request.headers['x-request-id']?.toString() ?? null;
+    let incomingRequestId = request.headers['x-request-id'];
+    if (Array.isArray(incomingRequestId)) {
+      incomingRequestId = incomingRequestId[0];
+    }
+    const requestId =
+      typeof incomingRequestId === 'string' ? incomingRequestId : randomUUID();
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
 
@@ -31,7 +37,45 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     let details: unknown;
 
-    if (exception instanceof AppError) {
+    if (this.isMongoDuplicateKeyError(exception)) {
+      const mongoError = exception as {
+        keyValue?: Record<string, unknown>;
+        keyPattern?: Record<string, unknown>;
+      };
+      this.logger.warn(
+        `[MongoDB E11000 Duplicate Key] Conflict on request ${requestId}: ` +
+          JSON.stringify(mongoError.keyValue ?? mongoError.keyPattern ?? {}),
+      );
+      const error = new AppError(
+        ErrorCode.RESOURCE_ALREADY_EXISTS,
+        'Resource already exists',
+        HttpStatus.CONFLICT,
+      );
+      statusCode = error.statusCode;
+      code = error.code;
+      message = error.message;
+    } else if (this.isMongoValidationError(exception)) {
+      const error = new AppError(
+        ErrorCode.VALIDATION_ERROR,
+        'Database validation failed',
+        HttpStatus.BAD_REQUEST,
+      );
+      statusCode = error.statusCode;
+      code = error.code;
+      message = error.message;
+      const mongooseErrors = (
+        exception as {
+          errors?: Record<string, { path?: string; message?: string }>;
+        }
+      ).errors;
+
+      if (mongooseErrors) {
+        details = Object.keys(mongooseErrors).map((key) => ({
+          field: mongooseErrors[key].path || key,
+          message: mongooseErrors[key].message || 'Invalid value',
+        }));
+      }
+    } else if (exception instanceof AppError) {
       statusCode = exception.statusCode;
       code = exception.code;
       message = exception.message;
@@ -76,6 +120,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       if (statusCode === HttpStatus.NOT_FOUND) {
         code = ErrorCode.RESOURCE_NOT_FOUND;
       }
+
+      if (statusCode === HttpStatus.TOO_MANY_REQUESTS) {
+        code = ErrorCode.TOO_MANY_REQUESTS;
+        message = 'Too many requests. Please try again later.';
+      }
     }
 
     if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
@@ -102,5 +151,23 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
       requestId,
     });
+  }
+
+  private isMongoDuplicateKeyError(exception: unknown): boolean {
+    return (
+      typeof exception === 'object' &&
+      exception !== null &&
+      'code' in exception &&
+      (exception as { code?: number }).code === 11000
+    );
+  }
+
+  private isMongoValidationError(exception: unknown): boolean {
+    return (
+      typeof exception === 'object' &&
+      exception !== null &&
+      'name' in exception &&
+      (exception as { name?: string }).name === 'ValidationError'
+    );
   }
 }

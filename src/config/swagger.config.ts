@@ -20,7 +20,11 @@ export function setupSwagger(app: INestApplication): void {
     .addTag('Roles & Permissions', 'RBAC management')
     .addTag('Organization', 'Departments, teams and organization')
     .addTag('HR - Employees', 'Employee management')
-    .addTag('HR - Attendance', 'Attendance management')
+    .addTag(
+      'Attendance',
+      'Attendance tracking, break sessions, monthly calendar, and regularization',
+    )
+    .addTag('Shifts', 'Work shifts configuration and employee shift assignment')
     .addTag('HR - Leave', 'Leave management')
     .addTag('HR - Performance', 'Performance management')
     .addTag('HR - Expenses', 'Expense management')
@@ -30,7 +34,14 @@ export function setupSwagger(app: INestApplication): void {
     .addTag('HR - Helpdesk', 'HR helpdesk')
     .addTag('HR - Training', 'Learning and training')
     .addTag('CRM - Leads', 'Lead management')
+    .addTag('CRM - Companies', 'Company records and corporate accounts')
+    .addTag('CRM - Contacts', 'Individual contacts and customer relationships')
     .addTag('CRM - Deals', 'Deal and pipeline management')
+    .addTag('CRM - Tasks', 'Task and to-do item management')
+    .addTag('CRM - Activities', 'Activity logging, timeline and scheduling')
+    .addTag('CRM - Products & Services', 'Product and service catalog, CPQ pricing engine')
+    .addTag('CRM - Quotations', 'Quotations & Proposals Engine, CPQ pricing, revision management, customer portal and approvals')
+    .addTag('CRM - Sales Orders', 'Order-to-Cash conversion and confirmed sales order management')
     .build();
 
   const documentFactory = () => SwaggerModule.createDocument(app, config);
@@ -44,6 +55,7 @@ export function setupSwagger(app: INestApplication): void {
       docExpansion: 'none',
       tagsSorter: 'alpha',
       operationsSorter: 'alpha',
+      // withCredentials: true,
     },
     jsonDocumentUrl: 'docs/json',
   });
