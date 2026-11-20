@@ -285,4 +285,30 @@ export const PermissionKeys = {
     PermissionModule.PRODUCTS,
     PermissionAction.DELETE,
   ),
+
+  // Quotations
+  QUOTES_VIEW: PermissionKey.of(
+    PermissionModule.QUOTATIONS,
+    PermissionAction.VIEW,
+  ),
+  QUOTES_CREATE: PermissionKey.of(
+    PermissionModule.QUOTATIONS,
+    PermissionAction.CREATE,
+  ),
+  QUOTES_EDIT: PermissionKey.of(
+    PermissionModule.QUOTATIONS,
+    PermissionAction.EDIT,
+  ),
+  QUOTES_DELETE: PermissionKey.of(
+    PermissionModule.QUOTATIONS,
+    PermissionAction.DELETE,
+  ),
+  QUOTES_APPROVE: PermissionKey.of(
+    PermissionModule.QUOTATIONS,
+    PermissionAction.APPROVE,
+  ),
+  QUOTES_EXPORT: PermissionKey.of(
+    PermissionModule.QUOTATIONS,
+    PermissionAction.EXPORT,
+  ),
 } as const;
