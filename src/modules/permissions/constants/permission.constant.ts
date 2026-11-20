@@ -311,4 +311,14 @@ export const PermissionKeys = {
     PermissionModule.QUOTATIONS,
     PermissionAction.EXPORT,
   ),
+
+  // Reports
+  REPORTS_VIEW: PermissionKey.of(
+    PermissionModule.REPORTS,
+    PermissionAction.VIEW,
+  ),
+  REPORTS_EXPORT: PermissionKey.of(
+    PermissionModule.REPORTS,
+    PermissionAction.EXPORT,
+  ),
 } as const;

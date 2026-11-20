@@ -42,6 +42,7 @@ export function setupSwagger(app: INestApplication): void {
     .addTag('CRM - Products & Services', 'Product and service catalog, CPQ pricing engine')
     .addTag('CRM - Quotations', 'Quotations & Proposals Engine, CPQ pricing, revision management, customer portal and approvals')
     .addTag('CRM - Sales Orders', 'Order-to-Cash conversion and confirmed sales order management')
+    .addTag('CRM - Analytics & Reports', 'Executive dashboard, lead funnels, deal pipelines, sales quotas, performance trends, and custom report exports')
     .build();
 
   const documentFactory = () => SwaggerModule.createDocument(app, config);
