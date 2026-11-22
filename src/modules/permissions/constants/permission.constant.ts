@@ -471,4 +471,58 @@ export const PermissionKeys = {
     PermissionModule.ACTIVITIES,
     PermissionAction.DELETE,
   ),
+
+  // Products & Services
+  PRODUCTS_VIEW: PermissionKey.of(
+    PermissionModule.PRODUCTS,
+    PermissionAction.VIEW,
+  ),
+  PRODUCTS_CREATE: PermissionKey.of(
+    PermissionModule.PRODUCTS,
+    PermissionAction.CREATE,
+  ),
+  PRODUCTS_EDIT: PermissionKey.of(
+    PermissionModule.PRODUCTS,
+    PermissionAction.EDIT,
+  ),
+  PRODUCTS_DELETE: PermissionKey.of(
+    PermissionModule.PRODUCTS,
+    PermissionAction.DELETE,
+  ),
+
+  // Quotations
+  QUOTES_VIEW: PermissionKey.of(
+    PermissionModule.QUOTATIONS,
+    PermissionAction.VIEW,
+  ),
+  QUOTES_CREATE: PermissionKey.of(
+    PermissionModule.QUOTATIONS,
+    PermissionAction.CREATE,
+  ),
+  QUOTES_EDIT: PermissionKey.of(
+    PermissionModule.QUOTATIONS,
+    PermissionAction.EDIT,
+  ),
+  QUOTES_DELETE: PermissionKey.of(
+    PermissionModule.QUOTATIONS,
+    PermissionAction.DELETE,
+  ),
+  QUOTES_APPROVE: PermissionKey.of(
+    PermissionModule.QUOTATIONS,
+    PermissionAction.APPROVE,
+  ),
+  QUOTES_EXPORT: PermissionKey.of(
+    PermissionModule.QUOTATIONS,
+    PermissionAction.EXPORT,
+  ),
+
+  // Reports
+  REPORTS_VIEW: PermissionKey.of(
+    PermissionModule.REPORTS,
+    PermissionAction.VIEW,
+  ),
+  REPORTS_EXPORT: PermissionKey.of(
+    PermissionModule.REPORTS,
+    PermissionAction.EXPORT,
+  ),
 } as const;
