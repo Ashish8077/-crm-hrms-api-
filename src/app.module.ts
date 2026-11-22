@@ -28,6 +28,9 @@ import { ContactsModule } from './modules/contacts/contacts.module';
 import { DealsModule } from './modules/deals/deals.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
+import { ProductsModule } from './modules/products/products.module';
+import { QuotationsModule } from './modules/quotations/quotations.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import configuration from './config/configuration';
 import { RedisModule } from './common/redis/redis.module';
 import { CsrfGuard } from './common/guards/csrf.guard';
@@ -75,6 +78,9 @@ import { PermissionsGuard } from './modules/authorization/guards/permissions.gua
     DealsModule,
     TasksModule,
     ActivitiesModule,
+    ProductsModule,
+    QuotationsModule,
+    DashboardModule,
     StorageModule,
     AttendanceModule,
     LeavesModule,
