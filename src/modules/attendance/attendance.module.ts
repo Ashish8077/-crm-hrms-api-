@@ -17,6 +17,7 @@ import { EmployeesModule } from '../employees/employees.module';
 import { BranchesModule } from '../branches/branches.module';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { AuthorizationModule } from '../authorization/authorization.module';
+import { WorkSchedulesModule } from '../work-schedules/work-schedules.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AuthorizationModule } from '../authorization/authorization.module';
     BranchesModule,
     AuditLogsModule,
     AuthorizationModule,
+    WorkSchedulesModule,
   ],
   controllers: [AttendanceController, ShiftController],
   providers: [
@@ -47,6 +49,7 @@ import { AuthorizationModule } from '../authorization/authorization.module';
     AttendanceRepository,
     ShiftRepository,
     AttendanceRegularizationRepository,
+    WorkSchedulesModule,
   ],
 })
 export class AttendanceModule {}

@@ -372,4 +372,77 @@ export class AttendanceRepository implements OnModuleInit {
       totalBreakMinutes: item.totalBreakMinutes ?? 0,
     };
   }
+
+  /**
+   * Synchronizes an approved leave day with attendance records.
+   */
+  async syncLeaveAttendance(
+    employeeId: Types.ObjectId,
+    attendanceDate: string,
+    status: AttendanceStatus,
+    shiftId: Types.ObjectId,
+    shiftSnapshot: Record<string, unknown>,
+    leaveRequestId: Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<AttendanceLean> {
+    const existing = await this.findByEmployeeAndDate(
+      employeeId,
+      attendanceDate,
+      session,
+    );
+    if (existing) {
+      const query = this.attendanceModel.findOneAndUpdate(
+        { _id: existing._id },
+        {
+          $set: {
+            status,
+            leaveRequestId,
+          },
+        },
+        { new: true },
+      );
+      if (session) {
+        query.session(session);
+      }
+      return (await query.lean<AttendanceLean>().exec())!;
+    }
+
+    const doc = new this.attendanceModel({
+      employeeId,
+      attendanceDate,
+      date: new Date(`${attendanceDate}T00:00:00.000Z`),
+      shiftId,
+      shiftSnapshot,
+      status,
+      leaveRequestId,
+      checkInTime: null,
+      checkOutTime: null,
+      breaks: [],
+    });
+    const saved = await doc.save({ session });
+    return saved.toObject() as AttendanceLean;
+  }
+
+  /**
+   * Clears future attendance records linked to a cancelled leave request.
+   */
+  async removeFutureLeaveAttendance(
+    leaveRequestId: Types.ObjectId,
+    currentDate: string,
+    session?: ClientSession,
+  ): Promise<void> {
+    await this.attendanceModel.updateMany(
+      {
+        leaveRequestId,
+        attendanceDate: { $gt: currentDate },
+        deletedAt: null,
+      },
+      {
+        $set: {
+          deletedAt: new Date(),
+        },
+      },
+      { session },
+    );
+  }
 }

@@ -19,13 +19,31 @@ export function setupSwagger(app: INestApplication): void {
     .addTag('Users', 'User management')
     .addTag('Roles & Permissions', 'RBAC management')
     .addTag('Organization', 'Departments, teams and organization')
-    .addTag('HR - Employees', 'Employee management')
+    .addTag('Employees', 'Employee management and user linkages')
+    .addTag('Departments', 'Department configuration')
+    .addTag('Designations', 'Designation configuration')
+    .addTag('Branches', 'Branch location configuration')
     .addTag(
       'Attendance',
       'Attendance tracking, break sessions, monthly calendar, and regularization',
     )
     .addTag('Shifts', 'Work shifts configuration and employee shift assignment')
-    .addTag('HR - Leave', 'Leave management')
+    .addTag(
+      'Work Schedules & Policies',
+      'Organizational work schedule policies and weekly off configurations (company-wide & branch-level rules)',
+    )
+    .addTag(
+      'Weekly Offs',
+      'Weekly off configuration (company-wide defaults & branch-level rules)',
+    )
+    .addTag(
+      'Leaves',
+      'Leave policy, types, allocations, adjustments, requests, dynamic manager approvals, calendar visualization, and year-end carry forward',
+    )
+    .addTag(
+      'Compensatory Off',
+      'Compensatory off claims for weekend/holiday overtime work and manager review workflow',
+    )
     .addTag('HR - Performance', 'Performance management')
     .addTag('HR - Expenses', 'Expense management')
     .addTag('HR - Payroll', 'Payroll management')

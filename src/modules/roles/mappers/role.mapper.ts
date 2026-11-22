@@ -64,7 +64,7 @@ export class RoleMapper {
       description: role.description,
       isSystemRole: role.isSystemRole,
       isActive: role.isActive,
-      permissionIds: role.permissionIds.map((id) => id.toString()),
+      permissionIds: (role.permissionIds || []).map((id) => id.toString()),
       createdAt: role.createdAt,
       updatedAt: role.updatedAt,
     };

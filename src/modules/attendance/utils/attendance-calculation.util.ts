@@ -3,6 +3,10 @@ import {
   ATTENDANCE_CONSTANTS,
   AttendanceStatus,
 } from '../constants/attendance.constant';
+import {
+  WeeklyOffCalculationUtil,
+  WeeklyOffRuleItem,
+} from '../../work-schedules/utils/weekly-off-calculation.util';
 
 export interface ShiftCalculationParams {
   startTime: string; // HH:mm
@@ -175,12 +179,17 @@ export class AttendanceCalculationUtil {
   }
 
   /**
-   * Determines whether a given YYYY-MM-DD date string represents a weekly off (Sunday = 0).
+   * Determines whether a given YYYY-MM-DD date string represents a weekly off.
+   * If custom rule items are provided, evaluates using WeeklyOffCalculationUtil.
+   * Otherwise falls back to default Sunday (dayOfWeek === 0).
    */
-  static isWeeklyOff(dateString: string): boolean {
+  static isWeeklyOff(dateString: string, rules?: WeeklyOffRuleItem[]): boolean {
+    if (rules && rules.length > 0) {
+      return WeeklyOffCalculationUtil.isDateWeeklyOff(dateString, rules);
+    }
     const [year, month, day] = dateString.split('-').map(Number);
     const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-    return dayOfWeek === 0; // Sunday
+    return dayOfWeek === 0; // Default Sunday
   }
 
   /**

@@ -6,8 +6,29 @@ import {
   PermissionModule,
 } from '../../../modules/permissions/constants/permission.constant';
 
-const { VIEW, CREATE, EDIT, DELETE, EXPORT, APPROVE, ASSIGN } =
-  PermissionAction;
+const {
+  VIEW,
+  CREATE,
+  EDIT,
+  DELETE,
+  EXPORT,
+  APPROVE,
+  ASSIGN,
+  REJECT,
+  APPLY,
+  ALLOCATE,
+  ADJUST,
+  CARRY_FORWARD,
+  CLAIM,
+  REVIEW,
+  CANCEL_OWN,
+  VIEW_OWN,
+  VIEW_TEAM,
+  VIEW_ORGANIZATION,
+  VIEW_PENDING_APPROVALS,
+  VIEW_OWN_TRANSACTIONS,
+  VIEW_TEAM_TRANSACTIONS,
+} = PermissionAction;
 const M = PermissionModule;
 
 /**
@@ -27,6 +48,7 @@ const PERMISSION_CATALOG: Record<PermissionModule, PermissionAction[]> = {
   [M.TEAMS]: [VIEW, CREATE, EDIT, DELETE],
   [M.DESIGNATIONS]: [VIEW, CREATE, EDIT, DELETE],
   [M.BRANCHES]: [VIEW, CREATE, EDIT, DELETE],
+  [M.WORK_SCHEDULES]: [VIEW, CREATE, EDIT, DELETE],
 
   // ── CRM ──────────────────────────────────────────────────────────
   [M.LEADS]: [VIEW, CREATE, EDIT, DELETE, EXPORT, ASSIGN],
@@ -40,8 +62,32 @@ const PERMISSION_CATALOG: Record<PermissionModule, PermissionAction[]> = {
 
   // ── HR ───────────────────────────────────────────────────────────
   [M.EMPLOYEES]: [VIEW, CREATE, EDIT, DELETE, EXPORT, ASSIGN],
-  [M.ATTENDANCE]: [VIEW, CREATE, EDIT, APPROVE, EXPORT],
+  [M.ATTENDANCE]: [VIEW, CREATE, EDIT, DELETE, APPROVE, EXPORT],
   [M.LEAVES]: [VIEW, CREATE, EDIT, DELETE, APPROVE, EXPORT],
+  [M.LEAVE_TYPES]: [VIEW, CREATE, EDIT, DELETE],
+  [M.HOLIDAYS]: [VIEW, CREATE, EDIT, DELETE],
+  [M.LEAVE_BALANCES]: [
+    VIEW_OWN,
+    VIEW_TEAM,
+    ALLOCATE,
+    ADJUST,
+    CARRY_FORWARD,
+    VIEW_OWN_TRANSACTIONS,
+    VIEW_TEAM_TRANSACTIONS,
+  ],
+  [M.LEAVE_REQUESTS]: [
+    APPLY,
+    VIEW_OWN,
+    VIEW_PENDING_APPROVALS,
+    VIEW_TEAM,
+    VIEW,
+    APPROVE,
+    REJECT,
+    CANCEL_OWN,
+    EDIT,
+  ],
+  [M.LEAVE_CALENDAR]: [VIEW_OWN, VIEW_TEAM, VIEW_ORGANIZATION],
+  [M.COMP_OFF]: [CLAIM, VIEW_OWN, VIEW_TEAM, VIEW, REVIEW],
   [M.PERFORMANCE]: [VIEW, CREATE, EDIT, APPROVE, EXPORT],
   [M.EXPENSES]: [VIEW, CREATE, EDIT, DELETE, APPROVE, EXPORT],
   [M.TRAVEL]: [VIEW, CREATE, EDIT, DELETE, APPROVE, EXPORT],
@@ -67,6 +113,25 @@ const PERMISSION_CATALOG: Record<PermissionModule, PermissionAction[]> = {
   [M.AUDIT_LOGS]: [VIEW, EXPORT],
   [M.REPORTS]: [VIEW, EXPORT],
 };
+
+export const GRANULAR_LEAVE_PERMISSIONS: Array<{
+  module: string;
+  action: string;
+  key: string;
+}> = [
+  M.LEAVE_TYPES,
+  M.HOLIDAYS,
+  M.LEAVE_BALANCES,
+  M.LEAVE_REQUESTS,
+  M.LEAVE_CALENDAR,
+  M.COMP_OFF,
+].flatMap((mod) =>
+  PERMISSION_CATALOG[mod].map((action) => ({
+    module: mod,
+    action,
+    key: `${mod}.${action}`,
+  })),
+);
 
 export class PermissionSeed {
   private readonly logger = new Logger(PermissionSeed.name);

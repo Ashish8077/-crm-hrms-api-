@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { ClientSession, Connection, Types } from 'mongoose';
 import {
@@ -17,6 +17,7 @@ import {
 import { BranchRepository } from '../../branches/repositories/branch.repository';
 import { ActiveEmploymentStatuses } from '../../employees/constants/employee.constant';
 import { ShiftService } from './shift.service';
+import { WeeklyOffService } from '../../work-schedules/services/weekly-off.service';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
 import {
   AuditAction,
@@ -75,6 +76,7 @@ export class AttendanceService {
     private readonly auditLogsService: AuditLogsService,
     private readonly authorizationService: AuthorizationService,
     @InjectConnection() private readonly connection: Connection,
+    @Optional() private readonly weeklyOffService?: WeeklyOffService,
   ) {}
 
   /**
@@ -1278,9 +1280,14 @@ export class AttendanceService {
     }
 
     // ─── Guard 5: Roster & Holiday Check ───
-    // Regularization is strictly allowed on scheduled working days, not on Weekly Offs (Sunday) or Company Holidays
+    // Regularization is strictly allowed on scheduled working days, not on Weekly Offs or Company Holidays
     const isWeeklyOff =
-      AttendanceCalculationUtil.isWeeklyOff(dto.attendanceDate) ||
+      (this.weeklyOffService
+        ? await this.weeklyOffService.isWeeklyOff(
+            dto.attendanceDate,
+            employee.branchId,
+          )
+        : AttendanceCalculationUtil.isWeeklyOff(dto.attendanceDate)) ||
       attendance?.status === AttendanceStatus.WEEK_OFF;
     const isHoliday = attendance?.status === AttendanceStatus.HOLIDAY;
     const isOnLeave = attendance?.status === AttendanceStatus.ON_LEAVE;

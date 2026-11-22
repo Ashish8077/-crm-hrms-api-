@@ -5,6 +5,9 @@ import {
   Get,
   Param,
   Patch,
+  Delete,
+  HttpCode,
+  HttpStatus,
   Req,
   Query,
 } from '@nestjs/common';
@@ -105,5 +108,23 @@ export class RolesController {
       request.user.userId,
       { ipAddress, userAgent },
     );
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete custom role' })
+  @ApiParam({ name: 'id', description: 'Role ID', type: String })
+  @ApiOkResponse({ description: 'Role deleted successfully' })
+  @RequirePermissions(PermissionKeys.ROLES_DELETE)
+  async delete(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<void> {
+    const ipAddress = request.ip ?? null;
+    const userAgent = request.headers['user-agent'] ?? null;
+    return this.rolesService.delete(id, request.user.userId, {
+      ipAddress,
+      userAgent,
+    });
   }
 }
