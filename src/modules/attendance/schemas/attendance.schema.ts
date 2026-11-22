@@ -224,6 +224,14 @@ export class Attendance {
   })
   regularizationId!: Types.ObjectId | null;
 
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'LeaveRequest',
+    default: null,
+    index: true,
+  })
+  leaveRequestId?: Types.ObjectId | null;
+
   @Prop({ type: Date, default: null, index: true })
   deletedAt!: Date | null;
 
