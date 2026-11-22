@@ -107,4 +107,14 @@ export class RoleRepository {
 
     return query.lean().exec();
   }
+
+  async deleteById(
+    id: Types.ObjectId | string,
+    session?: ClientSession,
+  ): Promise<boolean> {
+    const result = await this.roleModel
+      .findByIdAndDelete(id, { session })
+      .exec();
+    return !!result;
+  }
 }

@@ -18,48 +18,6 @@ const SYSTEM_ROLES: SystemRoleDefinition[] = [
     description: 'System administrator with full access',
     permissionKeys: 'ALL',
   },
-  {
-    key: SystemRole.ADMIN,
-    name: 'Admin',
-    description: 'Administrative access to core system operations',
-    permissionKeys: [],
-  },
-  {
-    key: SystemRole.HR_MANAGER,
-    name: 'HR Manager',
-    description: 'Human resources management and approval access',
-    permissionKeys: [],
-  },
-  {
-    key: SystemRole.HR,
-    name: 'HR',
-    description: 'Human resources operational access',
-    permissionKeys: [],
-  },
-  {
-    key: SystemRole.FINANCE,
-    name: 'Finance',
-    description: 'Finance and payroll-related access',
-    permissionKeys: [],
-  },
-  {
-    key: SystemRole.SALES_MANAGER,
-    name: 'Sales Manager',
-    description: 'Sales management and assignment access',
-    permissionKeys: [],
-  },
-  {
-    key: SystemRole.SALES_EXECUTIVE,
-    name: 'Sales Executive',
-    description: 'Sales execution access',
-    permissionKeys: [],
-  },
-  {
-    key: SystemRole.EMPLOYEE,
-    name: 'Employee',
-    description: 'Employee self-service access',
-    permissionKeys: [],
-  },
 ];
 
 export class RoleSeed {

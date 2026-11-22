@@ -11,6 +11,7 @@ import {
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { UpdateRoleStatusDto } from './dto/update-role-status.dto';
+import { SystemRole } from './constants/role.constant';
 import { AppError } from '../../common/errors/app-error';
 import { ErrorCode } from '../../common/errors/error-codes';
 import { RoleDocument } from './schemas/role.schema';
@@ -45,6 +46,14 @@ export class RolesService {
     clientMetadata: ClientMetadata,
   ): Promise<RoleResponse> {
     const { ipAddress, userAgent } = clientMetadata;
+
+    if (dto.key.toLowerCase().trim() === (SystemRole.SUPER_ADMIN as string)) {
+      throw new AppError(
+        ErrorCode.FORBIDDEN,
+        `Cannot create a role with reserved key '${SystemRole.SUPER_ADMIN}'`,
+        HttpStatus.FORBIDDEN,
+      );
+    }
 
     const existingRole = await this.roleRepository.findByKey(dto.key);
     if (existingRole) {
@@ -157,10 +166,10 @@ export class RolesService {
       );
     }
 
-    if (role.isSystemRole) {
+    if (role.isSystemRole || role.key === (SystemRole.SUPER_ADMIN as string)) {
       throw new AppError(
         ErrorCode.FORBIDDEN,
-        'System roles cannot be modified',
+        'Superadmin role cannot be modified',
         HttpStatus.FORBIDDEN,
       );
     }
@@ -282,10 +291,10 @@ export class RolesService {
       );
     }
 
-    if (role.isSystemRole) {
+    if (role.isSystemRole || role.key === (SystemRole.SUPER_ADMIN as string)) {
       throw new AppError(
-        ErrorCode.FORBIDDEN, // Needs a specific error like SYSTEM_ROLE_PROTECTED ideally
-        'System roles cannot be deactivated or have their status changed',
+        ErrorCode.FORBIDDEN,
+        'Superadmin role cannot be deactivated or have its status changed',
         HttpStatus.FORBIDDEN,
       );
     }
@@ -344,6 +353,63 @@ export class RolesService {
       );
     }
     return RoleMapper.toResponse(role as RoleDocument);
+  }
+
+  async delete(
+    id: Types.ObjectId,
+    actorId: Types.ObjectId,
+    clientMetadata: ClientMetadata,
+  ): Promise<void> {
+    const { ipAddress, userAgent } = clientMetadata;
+
+    const role = await this.roleRepository.findById(id);
+    if (!role) {
+      throw new AppError(
+        ErrorCode.RESOURCE_NOT_FOUND,
+        'Role not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    if (role.isSystemRole || role.key === (SystemRole.SUPER_ADMIN as string)) {
+      throw new AppError(
+        ErrorCode.FORBIDDEN,
+        'Superadmin role cannot be deleted',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    // Preserve existing user-role relationships: cannot delete role if assigned to users
+    const isAssigned = await this.connection
+      .collection('users')
+      .findOne({ roleIds: id });
+    if (isAssigned) {
+      throw new AppError(
+        ErrorCode.VALIDATION_ERROR,
+        'Cannot delete role because it is currently assigned to one or more users',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    await this.connection.transaction(async (session: ClientSession) => {
+      await this.roleRepository.deleteById(id, session);
+
+      await this.auditLogsService.createAuditLog(
+        {
+          actorId,
+          action: AuditAction.ROLE_DELETED,
+          targetId: role._id,
+          targetModel: AuditTargetModel.ROLE,
+          details: {
+            key: role.key,
+            name: role.name,
+          },
+          ipAddress,
+          userAgent,
+        },
+        session,
+      );
+    });
   }
 
   private async validatePermissions(
