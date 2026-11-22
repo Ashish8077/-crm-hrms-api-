@@ -21,6 +21,8 @@
     "test:e2e": "cross-env NODE_ENV=test jest --config ./test/jest-e2e.json",
     "seed:dev": "pnpm run build && cross-env NODE_ENV=development node dist/database/seed/seed.js",
     "seed:prod": "pnpm run build && cross-env NODE_ENV=production node dist/database/seed/seed.js",
+    "migrate:roles:dev": "pnpm run build && cross-env NODE_ENV=development node dist/database/migrations/convert-legacy-system-roles.migration.js",
+    "migrate:roles:prod": "pnpm run build && cross-env NODE_ENV=production node dist/database/migrations/convert-legacy-system-roles.migration.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

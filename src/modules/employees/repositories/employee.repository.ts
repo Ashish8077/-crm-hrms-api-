@@ -289,4 +289,21 @@ export class EmployeeRepository {
     }
     return query.lean().exec();
   }
+
+  async findByReportingManager(
+    managerId: Types.ObjectId | string,
+    session?: ClientSession,
+  ): Promise<EmployeeLean[]> {
+    const query = this.employeeModel.find({
+      reportingManagerId:
+        typeof managerId === 'string'
+          ? new Types.ObjectId(managerId)
+          : managerId,
+      deletedAt: null,
+    });
+    if (session) {
+      query.session(session);
+    }
+    return query.lean().exec();
+  }
 }
