@@ -1,4 +1,11 @@
-import { HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { ClientSession, Connection, Types } from 'mongoose';
 import {
@@ -15,7 +22,11 @@ import {
   EmployeeRepository,
 } from '../../employees/repositories/employee.repository';
 import { BranchRepository } from '../../branches/repositories/branch.repository';
-import { ActiveEmploymentStatuses } from '../../employees/constants/employee.constant';
+import { Branch } from '../../branches/schemas/branch.schema';
+import {
+  ActiveEmploymentStatuses,
+  EmploymentStatus,
+} from '../../employees/constants/employee.constant';
 import { ShiftService } from './shift.service';
 import { WeeklyOffService } from '../../work-schedules/services/weekly-off.service';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
@@ -30,6 +41,13 @@ import {
   RegularizationStatus,
   WorkMode,
 } from '../constants/attendance.constant';
+import { LeaveRequestRepository } from '../../leaves/repositories/leave-request.repository';
+import { HolidayRepository } from '../../leaves/repositories/holiday.repository';
+import {
+  HalfDaySession,
+  HolidayType,
+  LeaveRequestStatus,
+} from '../../leaves/constants/leaves.constant';
 import {
   AttendanceCalculationUtil,
   ShiftCalculationParams,
@@ -77,6 +95,12 @@ export class AttendanceService {
     private readonly authorizationService: AuthorizationService,
     @InjectConnection() private readonly connection: Connection,
     @Optional() private readonly weeklyOffService?: WeeklyOffService,
+    @Optional()
+    @Inject(forwardRef(() => LeaveRequestRepository))
+    private readonly leaveRequestRepository?: LeaveRequestRepository,
+    @Optional()
+    @Inject(forwardRef(() => HolidayRepository))
+    private readonly holidayRepository?: HolidayRepository,
   ) {}
 
   /**
@@ -97,23 +121,107 @@ export class AttendanceService {
   }
 
   /**
+   * Authoritative source of truth for resolving an employee's branch and local timezone.
+   * Falls back to ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE if branch or branch timezone is unset.
+   */
+  private async resolveEmployeeBranchAndTimezone(
+    employee: EmployeeLean,
+  ): Promise<{ branch: Branch | null; timezone: string }> {
+    const branch = employee.branchId
+      ? await this.branchRepository.findById(employee.branchId)
+      : null;
+    const timezone = branch?.timezone || ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE;
+    return { branch, timezone };
+  }
+
+  /**
+   * Canonical helper to resolve an employee's local attendance date string (YYYY-MM-DD)
+   * in their authoritative branch timezone.
+   */
+  private async resolveAttendanceDateForEmployee(
+    employee: EmployeeLean,
+    date: Date = new Date(),
+  ): Promise<{
+    attendanceDate: string;
+    timezone: string;
+    branch: Branch | null;
+  }> {
+    const { branch, timezone } =
+      await this.resolveEmployeeBranchAndTimezone(employee);
+    const attendanceDate = AttendanceCalculationUtil.getAttendanceDateString(
+      date,
+      timezone,
+    );
+    return { attendanceDate, timezone, branch };
+  }
+
+  /**
+   * Resolves the authoritative effective employment end date for an employee
+   * taking into account status-specific lifecycle fields without assuming a fixed precedence.
+   */
+  private getAuthoritativeEffectiveEndDate(
+    employee:
+      | EmployeeLean
+      | (EmployeeLean & {
+          lastWorkingDate?: Date;
+          resignationDate?: Date;
+          terminationDate?: Date;
+        }),
+  ): Date | undefined {
+    const emp = employee as {
+      employmentStatus?: EmploymentStatus;
+      lastWorkingDate?: Date;
+      resignationDate?: Date;
+      terminationDate?: Date;
+    };
+
+    if (emp.employmentStatus === EmploymentStatus.TERMINATED) {
+      // In termination, both terminationDate and lastWorkingDate represent authoritative bounds.
+      // An employee cannot work past either their termination date or their last working date.
+      if (emp.lastWorkingDate && emp.terminationDate) {
+        return emp.lastWorkingDate < emp.terminationDate
+          ? emp.lastWorkingDate
+          : emp.terminationDate;
+      }
+      return emp.terminationDate ?? emp.lastWorkingDate ?? emp.resignationDate;
+    }
+
+    if (
+      emp.employmentStatus === EmploymentStatus.RESIGNED ||
+      emp.employmentStatus === EmploymentStatus.NOTICE_PERIOD
+    ) {
+      // In resignation/notice period, lastWorkingDate defines the completion of the notice period.
+      // If lastWorkingDate is not explicitly set, fallback to resignationDate, then terminationDate.
+      return emp.lastWorkingDate ?? emp.resignationDate ?? emp.terminationDate;
+    }
+
+    // For any other status (ACTIVE, PROBATION, etc.)
+    return emp.lastWorkingDate ?? emp.terminationDate ?? emp.resignationDate;
+  }
+
+  /**
    * Centralized business rule verifying an employee's employment eligibility
    * for recording attendance operations (check-in, check-out, break start/end, regularization).
    */
   private validateAttendanceEligibility(
     employee: EmployeeLean,
-    currentDate: Date = new Date(),
+    currentDate: Date | string = new Date(),
+    timezone: string = ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE,
+    options?: { isHistoricalAdminEntry?: boolean },
   ): void {
-    const attendanceDateStr = AttendanceCalculationUtil.getAttendanceDateString(
-      currentDate,
-      ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE,
-    );
+    const attendanceDateStr =
+      typeof currentDate === 'string'
+        ? currentDate
+        : AttendanceCalculationUtil.getAttendanceDateString(
+            currentDate,
+            timezone,
+          );
 
     // 1. Effective start date: cannot record attendance before dateOfJoining
     if (employee.dateOfJoining) {
       const joiningDateStr = AttendanceCalculationUtil.getAttendanceDateString(
         employee.dateOfJoining,
-        ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE,
+        timezone,
       );
       if (attendanceDateStr < joiningDateStr) {
         throw new AppError(
@@ -124,22 +232,13 @@ export class AttendanceService {
       }
     }
 
-    // 2. Effective end date: if lastWorkingDate, resignationDate, or terminationDate is defined
-    const effectiveEndDate =
-      (
-        employee as {
-          lastWorkingDate?: Date;
-          resignationDate?: Date;
-          terminationDate?: Date;
-        }
-      ).lastWorkingDate ??
-      (employee as { resignationDate?: Date }).resignationDate ??
-      (employee as { terminationDate?: Date }).terminationDate;
+    // 2. Effective end date: resolved authoritatively without assuming static field precedence
+    const effectiveEndDate = this.getAuthoritativeEffectiveEndDate(employee);
 
     if (effectiveEndDate) {
       const endDateStr = AttendanceCalculationUtil.getAttendanceDateString(
         effectiveEndDate,
-        ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE,
+        timezone,
       );
       if (attendanceDateStr > endDateStr) {
         throw new AppError(
@@ -152,6 +251,12 @@ export class AttendanceService {
 
     // 3. Status rule: ACTIVE, PROBATION, NOTICE_PERIOD are allowed; TERMINATED, RESIGNED are rejected
     if (!ActiveEmploymentStatuses.includes(employee.employmentStatus)) {
+      if (options?.isHistoricalAdminEntry && effectiveEndDate) {
+        // Authorized Admin/HR historical entry within validated legitimate employment period
+        // (between dateOfJoining and authoritative effectiveEndDate).
+        return;
+      }
+
       throw new AppError(
         ErrorCode.FORBIDDEN,
         'Employee is not eligible to record attendance',
@@ -201,7 +306,8 @@ export class AttendanceService {
     currentDate: Date = new Date(),
   ): Promise<EmployeeLean> {
     const employee = await this.getEmployeeForUser(userId);
-    this.validateAttendanceEligibility(employee, currentDate);
+    const { timezone } = await this.resolveEmployeeBranchAndTimezone(employee);
+    this.validateAttendanceEligibility(employee, currentDate, timezone);
     return employee;
   }
 
@@ -249,30 +355,74 @@ export class AttendanceService {
     const now = new Date();
     const employee = await this.getEligibleEmployeeForAttendance(actorId, now);
 
-    // Resolve employee branch to determine local branch timezone for canonical date string
-    const branch = employee.branchId
-      ? await this.branchRepository.findById(employee.branchId)
-      : null;
-    const branchTimezone =
-      branch?.timezone || ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE;
+    // Layer 1: Authoritative branch timezone and canonical attendance date string
+    const {
+      attendanceDate: calendarAttendanceDate,
+      timezone: branchTimezone,
+      branch,
+    } = await this.resolveAttendanceDateForEmployee(employee, now);
 
-    // Layer 1: Canonical "YYYY-MM-DD" date string resolved in employee's branch timezone
-    const attendanceDate = AttendanceCalculationUtil.getAttendanceDateString(
-      now,
-      branchTimezone,
-    );
-
-    // 1. Fast pre-check for existing record today (avoids unnecessary shift/geofence computation)
-    const existing = await this.attendanceRepository.findByEmployeeAndDate(
+    let attendanceDate = calendarAttendanceDate;
+    let existing = await this.attendanceRepository.findByEmployeeAndDate(
       employee._id,
       attendanceDate,
     );
+
+    let isHalfDayCheckIn = false;
+    let halfDaySessionToWork: HalfDaySession | null = null;
+
     if (existing) {
-      throw new AppError(
-        ErrorCode.RESOURCE_ALREADY_EXISTS,
-        `Already checked in for today (${attendanceDate})`,
-        HttpStatus.CONFLICT,
-      );
+      if (existing.checkInTime !== null) {
+        throw new AppError(
+          ErrorCode.RESOURCE_ALREADY_EXISTS,
+          `Already checked in for today (${attendanceDate})`,
+          HttpStatus.CONFLICT,
+        );
+      }
+
+      // Record exists with checkInTime === null (e.g. pre-created by approved leave)
+      if (existing.leaveRequestId && this.leaveRequestRepository) {
+        const leaveRequest = await this.leaveRequestRepository.findById(
+          existing.leaveRequestId,
+        );
+
+        if (
+          leaveRequest &&
+          leaveRequest.status === LeaveRequestStatus.APPROVED
+        ) {
+          if (!leaveRequest.isHalfDay) {
+            throw new AppError(
+              ErrorCode.RESOURCE_ALREADY_EXISTS,
+              `Cannot check in: You have an approved full-day leave for today (${attendanceDate}). If you reported to work, your leave must first be cancelled via the leave cancellation workflow.`,
+              HttpStatus.CONFLICT,
+            );
+          }
+          isHalfDayCheckIn = true;
+          halfDaySessionToWork = leaveRequest.halfDaySession;
+        } else if (
+          leaveRequest &&
+          leaveRequest.status !== LeaveRequestStatus.CANCELLED &&
+          leaveRequest.status !== LeaveRequestStatus.REJECTED
+        ) {
+          if (!leaveRequest.isHalfDay) {
+            throw new AppError(
+              ErrorCode.RESOURCE_ALREADY_EXISTS,
+              `Cannot check in: You have an active leave request for today (${attendanceDate}) in status ${leaveRequest.status}.`,
+              HttpStatus.CONFLICT,
+            );
+          }
+          isHalfDayCheckIn = true;
+          halfDaySessionToWork = leaveRequest.halfDaySession;
+        }
+      } else if (existing.status === AttendanceStatus.ON_LEAVE) {
+        throw new AppError(
+          ErrorCode.RESOURCE_ALREADY_EXISTS,
+          `Cannot check in: You have an approved full-day leave for today (${attendanceDate}). If you reported to work, your leave must first be cancelled via the leave cancellation workflow.`,
+          HttpStatus.CONFLICT,
+        );
+      } else if (existing.status === AttendanceStatus.HALF_DAY) {
+        isHalfDayCheckIn = true;
+      }
     }
 
     const activeSession =
@@ -285,14 +435,77 @@ export class AttendanceService {
       );
     }
 
-    // 2. Resolve shift via strict 4-Step Hierarchy:
-    // Production Rule: Completely ignore client-supplied dto.shiftId during employee self-punch.
-    // An employee cannot select their own shift from Postman/app to dodge late marking.
+    // Resolve shift
     const shift = await this.shiftService.resolveShift(employee.shiftId, null, {
       employeeId: employee._id,
-      attendanceDate,
+      attendanceDate: calendarAttendanceDate,
       isAdminOverride: false,
     });
+
+    const shiftParams: ShiftCalculationParams = {
+      startTime: shift.startTime,
+      endTime: shift.endTime,
+      isOvernight: shift.isOvernight,
+      gracePeriodMinutes: shift.gracePeriodMinutes,
+      minWorkMinutesForFullDay: shift.minWorkMinutesForFullDay,
+      minWorkMinutesForHalfDay: shift.minWorkMinutesForHalfDay,
+      overtimeThresholdMinutes: shift.overtimeThresholdMinutes,
+    };
+
+    // Overnight Shift Anchor Resolution:
+    // If shift is overnight and today's record has not been punched in (or does not exist),
+    // check whether `now` falls in yesterday's overnight shift window.
+    if (shift && shift.isOvernight) {
+      const [y, m, d] = calendarAttendanceDate.split('-').map(Number);
+      const yesterdayDate = AttendanceCalculationUtil.getAttendanceDateString(
+        new Date(Date.UTC(y, m - 1, d - 1, 0, 0, 0, 0)),
+        'UTC',
+      );
+      const yesterdayShiftWindow = AttendanceCalculationUtil.getShiftWindow(
+        yesterdayDate,
+        shiftParams,
+        branchTimezone,
+      );
+
+      // Check if `now` is within yesterday's overnight window (yesterday shiftStart -> today shiftEnd + buffer)
+      const bufferMs = (shift.overtimeThresholdMinutes || 120) * 60 * 1000;
+      if (
+        now.getTime() >= yesterdayShiftWindow.shiftStart.getTime() &&
+        now.getTime() <= yesterdayShiftWindow.shiftEnd.getTime() + bufferMs
+      ) {
+        const yesterdayRecord =
+          await this.attendanceRepository.findByEmployeeAndDate(
+            employee._id,
+            yesterdayDate,
+          );
+
+        // Scenario 1: Yesterday's overnight shift has an unpunched record (e.g. pre-created approved FIRST_HALF leave)
+        if (yesterdayRecord && yesterdayRecord.checkInTime === null) {
+          attendanceDate = yesterdayDate;
+          existing = yesterdayRecord;
+          if (existing.leaveRequestId && this.leaveRequestRepository) {
+            const leaveRequest = await this.leaveRequestRepository.findById(
+              existing.leaveRequestId,
+            );
+            if (
+              leaveRequest &&
+              leaveRequest.status === LeaveRequestStatus.APPROVED &&
+              leaveRequest.isHalfDay
+            ) {
+              isHalfDayCheckIn = true;
+              halfDaySessionToWork = leaveRequest.halfDaySession;
+            }
+          }
+        } else if (
+          !yesterdayRecord &&
+          (!existing || existing.checkInTime === null)
+        ) {
+          // Scenario 2: No record exists for yesterday, and current punch is in yesterday's overnight window past midnight
+          attendanceDate = yesterdayDate;
+          existing = null;
+        }
+      }
+    }
 
     // Normalize legacy attendanceType to workMode if workMode was not specified
     if (!dto.workMode && dto.attendanceType) {
@@ -434,22 +647,91 @@ export class AttendanceService {
       };
     }
 
-    // 5. Snapshot shift and compute late marking
-    const shiftParams: ShiftCalculationParams = {
-      startTime: shift.startTime,
-      endTime: shift.endTime,
-      isOvernight: shift.isOvernight,
-      gracePeriodMinutes: shift.gracePeriodMinutes,
-      minWorkMinutesForFullDay: shift.minWorkMinutesForFullDay,
-      minWorkMinutesForHalfDay: shift.minWorkMinutesForHalfDay,
-      overtimeThresholdMinutes: shift.overtimeThresholdMinutes,
-    };
-
+    // 5. Snapshot shift and compute late marking (respecting branch timezone and half-day sessions)
     const shiftWindow = AttendanceCalculationUtil.getShiftWindow(
       attendanceDate,
       shiftParams,
+      branchTimezone,
     );
-    const lateCalc = AttendanceCalculationUtil.calculateLate(now, shiftWindow);
+
+    let isLate = false;
+    let lateMinutes = 0;
+
+    if (isHalfDayCheckIn) {
+      const shiftDurationMs =
+        shiftWindow.shiftEnd.getTime() - shiftWindow.shiftStart.getTime();
+      const shiftMidpoint = new Date(
+        shiftWindow.shiftStart.getTime() + shiftDurationMs / 2,
+      );
+
+      if (halfDaySessionToWork === HalfDaySession.FIRST_HALF) {
+        // Leave was for FIRST_HALF -> Employee is expected to work the SECOND_HALF!
+        if (now.getTime() < shiftMidpoint.getTime()) {
+          throw new AppError(
+            ErrorCode.VALIDATION_ERROR,
+            `Cannot check in during your approved first-half leave period. You are eligible to check in for the second-half session starting at ${shiftMidpoint.toISOString()}.`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+        // Punching in for the second-half working session: grace period starts at shiftMidpoint
+        const secondHalfGraceEnd = new Date(
+          shiftMidpoint.getTime() + shift.gracePeriodMinutes * 60 * 1000,
+        );
+        if (now.getTime() > secondHalfGraceEnd.getTime()) {
+          isLate = true;
+          lateMinutes = Math.max(
+            0,
+            Math.round((now.getTime() - shiftMidpoint.getTime()) / (60 * 1000)),
+          );
+        }
+      } else if (halfDaySessionToWork === HalfDaySession.SECOND_HALF) {
+        // Leave was for SECOND_HALF -> Employee is expected to work the FIRST_HALF!
+        if (now.getTime() >= shiftMidpoint.getTime()) {
+          throw new AppError(
+            ErrorCode.VALIDATION_ERROR,
+            `Cannot check in during your approved second-half leave period. Your working session for the first half ended at ${shiftMidpoint.toISOString()}.`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+        // Punching in for the first-half working session: standard late from shiftStart
+        const lateCalc = AttendanceCalculationUtil.calculateLate(
+          now,
+          shiftWindow,
+        );
+        isLate = lateCalc.isLate;
+        lateMinutes = lateCalc.lateMinutes;
+      } else {
+        // Unspecified half-day session:
+        if (now.getTime() >= shiftMidpoint.getTime()) {
+          const secondHalfGraceEnd = new Date(
+            shiftMidpoint.getTime() + shift.gracePeriodMinutes * 60 * 1000,
+          );
+          if (now.getTime() > secondHalfGraceEnd.getTime()) {
+            isLate = true;
+            lateMinutes = Math.max(
+              0,
+              Math.round(
+                (now.getTime() - shiftMidpoint.getTime()) / (60 * 1000),
+              ),
+            );
+          }
+        } else {
+          const lateCalc = AttendanceCalculationUtil.calculateLate(
+            now,
+            shiftWindow,
+          );
+          isLate = lateCalc.isLate;
+          lateMinutes = lateCalc.lateMinutes;
+        }
+      }
+    } else {
+      const lateCalc = AttendanceCalculationUtil.calculateLate(
+        now,
+        shiftWindow,
+      );
+      isLate = lateCalc.isLate;
+      lateMinutes = lateCalc.lateMinutes;
+    }
 
     const session = await this.connection.startSession();
     let saved: AttendanceLean;
@@ -461,15 +743,37 @@ export class AttendanceService {
           attendanceDate,
           shift,
           checkInTime: now,
-          isLate: lateCalc.isLate,
-          lateMinutes: lateCalc.lateMinutes,
+          isLate,
+          lateMinutes,
           dto,
+          timezone: branchTimezone,
           ipAddress: metadata.ipAddress,
           resolvedSource,
           geofenceResult,
         });
 
-        saved = await this.attendanceRepository.create(createData, s);
+        if (existing) {
+          const updated =
+            await this.attendanceRepository.updateCheckInForExistingLeave(
+              existing._id,
+              {
+                ...createData,
+                leaveRequestId: existing.leaveRequestId, // preserve approved leave reference
+              },
+              s,
+            );
+
+          if (!updated) {
+            throw new AppError(
+              ErrorCode.RESOURCE_ALREADY_EXISTS,
+              `Already checked in for today (${attendanceDate})`,
+              HttpStatus.CONFLICT,
+            );
+          }
+          saved = updated;
+        } else {
+          saved = await this.attendanceRepository.create(createData, s);
+        }
 
         await this.auditLogsService.createAuditLog(
           {
@@ -481,8 +785,10 @@ export class AttendanceService {
             userAgent: metadata.userAgent,
             details: {
               attendanceDate,
-              isLate: lateCalc.isLate,
-              lateMinutes: lateCalc.lateMinutes,
+              isLate,
+              lateMinutes,
+              isHalfDayLeave: isHalfDayCheckIn,
+              leaveRequestId: existing?.leaveRequestId ?? null,
             },
           },
           s,
@@ -543,9 +849,13 @@ export class AttendanceService {
       );
     }
 
+    const { timezone: branchTimezone } =
+      await this.resolveEmployeeBranchAndTimezone(targetEmployee);
     this.validateAttendanceEligibility(
       targetEmployee,
       new Date(dto.attendanceDate),
+      branchTimezone,
+      { isHistoricalAdminEntry: true },
     );
 
     const existing = await this.attendanceRepository.findByEmployeeAndDate(
@@ -574,6 +884,7 @@ export class AttendanceService {
     const checkInTime = AttendanceCalculationUtil.parsePunchTimestamp(
       dto.checkInTime,
       dto.attendanceDate,
+      branchTimezone,
     );
     if (!checkInTime) {
       throw new AppError(
@@ -587,6 +898,7 @@ export class AttendanceService {
       ? AttendanceCalculationUtil.parsePunchTimestamp(
           dto.checkOutTime,
           dto.attendanceDate,
+          branchTimezone,
         )
       : null;
     if (dto.checkOutTime && !checkOutTime) {
@@ -618,6 +930,7 @@ export class AttendanceService {
     const shiftWindow = AttendanceCalculationUtil.getShiftWindow(
       dto.attendanceDate,
       shiftParams,
+      branchTimezone,
     );
     const lateCalc = AttendanceCalculationUtil.calculateLate(
       checkInTime,
@@ -674,6 +987,7 @@ export class AttendanceService {
             source: AttendanceSource.ADMIN_MANUAL,
             notes: dto.notes,
           },
+          timezone: branchTimezone,
           ipAddress: metadata.ipAddress,
         });
 
@@ -732,23 +1046,90 @@ export class AttendanceService {
     metadata: ClientMetadata,
   ): Promise<AttendanceResponse> {
     const now = new Date();
-    const employee = await this.getEligibleEmployeeForAttendance(actorId, now);
-    const attendanceDate = AttendanceCalculationUtil.getAttendanceDateString(
-      now,
-      ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE,
-    );
+    const employee = await this.getEmployeeForUser(actorId);
+    const { attendanceDate, timezone: branchTimezone } =
+      await this.resolveAttendanceDateForEmployee(employee, now);
 
     const attendance = await this.resolveActiveOrTodayAttendance(
       employee._id,
       attendanceDate,
     );
 
-    if (!attendance) {
-      throw new AppError(
-        ErrorCode.VALIDATION_ERROR,
-        `No active attendance check-in found for today (${attendanceDate})`,
-        HttpStatus.BAD_REQUEST,
+    const isEmployeeActive = ActiveEmploymentStatuses.includes(
+      employee.employmentStatus,
+    );
+
+    if (isEmployeeActive) {
+      if (!attendance) {
+        throw new AppError(
+          ErrorCode.VALIDATION_ERROR,
+          `No active attendance check-in found for today (${attendanceDate})`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      this.validateAttendanceEligibility(
+        employee,
+        attendance.attendanceDate,
+        branchTimezone,
       );
+    } else {
+      // Inactive employee (TERMINATED or RESIGNED):
+      // Only allowed to check out if closing an existing, legitimate, active session.
+      // Critical guards:
+      // 1. An active session must actually exist (CHECKED_IN or ON_BREAK).
+      // 2. The session must belong to that employee.
+      // 3. Employee was eligible when they checked in (on/after joining date and on/before effective end date).
+      // 4. Session state must be CHECKED_IN or ON_BREAK (cannot checkout twice or from completed status).
+      if (
+        !attendance ||
+        (attendance.status !== AttendanceStatus.CHECKED_IN &&
+          attendance.status !== AttendanceStatus.ON_BREAK)
+      ) {
+        throw new AppError(
+          ErrorCode.FORBIDDEN,
+          'Employee is not eligible to record attendance',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      if (attendance.employeeId.toString() !== employee._id.toString()) {
+        throw new AppError(
+          ErrorCode.FORBIDDEN,
+          'Attendance session does not belong to the employee',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      if (employee.dateOfJoining) {
+        const joiningDateStr =
+          AttendanceCalculationUtil.getAttendanceDateString(
+            employee.dateOfJoining,
+            branchTimezone,
+          );
+        if (attendance.attendanceDate < joiningDateStr) {
+          throw new AppError(
+            ErrorCode.FORBIDDEN,
+            'Employee is not eligible to record attendance before joining date',
+            HttpStatus.FORBIDDEN,
+          );
+        }
+      }
+
+      const effectiveEndDate = this.getAuthoritativeEffectiveEndDate(employee);
+      if (effectiveEndDate) {
+        const endDateStr = AttendanceCalculationUtil.getAttendanceDateString(
+          effectiveEndDate,
+          branchTimezone,
+        );
+        if (attendance.attendanceDate > endDateStr) {
+          throw new AppError(
+            ErrorCode.FORBIDDEN,
+            'Employee is not eligible to record attendance after effective end date',
+            HttpStatus.FORBIDDEN,
+          );
+        }
+      }
     }
 
     if (
@@ -818,6 +1199,7 @@ export class AttendanceService {
     const shiftWindow = AttendanceCalculationUtil.getShiftWindow(
       attendance.attendanceDate,
       shiftParams,
+      branchTimezone,
     );
     const earlyCalc = AttendanceCalculationUtil.calculateEarlyDeparture(
       now,
@@ -844,9 +1226,33 @@ export class AttendanceService {
 
     try {
       await session.withTransaction(async (s: ClientSession) => {
+        let finalDayStatus = dayStatus;
+        // Status safety: If attendance record was linked to an active approved half-day leave, status can never become full-day PRESENT.
+        // If leave was cancelled or rejected, it must not downgrade a full working day's attendance to HALF_DAY.
+        if (
+          attendance.leaveRequestId &&
+          finalDayStatus === AttendanceStatus.PRESENT
+        ) {
+          if (this.leaveRequestRepository) {
+            const leaveRequest = await this.leaveRequestRepository.findById(
+              attendance.leaveRequestId,
+              s,
+            );
+            if (
+              leaveRequest &&
+              leaveRequest.status === LeaveRequestStatus.APPROVED &&
+              leaveRequest.isHalfDay
+            ) {
+              finalDayStatus = AttendanceStatus.HALF_DAY;
+            }
+          } else {
+            finalDayStatus = AttendanceStatus.HALF_DAY;
+          }
+        }
+
         const updateData = AttendanceMapper.toCheckOutUpdateData({
           checkOutTime: now,
-          status: dayStatus,
+          status: finalDayStatus,
           breaks: updatedBreaks,
           totalBreakMinutes,
           totalWorkMinutes: workCalc.totalWorkMinutes,
@@ -905,9 +1311,9 @@ export class AttendanceService {
   ): Promise<AttendanceResponse> {
     const now = new Date();
     const employee = await this.getEligibleEmployeeForAttendance(actorId, now);
-    const attendanceDate = AttendanceCalculationUtil.getAttendanceDateString(
+    const { attendanceDate } = await this.resolveAttendanceDateForEmployee(
+      employee,
       now,
-      ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE,
     );
 
     const attendance = await this.resolveActiveOrTodayAttendance(
@@ -1001,9 +1407,9 @@ export class AttendanceService {
   ): Promise<AttendanceResponse> {
     const now = new Date();
     const employee = await this.getEligibleEmployeeForAttendance(actorId, now);
-    const attendanceDate = AttendanceCalculationUtil.getAttendanceDateString(
+    const { attendanceDate } = await this.resolveAttendanceDateForEmployee(
+      employee,
       now,
-      ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE,
     );
 
     const attendance = await this.resolveActiveOrTodayAttendance(
@@ -1085,9 +1491,9 @@ export class AttendanceService {
   ): Promise<TodayAttendanceStatusResponse> {
     const now = new Date();
     const employee = await this.getEligibleEmployeeForAttendance(actorId, now);
-    const attendanceDate = AttendanceCalculationUtil.getAttendanceDateString(
+    const { attendanceDate } = await this.resolveAttendanceDateForEmployee(
+      employee,
       now,
-      ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE,
     );
 
     const attendance = await this.resolveActiveOrTodayAttendance(
@@ -1219,14 +1625,8 @@ export class AttendanceService {
   ): Promise<AttendanceRegularizationResponse> {
     const employee = await this.getEligibleEmployeeForAttendance(actorId);
     const now = new Date();
-    const branch = employee.branchId
-      ? await this.branchRepository.findById(employee.branchId)
-      : null;
-    const timeZone = branch?.timezone || ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE;
-    const todayStr = AttendanceCalculationUtil.getAttendanceDateString(
-      now,
-      timeZone,
-    );
+    const { attendanceDate: todayStr, timezone: timeZone } =
+      await this.resolveAttendanceDateForEmployee(employee, now);
 
     // ─── Guard 1: The Future Date Block ───
     if (dto.attendanceDate > todayStr) {
@@ -1289,12 +1689,56 @@ export class AttendanceService {
           )
         : AttendanceCalculationUtil.isWeeklyOff(dto.attendanceDate)) ||
       attendance?.status === AttendanceStatus.WEEK_OFF;
-    const isHoliday = attendance?.status === AttendanceStatus.HOLIDAY;
-    const isOnLeave = attendance?.status === AttendanceStatus.ON_LEAVE;
+
+    // Check holidays via HolidayRepository (authoritative for both branch-specific and org-wide holidays)
+    let holidayName: string | null = null;
+    let isHoliday = attendance?.status === AttendanceStatus.HOLIDAY;
+
+    if (this.holidayRepository) {
+      const applicableHolidays =
+        await this.holidayRepository.findApplicableHolidays(
+          dto.attendanceDate,
+          dto.attendanceDate,
+          employee.branchId,
+        );
+
+      const mandatoryHoliday = applicableHolidays.find(
+        (h) =>
+          h.isActive &&
+          !h.deletedAt &&
+          (h.type === HolidayType.PUBLIC ||
+            h.type === HolidayType.COMPANY ||
+            h.type === HolidayType.REGIONAL),
+      );
+
+      if (mandatoryHoliday) {
+        isHoliday = true;
+        holidayName = mandatoryHoliday.name;
+      }
+    }
+
+    // Check approved leave via LeaveRequestRepository (authoritative even if attendance record is missing)
+    let isOnLeave = attendance?.status === AttendanceStatus.ON_LEAVE;
+    if (!isOnLeave && this.leaveRequestRepository) {
+      const overlappingLeaves =
+        await this.leaveRequestRepository.findOverlappingRequests(
+          employee._id,
+          dto.attendanceDate,
+          dto.attendanceDate,
+        );
+      const approvedFullDay = overlappingLeaves.find(
+        (l) => l.status === LeaveRequestStatus.APPROVED && !l.isHalfDay,
+      );
+      if (approvedFullDay) {
+        isOnLeave = true;
+      }
+    }
 
     if (isWeeklyOff || isHoliday || isOnLeave) {
       const reasonType = isHoliday
-        ? 'company holiday'
+        ? holidayName
+          ? `company holiday (${holidayName})`
+          : 'company holiday'
         : isOnLeave
           ? 'approved leave'
           : 'weekly off';
@@ -1858,11 +2302,8 @@ export class AttendanceService {
           );
         }
 
-        const branch = requestedEmployee.branchId
-          ? await this.branchRepository.findById(requestedEmployee.branchId)
-          : null;
-        const timeZone =
-          branch?.timezone || ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE;
+        const { timezone: timeZone } =
+          await this.resolveEmployeeBranchAndTimezone(requestedEmployee);
 
         const shiftWindow = AttendanceCalculationUtil.getShiftWindow(
           regularization.attendanceDate,
