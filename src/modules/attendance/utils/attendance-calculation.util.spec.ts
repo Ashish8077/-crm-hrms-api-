@@ -181,6 +181,35 @@ describe('AttendanceCalculationUtil', () => {
     });
   });
 
+  describe('getPreviousDateString', () => {
+    it('should retreat regular day', () => {
+      expect(
+        AttendanceCalculationUtil.getPreviousDateString('2026-10-16'),
+      ).toBe('2026-10-15');
+    });
+
+    it('should retreat across month boundary', () => {
+      expect(
+        AttendanceCalculationUtil.getPreviousDateString('2026-11-01'),
+      ).toBe('2026-10-31');
+    });
+
+    it('should retreat across year boundary', () => {
+      expect(
+        AttendanceCalculationUtil.getPreviousDateString('2027-01-01'),
+      ).toBe('2026-12-31');
+    });
+
+    it('should correctly handle leap years', () => {
+      expect(
+        AttendanceCalculationUtil.getPreviousDateString('2024-03-01'),
+      ).toBe('2024-02-29');
+      expect(
+        AttendanceCalculationUtil.getPreviousDateString('2024-02-29'),
+      ).toBe('2024-02-28');
+    });
+  });
+
   describe('getShiftWindow', () => {
     it('should correctly build same-day shift window for standard shift in Asia/Kolkata', () => {
       const window = AttendanceCalculationUtil.getShiftWindow(

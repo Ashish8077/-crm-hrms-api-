@@ -6,6 +6,7 @@ import { ListEmployeesQueryDto } from '../dto/list-employees-query.dto';
 import { PaginatedResult } from '../../../common/pagination/types/pagination.types';
 import { escapeRegExp } from '../../../common/utils/regex.util';
 import { buildPaginationMeta } from '../../../common/pagination/pagination.util';
+import { EmploymentStatus } from '../constants/employee.constant';
 
 export type EmployeeLean = Employee & { _id: Types.ObjectId };
 
@@ -305,5 +306,43 @@ export class EmployeeRepository {
       query.session(session);
     }
     return query.lean().exec();
+  }
+
+  /**
+   * Finds all employees eligible for attendance absence finalization.
+   * Includes active employees (ACTIVE, PROBATION, NOTICE_PERIOD) as well as recently
+   * separated employees whose tenure overlaps the evaluation date window.
+   */
+  async findEligibleForFinalization(
+    branchId?: Types.ObjectId | string,
+    minDate?: Date,
+    session?: ClientSession,
+  ): Promise<EmployeeLean[]> {
+    const query: Record<string, any> = { deletedAt: null };
+    if (branchId) {
+      query.branchId =
+        typeof branchId === 'string' ? new Types.ObjectId(branchId) : branchId;
+    }
+    if (minDate) {
+      query.$or = [
+        {
+          employmentStatus: {
+            $in: [
+              EmploymentStatus.ACTIVE,
+              EmploymentStatus.PROBATION,
+              EmploymentStatus.NOTICE_PERIOD,
+            ],
+          },
+        },
+        { lastWorkingDate: { $gte: minDate } },
+        { terminationDate: { $gte: minDate } },
+        { resignationDate: { $gte: minDate } },
+      ];
+    }
+    const mongooseQuery = this.employeeModel.find(query);
+    if (session) {
+      mongooseQuery.session(session);
+    }
+    return mongooseQuery.lean<EmployeeLean[]>().exec();
   }
 }

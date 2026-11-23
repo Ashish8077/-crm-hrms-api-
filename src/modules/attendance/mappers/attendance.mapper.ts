@@ -40,6 +40,7 @@ export interface CheckInCreateInput {
   isLate: boolean;
   lateMinutes: number;
   dto: CheckInDto;
+  timezone?: string;
   ipAddress?: string | null;
   resolvedSource?: AttendanceSource;
   geofenceResult?: {
@@ -101,6 +102,7 @@ export interface RegularizedAttendanceCreateInput {
   isEarlyDeparture: boolean;
   earlyDepartureMinutes: number;
   regularizationId: Types.ObjectId | string;
+  timezone?: string;
   checkInSource?: AttendanceSource;
   checkOutSource?: AttendanceSource;
 }
@@ -268,7 +270,10 @@ export class AttendanceMapper {
           ? input.employeeId
           : new Types.ObjectId(input.employeeId),
       attendanceDate: input.attendanceDate,
-      date: AttendanceCalculationUtil.getNormalizedDate(input.attendanceDate),
+      date: AttendanceCalculationUtil.getNormalizedDate(
+        input.attendanceDate,
+        input.timezone ?? ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE,
+      ),
       shiftId:
         input.shift._id instanceof Types.ObjectId
           ? input.shift._id
@@ -393,7 +398,10 @@ export class AttendanceMapper {
           ? input.employeeId
           : new Types.ObjectId(input.employeeId),
       attendanceDate: input.attendanceDate,
-      date: AttendanceCalculationUtil.getNormalizedDate(input.attendanceDate),
+      date: AttendanceCalculationUtil.getNormalizedDate(
+        input.attendanceDate,
+        input.timezone ?? ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE,
+      ),
       shiftId:
         input.shift._id instanceof Types.ObjectId
           ? input.shift._id
