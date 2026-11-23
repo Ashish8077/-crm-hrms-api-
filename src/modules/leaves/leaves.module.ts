@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { LeaveType, LeaveTypeSchema } from './schemas/leave-type.schema';
 import { Holiday, HolidaySchema } from './schemas/holiday.schema';
@@ -51,7 +51,7 @@ import { AuthorizationModule } from '../authorization/authorization.module';
     ]),
     EmployeesModule,
     BranchesModule,
-    AttendanceModule,
+    forwardRef(() => AttendanceModule),
     WorkSchedulesModule,
     AuditLogsModule,
     AuthorizationModule,
