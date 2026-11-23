@@ -164,6 +164,15 @@ export class AttendanceCalculationUtil {
   }
 
   /**
+   * Computes the previous calendar date string (YYYY-MM-DD) for a given date string.
+   */
+  static getPreviousDateString(dateString: string): string {
+    const [year, month, day] = dateString.split('-').map(Number);
+    const prevDate = new Date(Date.UTC(year, month - 1, day - 1, 0, 0, 0, 0));
+    return this.getAttendanceDateString(prevDate, 'UTC');
+  }
+
+  /**
    * Calculates calendar day difference between two YYYY-MM-DD date strings (dateStr1 - dateStr2).
    * E.g., ('2026-10-27', '2026-10-15') returns 12.
    */

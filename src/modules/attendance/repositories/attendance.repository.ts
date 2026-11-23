@@ -16,6 +16,11 @@ export type AttendanceLean = Attendance & {
   updatedAt: Date;
 };
 
+export interface CreateAbsentRecordResult {
+  created: boolean;
+  attendance?: AttendanceLean;
+}
+
 export interface MonthlyAttendanceSummary {
   totalRecords: number;
   presentDays: number;
@@ -172,6 +177,31 @@ export class AttendanceRepository implements OnModuleInit {
     const query = this.attendanceModel.findOneAndUpdate(
       {
         _id: typeof id === 'string' ? new Types.ObjectId(id) : id,
+        deletedAt: null,
+      },
+      { $set: data },
+      { new: true, runValidators: true },
+    );
+    if (session) {
+      query.session(session);
+    }
+    return query.lean<AttendanceLean>().exec();
+  }
+
+  /**
+   * Layer 3: Atomic check-in transition for pre-created records (e.g. approved half-day leave).
+   * Atomically transitions status to CHECKED_IN ONLY if checkInTime is currently null.
+   * Prevents race conditions from double check-ins without distributed locks.
+   */
+  async updateCheckInForExistingLeave(
+    id: Types.ObjectId | string,
+    data: Record<string, unknown>,
+    session?: ClientSession,
+  ): Promise<AttendanceLean | null> {
+    const query = this.attendanceModel.findOneAndUpdate(
+      {
+        _id: typeof id === 'string' ? new Types.ObjectId(id) : id,
+        checkInTime: null,
         deletedAt: null,
       },
       { $set: data },
@@ -444,5 +474,48 @@ export class AttendanceRepository implements OnModuleInit {
       },
       { session },
     );
+  }
+
+  /**
+   * Detects MongoDB unique compound index duplicate key error (code 11000).
+   */
+  isDuplicateKeyError(error: unknown): boolean {
+    if (typeof error !== 'object' || error === null) return false;
+    const err = error as Record<string, unknown>;
+    if (err.code === 11000) return true;
+    if (typeof err.message === 'string' && err.message.includes('E11000'))
+      return true;
+    if (err.name === 'MongoServerError' && err.code === 11000) return true;
+    if (err.name === 'MongoBulkWriteError' && err.code === 11000) return true;
+    if (err.cause && typeof err.cause === 'object') {
+      const cause = err.cause as Record<string, unknown>;
+      if (
+        cause.code === 11000 ||
+        (typeof cause.message === 'string' && cause.message.includes('E11000'))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Layer 3: Atomically creates an ABSENT attendance record.
+   * Catches duplicate key races (E11000) from concurrent workers safely without failing.
+   */
+  async createAbsentRecord(
+    data: Partial<Attendance>,
+    session?: ClientSession,
+  ): Promise<CreateAbsentRecordResult> {
+    try {
+      const doc = new this.attendanceModel(data);
+      const saved = await doc.save({ session });
+      return { created: true, attendance: saved.toObject() as AttendanceLean };
+    } catch (error: unknown) {
+      if (this.isDuplicateKeyError(error)) {
+        return { created: false };
+      }
+      throw error;
+    }
   }
 }
