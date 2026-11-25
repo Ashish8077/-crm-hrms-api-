@@ -25,10 +25,17 @@ export class EmailOutboxProcessorService implements OnModuleInit {
   }
 
   private initTransporter() {
-    const host = this.configService.get<string>('SMTP_HOST') || process.env.SMTP_HOST;
-    const port = Number(this.configService.get<number>('SMTP_PORT') || process.env.SMTP_PORT || 587);
-    const user = this.configService.get<string>('SMTP_USER') || process.env.SMTP_USER;
-    const pass = this.configService.get<string>('SMTP_PASS') || process.env.SMTP_PASS;
+    const host =
+      this.configService.get<string>('SMTP_HOST') || process.env.SMTP_HOST;
+    const port = Number(
+      this.configService.get<number>('SMTP_PORT') ||
+        process.env.SMTP_PORT ||
+        587,
+    );
+    const user =
+      this.configService.get<string>('SMTP_USER') || process.env.SMTP_USER;
+    const pass =
+      this.configService.get<string>('SMTP_PASS') || process.env.SMTP_PASS;
 
     if (host && user) {
       this.transporter = nodemailer.createTransport({
@@ -37,48 +44,72 @@ export class EmailOutboxProcessorService implements OnModuleInit {
         secure: port === 465,
         auth: { user, pass },
       });
-      this.logger.log(`EmailOutboxProcessor initialized with SMTP host: ${host}:${port}`);
+      this.logger.log(
+        `EmailOutboxProcessor initialized with SMTP host: ${host}:${port}`,
+      );
     } else {
       // In dev or test environments without SMTP credentials, use jsonTransport/stream fallback
       this.transporter = nodemailer.createTransport({
         jsonTransport: true,
       });
-      this.logger.log('EmailOutboxProcessor initialized with JSON fallback transporter');
+      this.logger.log(
+        'EmailOutboxProcessor initialized with JSON fallback transporter',
+      );
     }
+  }
+
+  private getErrorDetails(err: unknown): { message?: string; stack?: string } {
+    if (err instanceof Error) {
+      return { message: err.message, stack: err.stack };
+    }
+    if (typeof err === 'object' && err !== null && 'message' in err) {
+      return {
+        message: typeof err.message === 'string' ? err.message : undefined,
+      };
+    }
+    return {};
   }
 
   async processPendingOutbox(batchSize: number = 10): Promise<number> {
     const lockOwner = `worker-${process.pid}-${randomUUID().slice(0, 8)}`;
-    const lockDurationMs = 60000; // 60 seconds
 
     const claimedRecords = await this.outboxRepository.claimPendingBatch(
       batchSize,
       lockOwner,
-      lockDurationMs,
     );
 
     if (!claimedRecords || claimedRecords.length === 0) {
       return 0;
     }
 
-    this.logger.log(`Claimed ${claimedRecords.length} outbox email(s) with worker ID ${lockOwner}`);
+    this.logger.log(
+      `Claimed ${claimedRecords.length} outbox email(s) with worker ID ${lockOwner}`,
+    );
 
     let processedCount = 0;
     for (const record of claimedRecords) {
       try {
         await this.processSingleRecord(record);
         processedCount++;
-      } catch (err: any) {
-        this.logger.error(`Error processing outbox record ${record._id}: ${err.message}`, err.stack);
+      } catch (err: unknown) {
+        const { message, stack } = this.getErrorDetails(err);
+        this.logger.error(
+          `Error processing outbox record ${record._id.toString()}: ${message}`,
+          stack,
+        );
       }
     }
 
     return processedCount;
   }
 
-  private async processSingleRecord(record: EmailOutboxDocument): Promise<void> {
+  private async processSingleRecord(
+    record: EmailOutboxDocument,
+  ): Promise<void> {
     try {
-      const attachments: any[] = [];
+      const attachments: NonNullable<
+        nodemailer.SendMailOptions['attachments']
+      > = [];
 
       // If tied to a quotation, generate PDF attachment
       if (record.quotationId) {
@@ -87,7 +118,8 @@ export class EmailOutboxProcessorService implements OnModuleInit {
           record.quotationId,
         );
         if (quotation) {
-          const pdfBuffer = await this.pdfGeneratorService.generatePdfBuffer(quotation);
+          const pdfBuffer =
+            await this.pdfGeneratorService.generatePdfBuffer(quotation);
           attachments.push({
             filename: `${quotation.quoteNumber || 'quotation'}.pdf`,
             content: pdfBuffer,
@@ -109,15 +141,17 @@ export class EmailOutboxProcessorService implements OnModuleInit {
         attachments,
       };
 
-      const sendResult = await this.transporter!.sendMail(mailOptions);
+      const sendResult = (await this.transporter!.sendMail(mailOptions)) as
+        { messageId?: string } | undefined;
       const messageId = sendResult?.messageId || `msg-${randomUUID()}`;
 
       await this.outboxRepository.markSent(record._id, messageId);
       this.logger.log(
-        `Successfully sent email outbox [${record._id}] to ${record.recipientEmail} (msgId: ${messageId})`,
+        `Successfully sent email outbox [${record._id.toString()}] to ${record.recipientEmail} (msgId: ${messageId})`,
       );
-    } catch (err: any) {
-      const errorMessage = err?.message || 'Unknown SMTP error';
+    } catch (err: unknown) {
+      const errorMessage =
+        this.getErrorDetails(err).message || 'Unknown SMTP error';
       const isPermanent =
         record.retryCount + 1 >= this.maxRetries ||
         errorMessage.includes('Invalid login') ||
@@ -130,9 +164,14 @@ export class EmailOutboxProcessorService implements OnModuleInit {
       );
       const nextRetryAt = new Date(Date.now() + backoffDelayMs);
 
-      await this.outboxRepository.markFailed(record._id, errorMessage, isPermanent, nextRetryAt);
+      await this.outboxRepository.markFailed(
+        record._id,
+        errorMessage,
+        isPermanent,
+        nextRetryAt,
+      );
       this.logger.warn(
-        `Failed email outbox [${record._id}] to ${record.recipientEmail}: ${errorMessage}. Permanent: ${isPermanent}`,
+        `Failed email outbox [${record._id.toString()}] to ${record.recipientEmail}: ${errorMessage}. Permanent: ${isPermanent}`,
       );
     }
   }

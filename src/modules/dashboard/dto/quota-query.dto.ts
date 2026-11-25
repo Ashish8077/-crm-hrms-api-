@@ -10,7 +10,10 @@ export class QuotaQueryDto {
   @Max(2100)
   year!: number;
 
-  @ApiPropertyOptional({ description: 'Optional month (1-12). If omitted, returns annual quotas', example: 11 })
+  @ApiPropertyOptional({
+    description: 'Optional month (1-12). If omitted, returns annual quotas',
+    example: 11,
+  })
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -23,4 +26,3 @@ export class QuotaQueryDto {
   @IsOptional()
   currency?: string;
 }
-

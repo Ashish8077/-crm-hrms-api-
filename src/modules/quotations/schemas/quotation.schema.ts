@@ -126,7 +126,13 @@ export class Quotation {
   currency!: string;
 
   // ── Tax Context ──────────────────────────────────────────────────────────
-  @Prop({ type: String, required: true, trim: true, uppercase: true, default: 'DL' })
+  @Prop({
+    type: String,
+    required: true,
+    trim: true,
+    uppercase: true,
+    default: 'DL',
+  })
   sellerState!: string;
 
   @Prop({ type: String, required: true, trim: true, uppercase: true })

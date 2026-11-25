@@ -45,7 +45,9 @@ export class LeadAnalyticsService {
       },
     ];
 
-    const results = await this.leadModel.aggregate<{ _id: string; count: number }>(pipeline).exec();
+    const results = await this.leadModel
+      .aggregate<{ _id: string; count: number }>(pipeline)
+      .exec();
     const countMap: Record<string, number> = {};
     let totalLeads = 0;
 
@@ -61,10 +63,18 @@ export class LeadAnalyticsService {
       (countMap[LeadStatus.NEGOTIATION] || 0) +
       (countMap[LeadStatus.WON] || 0);
     const convertedLeads = countMap[LeadStatus.WON] || 0;
-    const lostLeads = (countMap[LeadStatus.LOST] || 0) + (countMap[LeadStatus.DISQUALIFIED] || 0);
+    const lostLeads =
+      (countMap[LeadStatus.LOST] || 0) +
+      (countMap[LeadStatus.DISQUALIFIED] || 0);
 
-    const conversionRate = totalLeads > 0 ? Number(((convertedLeads / totalLeads) * 100).toFixed(2)) : 0;
-    const qualificationRate = totalLeads > 0 ? Number(((qualifiedLeads / totalLeads) * 100).toFixed(2)) : 0;
+    const conversionRate =
+      totalLeads > 0
+        ? Number(((convertedLeads / totalLeads) * 100).toFixed(2))
+        : 0;
+    const qualificationRate =
+      totalLeads > 0
+        ? Number(((qualifiedLeads / totalLeads) * 100).toFixed(2))
+        : 0;
 
     return {
       totalLeads,
@@ -77,11 +87,7 @@ export class LeadAnalyticsService {
     };
   }
 
-  async getLeadFunnel(
-    scope: DataScope,
-    startDate?: string,
-    endDate?: string,
-  ) {
+  async getLeadFunnel(scope: DataScope, startDate?: string, endDate?: string) {
     const pipeline: PipelineStage[] = [
       {
         $match: {
@@ -98,14 +104,19 @@ export class LeadAnalyticsService {
       },
     ];
 
-    const results = await this.leadModel.aggregate<{ _id: string; count: number }>(pipeline).exec();
-    const countMap = new Map<string, number>(results.map((r) => [r._id, r.count]));
+    const results = await this.leadModel
+      .aggregate<{ _id: string; count: number }>(pipeline)
+      .exec();
+    const countMap = new Map<string, number>(
+      results.map((r) => [r._id, r.count]),
+    );
     const totalLeads = results.reduce((acc, r) => acc + r.count, 0);
 
     const allStatuses = Object.values(LeadStatus);
     const stages = allStatuses.map((status) => {
       const count = countMap.get(status) || 0;
-      const percentOfTotal = totalLeads > 0 ? Number(((count / totalLeads) * 100).toFixed(2)) : 0;
+      const percentOfTotal =
+        totalLeads > 0 ? Number(((count / totalLeads) * 100).toFixed(2)) : 0;
       return {
         stage: status,
         count,
@@ -123,8 +134,12 @@ export class LeadAnalyticsService {
     return {
       stages,
       totalLeads,
-      leadQualificationRate: totalLeads > 0 ? Number(((qualifiedCount / totalLeads) * 100).toFixed(2)) : 0,
-      leadToWonRate: totalLeads > 0 ? Number(((wonCount / totalLeads) * 100).toFixed(2)) : 0,
+      leadQualificationRate:
+        totalLeads > 0
+          ? Number(((qualifiedCount / totalLeads) * 100).toFixed(2))
+          : 0,
+      leadToWonRate:
+        totalLeads > 0 ? Number(((wonCount / totalLeads) * 100).toFixed(2)) : 0,
     };
   }
 
@@ -154,7 +169,10 @@ export class LeadAnalyticsService {
     ];
 
     const sourceResults = await this.leadModel
-      .aggregate<{ _id: { source: string; status: string }; count: number }>(sourcePipeline)
+      .aggregate<{
+        _id: { source: string; status: LeadStatus };
+        count: number;
+      }>(sourcePipeline)
       .exec();
 
     const sourceMap = new Map<string, { total: number; won: number }>();
@@ -170,12 +188,17 @@ export class LeadAnalyticsService {
       }
     }
 
-    const conversionBySource = Array.from(sourceMap.entries()).map(([source, stats]) => ({
-      source,
-      totalLeads: stats.total,
-      wonDeals: stats.won,
-      conversionRate: stats.total > 0 ? Number(((stats.won / stats.total) * 100).toFixed(2)) : 0,
-    }));
+    const conversionBySource = Array.from(sourceMap.entries()).map(
+      ([source, stats]) => ({
+        source,
+        totalLeads: stats.total,
+        wonDeals: stats.won,
+        conversionRate:
+          stats.total > 0
+            ? Number(((stats.won / stats.total) * 100).toFixed(2))
+            : 0,
+      }),
+    );
 
     return {
       period: { start: startDate ?? null, end: endDate ?? null },

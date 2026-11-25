@@ -103,7 +103,14 @@ describe('Products & Services - Complete Swagger API & Controller Contracts Test
       const query: ListProductCategoriesQueryDto = { page: 1, limit: 10 };
       categoriesService.findAll.mockResolvedValue({
         data: [],
-        meta: { total: 0, page: 1, limit: 10, totalPages: 0, hasNextPage: false, hasPreviousPage: false },
+        meta: {
+          total: 0,
+          page: 1,
+          limit: 10,
+          totalPages: 0,
+          hasNextPage: false,
+          hasPreviousPage: false,
+        },
       });
 
       const res = await controller.listCategories(query);
@@ -202,7 +209,14 @@ describe('Products & Services - Complete Swagger API & Controller Contracts Test
       };
       productsService.findAll.mockResolvedValue({
         data: [],
-        meta: { total: 0, page: 1, limit: 20, totalPages: 0, hasNextPage: false, hasPreviousPage: false },
+        meta: {
+          total: 0,
+          page: 1,
+          limit: 20,
+          totalPages: 0,
+          hasNextPage: false,
+          hasPreviousPage: false,
+        },
       });
 
       const res = await controller.listProducts(query, mockReq);

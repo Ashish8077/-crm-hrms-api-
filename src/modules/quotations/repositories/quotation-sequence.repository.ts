@@ -35,6 +35,10 @@ export class QuotationSequenceRepository {
     companyId: Types.ObjectId,
     session?: ClientSession,
   ): Promise<string> {
-    return this.getNextQuoteNumber(companyId, new Date().getFullYear(), session);
+    return this.getNextQuoteNumber(
+      companyId,
+      new Date().getFullYear(),
+      session,
+    );
   }
 }

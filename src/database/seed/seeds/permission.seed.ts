@@ -94,6 +94,9 @@ const PERMISSION_CATALOG: Record<PermissionModule, PermissionAction[]> = {
 
   // ── Payroll / Tax ────────────────────────────────────────────────
   [M.SALARY]: [VIEW, CREATE, EDIT, EXPORT],
+  [M.SALARY_COMPONENTS]: [VIEW, CREATE, EDIT, DELETE],
+  [M.SALARY_STRUCTURES]: [VIEW, CREATE, EDIT, DELETE],
+  [M.EMPLOYEE_SALARIES]: [VIEW, ASSIGN],
   [M.PAYROLL]: [VIEW, CREATE, EDIT, APPROVE, EXPORT],
   [M.PAYSLIPS]: [VIEW, CREATE, EXPORT],
   [M.TAX]: [VIEW, CREATE, EDIT, APPROVE, EXPORT],

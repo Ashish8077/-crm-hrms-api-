@@ -61,6 +61,9 @@ export enum PermissionModule {
 
   // Payroll / Tax
   SALARY = 'salary',
+  SALARY_COMPONENTS = 'salary.components',
+  SALARY_STRUCTURES = 'salary.structures',
+  EMPLOYEE_SALARIES = 'employee.salaries',
   PAYROLL = 'payroll',
   PAYSLIPS = 'payslips',
   TAX = 'tax',
@@ -524,5 +527,51 @@ export const PermissionKeys = {
   REPORTS_EXPORT: PermissionKey.of(
     PermissionModule.REPORTS,
     PermissionAction.EXPORT,
+  ),
+
+  // Salary Components
+  SALARY_COMPONENTS_VIEW: PermissionKey.of(
+    PermissionModule.SALARY_COMPONENTS,
+    PermissionAction.VIEW,
+  ),
+  SALARY_COMPONENTS_CREATE: PermissionKey.of(
+    PermissionModule.SALARY_COMPONENTS,
+    PermissionAction.CREATE,
+  ),
+  SALARY_COMPONENTS_EDIT: PermissionKey.of(
+    PermissionModule.SALARY_COMPONENTS,
+    PermissionAction.EDIT,
+  ),
+  SALARY_COMPONENTS_DELETE: PermissionKey.of(
+    PermissionModule.SALARY_COMPONENTS,
+    PermissionAction.DELETE,
+  ),
+
+  // Salary Structures
+  SALARY_STRUCTURES_VIEW: PermissionKey.of(
+    PermissionModule.SALARY_STRUCTURES,
+    PermissionAction.VIEW,
+  ),
+  SALARY_STRUCTURES_CREATE: PermissionKey.of(
+    PermissionModule.SALARY_STRUCTURES,
+    PermissionAction.CREATE,
+  ),
+  SALARY_STRUCTURES_EDIT: PermissionKey.of(
+    PermissionModule.SALARY_STRUCTURES,
+    PermissionAction.EDIT,
+  ),
+  SALARY_STRUCTURES_DELETE: PermissionKey.of(
+    PermissionModule.SALARY_STRUCTURES,
+    PermissionAction.DELETE,
+  ),
+
+  // Employee Salaries
+  EMPLOYEE_SALARIES_VIEW: PermissionKey.of(
+    PermissionModule.EMPLOYEE_SALARIES,
+    PermissionAction.VIEW,
+  ),
+  EMPLOYEE_SALARIES_ASSIGN: PermissionKey.of(
+    PermissionModule.EMPLOYEE_SALARIES,
+    PermissionAction.ASSIGN,
   ),
 } as const;

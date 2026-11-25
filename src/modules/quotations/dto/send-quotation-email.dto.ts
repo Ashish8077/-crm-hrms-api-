@@ -2,7 +2,10 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString } from 'class-validator';
 
 export class SendQuotationEmailDto {
-  @ApiPropertyOptional({ description: 'Optional recipient email override', example: 'client.decision.maker@example.com' })
+  @ApiPropertyOptional({
+    description: 'Optional recipient email override',
+    example: 'client.decision.maker@example.com',
+  })
   @IsOptional()
   @IsEmail()
   recipientEmail?: string;
@@ -12,7 +15,9 @@ export class SendQuotationEmailDto {
   @IsString()
   subject?: string;
 
-  @ApiPropertyOptional({ description: 'Personalized message included in the body' })
+  @ApiPropertyOptional({
+    description: 'Personalized message included in the body',
+  })
   @IsOptional()
   @IsString()
   customMessage?: string;

@@ -1,6 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDateString, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  Max,
+  Min,
+} from 'class-validator';
 
 export enum LeaderboardSortBy {
   DEALS_WON = 'deals_won',
@@ -10,12 +17,18 @@ export enum LeaderboardSortBy {
 }
 
 export class LeaderboardQueryDto {
-  @ApiPropertyOptional({ description: 'Filter start date (ISO 8601)', example: '2026-01-01' })
+  @ApiPropertyOptional({
+    description: 'Filter start date (ISO 8601)',
+    example: '2026-01-01',
+  })
   @IsDateString()
   @IsOptional()
   startDate?: string;
 
-  @ApiPropertyOptional({ description: 'Filter end date (ISO 8601)', example: '2026-12-31' })
+  @ApiPropertyOptional({
+    description: 'Filter end date (ISO 8601)',
+    example: '2026-12-31',
+  })
   @IsDateString()
   @IsOptional()
   endDate?: string;
@@ -37,4 +50,3 @@ export class LeaderboardQueryDto {
   @IsOptional()
   limit?: number = 10;
 }
-

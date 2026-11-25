@@ -6,7 +6,10 @@ import { Deal, DealDocumentType } from '../../deals/schemas/deal.schema';
 import { DealStatus } from '../../deals/constants/deal-status.constant';
 import { DEFAULT_CURRENCY } from '../../deals/constants/deal.constant';
 import { User, UserDocument } from '../../users/schemas/user.schema';
-import { Employee, EmployeeDocument } from '../../employees/schemas/employee.schema';
+import {
+  Employee,
+  EmployeeDocument,
+} from '../../employees/schemas/employee.schema';
 import { DataScope } from '../types/data-scope.types';
 import { SetQuotaDto } from '../dto/set-quota.dto';
 
@@ -90,7 +93,9 @@ export class QuotaService {
       },
     ];
 
-    const revenueResults = await this.dealModel.aggregate(pipeline).exec();
+    const revenueResults = await this.dealModel
+      .aggregate<{ _id: Types.ObjectId; totalRevenue: number }>(pipeline)
+      .exec();
     const revenueMap = new Map<string, number>(
       revenueResults.map((r) => [r._id.toString(), r.totalRevenue]),
     );
@@ -105,7 +110,10 @@ export class QuotaService {
     const nameMap = new Map<string, string>();
     for (const e of employees) {
       if (e.userId) {
-        nameMap.set(e.userId.toString(), `${e.firstName} ${e.lastName}`.trim() || e.workEmail);
+        nameMap.set(
+          e.userId.toString(),
+          `${e.firstName} ${e.lastName}`.trim() || e.workEmail,
+        );
       }
     }
 
@@ -118,7 +126,10 @@ export class QuotaService {
 
       let attainmentPercent: number | null = null;
       if (hasQuota) {
-        attainmentPercent = quotaAmount > 0 ? Number(((actualRevenue / quotaAmount) * 100).toFixed(2)) : 100;
+        attainmentPercent =
+          quotaAmount > 0
+            ? Number(((actualRevenue / quotaAmount) * 100).toFixed(2))
+            : 100;
       }
 
       return {
@@ -161,4 +172,3 @@ export class QuotaService {
     };
   }
 }
-

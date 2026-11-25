@@ -3,7 +3,11 @@ import { HydratedDocument } from 'mongoose';
 
 export type SalesOrderSequenceDocument = HydratedDocument<SalesOrderSequence>;
 
-@Schema({ collection: 'sales_order_sequences', timestamps: false, versionKey: false })
+@Schema({
+  collection: 'sales_order_sequences',
+  timestamps: false,
+  versionKey: false,
+})
 export class SalesOrderSequence {
   @Prop({ type: String, required: true, unique: true })
   key!: string; // Format: 'SO-{companyId}-{YYYY}'
@@ -12,5 +16,5 @@ export class SalesOrderSequence {
   seq!: number;
 }
 
-export const SalesOrderSequenceSchema = SchemaFactory.createForClass(SalesOrderSequence);
-
+export const SalesOrderSequenceSchema =
+  SchemaFactory.createForClass(SalesOrderSequence);

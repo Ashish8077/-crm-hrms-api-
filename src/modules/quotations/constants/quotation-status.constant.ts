@@ -23,7 +23,6 @@ export enum ApprovalTierLevel {
   TIER_1_MANAGER = 1,
   TIER_2_VP_FINANCE = 2,
   TIER_3_DIRECTOR = 3,
-  TIER_3_EXEC = 3,
 }
 
 export enum EmailDeliveryStatus {
@@ -58,7 +57,8 @@ export enum SalesOrderStatus {
 }
 
 export const QUOTATION_CACHE_KEYS = {
-  DETAIL: (companyId: string, id: string) => `crm:quotes:detail:${companyId}:${id}`,
+  DETAIL: (companyId: string, id: string) =>
+    `crm:quotes:detail:${companyId}:${id}`,
   SUMMARY: (companyId: string) => `crm:quotes:summary:${companyId}`,
   CRON_LOCK: 'lock:cron:quotation-expiry',
 };

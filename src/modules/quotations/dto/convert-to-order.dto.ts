@@ -11,7 +11,8 @@ export class ConvertToOrderDto {
   expectedDeliveryDate?: string;
 
   @ApiPropertyOptional({
-    description: 'Special shipping, deployment, or billing fulfillment instructions',
+    description:
+      'Special shipping, deployment, or billing fulfillment instructions',
     example: 'Provision cloud instances in Mumbai ap-south-1 region',
   })
   @IsOptional()
@@ -29,11 +30,11 @@ export class ConvertToOrderDto {
     description: 'Billing address object or string',
   })
   @IsOptional()
-  billingAddress?: any;
+  billingAddress?: unknown;
 
   @ApiPropertyOptional({
     description: 'Shipping address object or string',
   })
   @IsOptional()
-  shippingAddress?: any;
+  shippingAddress?: unknown;
 }

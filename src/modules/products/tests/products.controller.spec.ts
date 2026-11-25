@@ -94,7 +94,14 @@ describe('ProductsController', () => {
     it('2. GET /products/categories (listCategories)', async () => {
       categoriesService.findAll.mockResolvedValue({
         data: [],
-        meta: { total: 0, page: 1, limit: 20, totalPages: 0, hasNextPage: false, hasPreviousPage: false },
+        meta: {
+          total: 0,
+          page: 1,
+          limit: 20,
+          totalPages: 0,
+          hasNextPage: false,
+          hasPreviousPage: false,
+        },
       });
 
       await controller.listCategories({ page: 1, limit: 10 });
@@ -192,7 +199,14 @@ describe('ProductsController', () => {
     it('7. GET /products (listProducts)', async () => {
       productsService.findAll.mockResolvedValue({
         data: [],
-        meta: { total: 0, page: 1, limit: 20, totalPages: 0, hasNextPage: false, hasPreviousPage: false },
+        meta: {
+          total: 0,
+          page: 1,
+          limit: 20,
+          totalPages: 0,
+          hasNextPage: false,
+          hasPreviousPage: false,
+        },
       });
 
       await controller.listProducts({ page: 1, limit: 20 }, mockReq);

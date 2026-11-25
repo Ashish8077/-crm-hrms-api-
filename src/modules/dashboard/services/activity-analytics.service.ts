@@ -1,9 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, PipelineStage } from 'mongoose';
-import { CrmActivity, CrmActivityDocument, ActivityType } from '../../../common/schemas/crm-activity.schema';
+import { Model, PipelineStage, Types } from 'mongoose';
+import {
+  CrmActivity,
+  CrmActivityDocument,
+  ActivityType,
+} from '../../../common/schemas/crm-activity.schema';
 import { Task, TaskDocument } from '../../tasks/schemas/task.schema';
-import { TaskStatus, TERMINAL_TASK_STATUSES } from '../../tasks/constants/task-status.constant';
+import {
+  TaskStatus,
+  TERMINAL_TASK_STATUSES,
+} from '../../tasks/constants/task-status.constant';
 import { DataScope } from '../types/data-scope.types';
 
 @Injectable()
@@ -53,13 +60,18 @@ export class ActivityAnalyticsService {
       },
     ];
 
-    const results = await this.activityModel.aggregate<{ _id: string; count: number }>(pipeline).exec();
+    const results = await this.activityModel
+      .aggregate<{ _id: string; count: number }>(pipeline)
+      .exec();
     const totalActivities = results.reduce((acc, r) => acc + r.count, 0);
 
     const breakdown = results.map((r) => ({
       type: r._id.toLowerCase(),
       count: r.count,
-      percentOfTotal: totalActivities > 0 ? Number(((r.count / totalActivities) * 100).toFixed(2)) : 0,
+      percentOfTotal:
+        totalActivities > 0
+          ? Number(((r.count / totalActivities) * 100).toFixed(2))
+          : 0,
     }));
 
     // Tasks metrics
@@ -89,7 +101,10 @@ export class ActivityAnalyticsService {
       deletedAt: null,
     });
 
-    const taskCompletionRate = totalTasks > 0 ? Number(((tasksCompleted / totalTasks) * 100).toFixed(2)) : 0;
+    const taskCompletionRate =
+      totalTasks > 0
+        ? Number(((tasksCompleted / totalTasks) * 100).toFixed(2))
+        : 0;
 
     return {
       activityBreakdown: breakdown,
@@ -152,7 +167,9 @@ export class ActivityAnalyticsService {
       })
       .sort({ activityDate: -1 })
       .limit(limit)
-      .select('type entityType entityId subject activityDate performedBy outcome')
+      .select(
+        'type entityType entityId subject activityDate performedBy outcome',
+      )
       .lean()
       .exec();
   }
@@ -178,8 +195,11 @@ export class ActivityAnalyticsService {
       },
     ];
 
-    const results = await this.activityModel.aggregate(pipeline).exec();
-    return new Map<string, number>(results.map((r) => [r._id.toString(), r.count]));
+    const results = await this.activityModel
+      .aggregate<{ _id: Types.ObjectId; count: number }>(pipeline)
+      .exec();
+    return new Map<string, number>(
+      results.map((r) => [r._id.toString(), r.count]),
+    );
   }
 }
-

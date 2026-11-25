@@ -18,7 +18,12 @@ describe('DashboardService', () => {
   let service: DashboardService;
 
   const mockCacheService = {
-    getOrSet: jest.fn().mockImplementation((key, ttl, fetcher) => fetcher()),
+    getOrSet: jest
+      .fn()
+      .mockImplementation(
+        (_key: string, _ttl: number, fetcher: () => Promise<unknown>) =>
+          fetcher(),
+      ),
     del: jest.fn(),
   };
 
@@ -65,7 +70,14 @@ describe('DashboardService', () => {
       financialDataHidden: false,
     }),
     getDealPipeline: jest.fn().mockResolvedValue({
-      stages: [{ stage: 'CLOSED_WON', count: 10, totalAmountByCurrency: { USD: 150000 }, avgProbability: 100 }],
+      stages: [
+        {
+          stage: 'CLOSED_WON',
+          count: 10,
+          totalAmountByCurrency: { USD: 150000 },
+          avgProbability: 100,
+        },
+      ],
       financialDataHidden: false,
       currency: 'USD',
     }),
@@ -74,7 +86,12 @@ describe('DashboardService', () => {
       currency: 'USD',
       financialDataHidden: false,
       trends: [],
-      summary: { totalRevenueWon: 150000, avgPeriodRevenue: 15000, peakPeriod: '2026-11', peakPeriodRevenue: 50000 },
+      summary: {
+        totalRevenueWon: 150000,
+        avgPeriodRevenue: 15000,
+        peakPeriod: '2026-11',
+        peakPeriodRevenue: 50000,
+      },
     }),
     getForecast: jest.fn().mockResolvedValue({
       forecastPeriod: 'Q4-2026',
@@ -82,7 +99,11 @@ describe('DashboardService', () => {
       financialDataHidden: false,
       pipelineValue: 300000,
       weightedForecast: 180000,
-      closingThisQuarter: { count: 5, pipelineAmount: 120000, weightedAmount: 72000 },
+      closingThisQuarter: {
+        count: 5,
+        pipelineAmount: 120000,
+        weightedAmount: 72000,
+      },
       atRiskDeals: [],
       confidence: 'HIGH',
       confidenceNote: 'Strong pipeline',
@@ -133,18 +154,46 @@ describe('DashboardService', () => {
   };
 
   const mockLeadModel = {
-    aggregate: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }),
-    find: jest.fn().mockReturnValue({ select: () => ({ sort: () => ({ limit: () => ({ lean: () => ({ exec: jest.fn().mockResolvedValue([]) }) }) }) }) }),
+    aggregate: jest
+      .fn()
+      .mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }),
+    find: jest.fn().mockReturnValue({
+      select: () => ({
+        sort: () => ({
+          limit: () => ({
+            lean: () => ({ exec: jest.fn().mockResolvedValue([]) }),
+          }),
+        }),
+      }),
+    }),
   };
 
   const mockDealModel = {
-    aggregate: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }),
-    find: jest.fn().mockReturnValue({ select: () => ({ sort: () => ({ limit: () => ({ lean: () => ({ exec: jest.fn().mockResolvedValue([]) }) }) }) }) }),
+    aggregate: jest
+      .fn()
+      .mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }),
+    find: jest.fn().mockReturnValue({
+      select: () => ({
+        sort: () => ({
+          limit: () => ({
+            lean: () => ({ exec: jest.fn().mockResolvedValue([]) }),
+          }),
+        }),
+      }),
+    }),
   };
 
   const mockEmployeeModel = {
-    find: jest.fn().mockReturnValue({ select: () => ({ lean: () => ({ exec: jest.fn().mockResolvedValue([]) }) }) }),
-    findOne: jest.fn().mockReturnValue({ select: () => ({ lean: () => ({ exec: jest.fn().mockResolvedValue(null) }) }) }),
+    find: jest.fn().mockReturnValue({
+      select: () => ({
+        lean: () => ({ exec: jest.fn().mockResolvedValue([]) }),
+      }),
+    }),
+    findOne: jest.fn().mockReturnValue({
+      select: () => ({
+        lean: () => ({ exec: jest.fn().mockResolvedValue(null) }),
+      }),
+    }),
   };
 
   beforeEach(async () => {
@@ -156,7 +205,10 @@ describe('DashboardService', () => {
         { provide: DashboardCacheService, useValue: mockCacheService },
         { provide: LeadAnalyticsService, useValue: mockLeadAnalyticsService },
         { provide: DealAnalyticsService, useValue: mockDealAnalyticsService },
-        { provide: ActivityAnalyticsService, useValue: mockActivityAnalyticsService },
+        {
+          provide: ActivityAnalyticsService,
+          useValue: mockActivityAnalyticsService,
+        },
         { provide: QuotaService, useValue: mockQuotaService },
         { provide: ExportService, useValue: mockExportService },
         { provide: getModelToken(Lead.name), useValue: mockLeadModel },
@@ -214,9 +266,9 @@ describe('DashboardService', () => {
       canViewFinancial: true,
     };
 
-    await expect(service.getRepDashboard(restrictedScope, forbiddenId.toString())).rejects.toThrow(
-      ForbiddenException,
-    );
+    await expect(
+      service.getRepDashboard(restrictedScope, forbiddenId.toString()),
+    ).rejects.toThrow(ForbiddenException);
   });
 
   it('runCustomReport: should reject with BadRequestException for non-allowlisted fields', async () => {
@@ -238,4 +290,3 @@ describe('DashboardService', () => {
     expect(result.rows).toBeDefined();
   });
 });
-

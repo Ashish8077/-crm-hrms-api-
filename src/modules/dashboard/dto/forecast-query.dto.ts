@@ -24,4 +24,3 @@ export class ForecastQueryDto {
   @IsOptional()
   currency?: string;
 }
-
