@@ -64,9 +64,7 @@ import {
 } from '../audit-logs/constants/audit-log.constant';
 import { AppError } from '../../common/errors/app-error';
 
-const REAL_MONGODB_URI =
-  process.env.MONGODB_URI ||
-  'REDACTED_MONGODB_URI';
+const REAL_MONGODB_URI = process.env.MONGODB_URI;
 
 describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency', () => {
   jest.setTimeout(60000);
@@ -92,6 +90,14 @@ describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency
   const actorId = new Types.ObjectId();
 
   beforeAll(async () => {
+    if (!REAL_MONGODB_URI) {
+      console.warn(
+        'MONGODB_URI environment variable is not set; skipping real MongoDB replica set tests.',
+      );
+      isConnected = false;
+      return;
+    }
+
     try {
       connection = await mongoose
         .createConnection(REAL_MONGODB_URI, {
