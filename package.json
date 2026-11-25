@@ -23,6 +23,8 @@
     "seed:prod": "pnpm run build && cross-env NODE_ENV=production node dist/database/seed/seed.js",
     "migrate:roles:dev": "pnpm run build && cross-env NODE_ENV=development node dist/database/migrations/convert-legacy-system-roles.migration.js",
     "migrate:roles:prod": "pnpm run build && cross-env NODE_ENV=production node dist/database/migrations/convert-legacy-system-roles.migration.js",
+    "migrate:salary-components:dev": "pnpm run build && cross-env NODE_ENV=development node dist/database/migrations/migrate-salary-component-types.migration.js",
+    "migrate:salary-components:prod": "pnpm run build && cross-env NODE_ENV=production node dist/database/migrations/migrate-salary-component-types.migration.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -43,6 +45,7 @@
     "class-validator": "^0.15.1",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
+    "decimal.js": "^10.6.0",
     "exceljs": "^4.4.0",
     "helmet": "^8.3.0",
     "ioredis": "^6.0.0",
@@ -107,7 +110,7 @@
       "^(\\.{1,2}/.*)\\.js$": "$1"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!.*@nestjs/(jwt|terminus))"
+      "node_modules/(?!.*@nestjs/(jwt|terminus|schedule))"
     ]
   }
 }

@@ -8,4 +8,3 @@ export interface DataScope {
   callerUserId: Types.ObjectId;
   canViewFinancial: boolean;
 }
-

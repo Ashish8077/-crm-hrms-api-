@@ -56,14 +56,18 @@ describe('DataScopeService', () => {
 
     mockRoleModel.find.mockReturnValue({
       lean: () => ({
-        exec: jest.fn().mockResolvedValue([{ _id: roleId, key: SystemRole.SUPER_ADMIN }]),
+        exec: jest
+          .fn()
+          .mockResolvedValue([{ _id: roleId, key: SystemRole.SUPER_ADMIN }]),
       }),
     });
 
     mockUserModel.find.mockReturnValue({
       select: () => ({
         lean: () => ({
-          exec: jest.fn().mockResolvedValue([{ _id: allUser1 }, { _id: allUser2 }]),
+          exec: jest
+            .fn()
+            .mockResolvedValue([{ _id: allUser1 }, { _id: allUser2 }]),
         }),
       }),
     });
@@ -88,7 +92,9 @@ describe('DataScopeService', () => {
 
     mockRoleModel.find.mockReturnValue({
       lean: () => ({
-        exec: jest.fn().mockResolvedValue([{ _id: roleId, key: SystemRole.HR_MANAGER }]),
+        exec: jest
+          .fn()
+          .mockResolvedValue([{ _id: roleId, key: SystemRole.HR_MANAGER }]),
       }),
     });
 
@@ -121,7 +127,9 @@ describe('DataScopeService', () => {
 
     mockRoleModel.find.mockReturnValue({
       lean: () => ({
-        exec: jest.fn().mockResolvedValue([{ _id: roleId, key: SystemRole.SALES_MANAGER }]),
+        exec: jest
+          .fn()
+          .mockResolvedValue([{ _id: roleId, key: SystemRole.SALES_MANAGER }]),
       }),
     });
 
@@ -139,7 +147,9 @@ describe('DataScopeService', () => {
       .mockReturnValueOnce({
         select: () => ({
           lean: () => ({
-            exec: jest.fn().mockResolvedValue([{ _id: sub1EmpId, userId: sub1UserId }]),
+            exec: jest
+              .fn()
+              .mockResolvedValue([{ _id: sub1EmpId, userId: sub1UserId }]),
           }),
         }),
       })
@@ -170,7 +180,11 @@ describe('DataScopeService', () => {
 
     mockRoleModel.find.mockReturnValue({
       lean: () => ({
-        exec: jest.fn().mockResolvedValue([{ _id: roleId, key: SystemRole.SALES_EXECUTIVE }]),
+        exec: jest
+          .fn()
+          .mockResolvedValue([
+            { _id: roleId, key: SystemRole.SALES_EXECUTIVE },
+          ]),
       }),
     });
 
@@ -203,7 +217,9 @@ describe('DataScopeService', () => {
 
     mockRoleModel.find.mockReturnValue({
       lean: () => ({
-        exec: jest.fn().mockResolvedValue([{ _id: roleId, key: SystemRole.SUPER_ADMIN }]),
+        exec: jest
+          .fn()
+          .mockResolvedValue([{ _id: roleId, key: SystemRole.SUPER_ADMIN }]),
       }),
     });
 
@@ -229,4 +245,3 @@ describe('DataScopeService', () => {
     expect(scope.ownerIds).toHaveLength(0);
   });
 });
-

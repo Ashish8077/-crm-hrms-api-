@@ -30,8 +30,12 @@ describe('Quotation Financial Engine', () => {
     });
 
     it('should throw AppError on invalid decimal format', () => {
-      expect(() => parseDecimalStringToMinor('abc.50', 'INR')).toThrow(AppError);
-      expect(() => parseDecimalStringToMinor('-100.50', 'INR')).toThrow(AppError);
+      expect(() => parseDecimalStringToMinor('abc.50', 'INR')).toThrow(
+        AppError,
+      );
+      expect(() => parseDecimalStringToMinor('-100.50', 'INR')).toThrow(
+        AppError,
+      );
     });
   });
 
@@ -66,10 +70,10 @@ describe('Quotation Financial Engine', () => {
       // 1 unit at ₹100.01 (10001 minor), 0% discount, 18% GST (18.0018 => odd tax)
       const calc = calculateLineTaxes(
         10001, // unitPriceMinor
-        5000,  // costPriceMinor
-        1,     // quantity
-        0,     // discountPercent
-        18,    // taxRatePercent
+        5000, // costPriceMinor
+        1, // quantity
+        0, // discountPercent
+        18, // taxRatePercent
         false, // isInterState (Intra-state: CGST + SGST)
       );
 
@@ -91,14 +95,7 @@ describe('Quotation Financial Engine', () => {
     it('should handle odd tax totals with penny balancing without 1-paisa drift', () => {
       // Net line total where 18% tax gives odd number of paise
       // e.g. net line total ₹99.95 (9995 minor) * 18% = 1799.1 -> 1799 paise (odd!)
-      const calc = calculateLineTaxes(
-        9995,
-        4000,
-        1,
-        0,
-        18,
-        false,
-      );
+      const calc = calculateLineTaxes(9995, 4000, 1, 0, 18, false);
 
       expect(calc.totalTaxMinor).toBe(1799);
       expect(calc.cgstMinor).toBe(899); // floor(1799 / 2)
@@ -132,4 +129,3 @@ describe('Quotation Financial Engine', () => {
     });
   });
 });
-

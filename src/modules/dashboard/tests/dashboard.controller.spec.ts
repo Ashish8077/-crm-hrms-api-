@@ -22,7 +22,9 @@ describe('DashboardController', () => {
 
   const mockDashboardService = {
     getKpis: jest.fn().mockResolvedValue({ totalLeads: 100 }),
-    getFunnel: jest.fn().mockResolvedValue({ leadFunnel: {}, dealPipeline: {} }),
+    getFunnel: jest
+      .fn()
+      .mockResolvedValue({ leadFunnel: {}, dealPipeline: {} }),
     getPerformance: jest.fn().mockResolvedValue({ trends: [] }),
     getActivities: jest.fn().mockResolvedValue({ totalActivities: 50 }),
     getLeaderboard: jest.fn().mockResolvedValue({ rankings: [] }),
@@ -63,7 +65,10 @@ describe('DashboardController', () => {
     expect(res.success).toBe(true);
     expect(res.data).toBeDefined();
     expect(mockDataScopeService.resolveCallerDataScope).toHaveBeenCalled();
-    expect(mockDashboardService.getKpis).toHaveBeenCalledWith(mockDataScope, {});
+    expect(mockDashboardService.getKpis).toHaveBeenCalledWith(
+      mockDataScope,
+      {},
+    );
   });
 
   it('getFunnel: should return combined funnel data', async () => {
@@ -87,7 +92,9 @@ describe('DashboardController', () => {
     };
     const res = await controller.setQuota(dto, mockReq);
     expect(res.success).toBe(true);
-    expect(mockDashboardService.setQuota).toHaveBeenCalledWith(mockReq.user.userId, dto);
+    expect(mockDashboardService.setQuota).toHaveBeenCalledWith(
+      mockReq.user.userId,
+      dto,
+    );
   });
 });
-

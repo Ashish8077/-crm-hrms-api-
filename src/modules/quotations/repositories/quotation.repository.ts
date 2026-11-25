@@ -12,6 +12,17 @@ import { PaginatedResult } from '../../../common/pagination/types/pagination.typ
 
 export type QuotationLean = Quotation & { _id: Types.ObjectId };
 
+export interface QuotationSummaryResult {
+  byStatus: Array<{ _id: string; count: number; totalValueMinor: number }>;
+  byApprovalStatus: Array<{ _id: string; count: number }>;
+  pipelineMetrics: Array<{
+    _id: null;
+    totalQuotations: number;
+    totalPipelineMinor: number;
+    averageDiscountMinor: number | null;
+  }>;
+}
+
 @Injectable()
 export class QuotationRepository {
   constructor(
@@ -113,9 +124,10 @@ export class QuotationRepository {
     }
 
     if (query.startDate || query.endDate) {
-      filter.createdAt = {};
-      if (query.startDate) filter.createdAt.$gte = new Date(query.startDate);
-      if (query.endDate) filter.createdAt.$lte = new Date(query.endDate);
+      const dateRange: { $gte?: Date; $lte?: Date } = {};
+      if (query.startDate) dateRange.$gte = new Date(query.startDate);
+      if (query.endDate) dateRange.$lte = new Date(query.endDate);
+      filter.createdAt = dateRange;
     }
 
     if (query.search) {
@@ -221,8 +233,10 @@ export class QuotationRepository {
     return this.findRevisionChain(rootQuoteId, companyId);
   }
 
-  async findSummary(companyId: Types.ObjectId): Promise<any> {
-    const result = await this.quotationModel.aggregate([
+  async findSummary(
+    companyId: Types.ObjectId,
+  ): Promise<QuotationSummaryResult> {
+    const result = await this.quotationModel.aggregate<QuotationSummaryResult>([
       { $match: { companyId, deletedAt: null, isLatestRevision: true } },
       {
         $facet: {
@@ -257,10 +271,12 @@ export class QuotationRepository {
       },
     ]);
 
-    return result[0] || { byStatus: [], byApprovalStatus: [], pipelineMetrics: [] };
+    return (
+      result[0] || { byStatus: [], byApprovalStatus: [], pipelineMetrics: [] }
+    );
   }
 
-  async getSummary(companyId: Types.ObjectId): Promise<any> {
+  async getSummary(companyId: Types.ObjectId): Promise<QuotationSummaryResult> {
     return this.findSummary(companyId);
   }
 

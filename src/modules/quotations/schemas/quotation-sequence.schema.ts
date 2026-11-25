@@ -3,7 +3,11 @@ import { HydratedDocument } from 'mongoose';
 
 export type QuotationSequenceDocument = HydratedDocument<QuotationSequence>;
 
-@Schema({ collection: 'quotation_sequences', timestamps: false, versionKey: false })
+@Schema({
+  collection: 'quotation_sequences',
+  timestamps: false,
+  versionKey: false,
+})
 export class QuotationSequence {
   @Prop({ type: String, required: true, unique: true })
   key!: string; // Format: 'QT-{companyId}-{YYYY}'
@@ -12,5 +16,5 @@ export class QuotationSequence {
   seq!: number;
 }
 
-export const QuotationSequenceSchema = SchemaFactory.createForClass(QuotationSequence);
-
+export const QuotationSequenceSchema =
+  SchemaFactory.createForClass(QuotationSequence);

@@ -23,7 +23,9 @@ export class DashboardCacheService {
         return JSON.parse(cached) as T;
       }
     } catch (error) {
-      this.logger.warn(`Redis get failed for key "${key}": ${(error as Error).message}. Proceeding to DB.`);
+      this.logger.warn(
+        `Redis get failed for key "${key}": ${(error as Error).message}. Proceeding to DB.`,
+      );
     }
 
     // 2. In-flight stampede protection
@@ -40,7 +42,9 @@ export class DashboardCacheService {
         this.redisService
           .set(key, JSON.stringify(result), ttlSeconds)
           .catch((err: Error) => {
-            this.logger.warn(`Redis set failed for key "${key}": ${err.message}`);
+            this.logger.warn(
+              `Redis set failed for key "${key}": ${err.message}`,
+            );
           });
 
         return result;
@@ -60,8 +64,9 @@ export class DashboardCacheService {
     try {
       await this.redisService.del(key);
     } catch (error) {
-      this.logger.warn(`Redis del failed for key "${key}": ${(error as Error).message}`);
+      this.logger.warn(
+        `Redis del failed for key "${key}": ${(error as Error).message}`,
+      );
     }
   }
 }
-

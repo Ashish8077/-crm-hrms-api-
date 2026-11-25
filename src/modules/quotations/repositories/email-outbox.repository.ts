@@ -81,7 +81,6 @@ export class EmailOutboxRepository {
   async claimPendingBatch(
     batchSize: number = 10,
     workerInstanceId: string = 'worker-1',
-    _lockDurationMs?: number,
   ): Promise<EmailOutboxDocument[]> {
     const pendingDocs = await this.outboxModel
       .find({

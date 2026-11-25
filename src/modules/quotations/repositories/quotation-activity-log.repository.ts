@@ -6,7 +6,9 @@ import {
   QuotationActivityLogDocument,
 } from '../schemas/quotation-activity-log.schema';
 
-export type QuotationActivityLogLean = QuotationActivityLog & { _id: Types.ObjectId };
+export type QuotationActivityLogLean = QuotationActivityLog & {
+  _id: Types.ObjectId;
+};
 
 @Injectable()
 export class QuotationActivityLogRepository {

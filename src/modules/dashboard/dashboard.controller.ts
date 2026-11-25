@@ -51,18 +51,19 @@ export class DashboardController {
   @ApiOperation({ summary: 'Executive KPI summary across all CRM modules' })
   @ApiOkResponse({ description: 'Executive aggregated KPIs' })
   @RequirePermissions(PermissionKeys.REPORTS_VIEW)
-  async getKpis(
-    @Query() query: KpiQueryDto,
-    @Req() req: AuthenticatedRequest,
-  ) {
+  async getKpis(@Query() query: KpiQueryDto, @Req() req: AuthenticatedRequest) {
     const scope = await this.dataScopeService.resolveCallerDataScope(req.user);
     const data = await this.dashboardService.getKpis(scope, query);
     return { success: true, data };
   }
 
   @Get('funnel')
-  @ApiOperation({ summary: 'Lead Funnel & Deal Pipeline combined stages analytics' })
-  @ApiOkResponse({ description: 'Lead funnel and opportunity pipeline distribution' })
+  @ApiOperation({
+    summary: 'Lead Funnel & Deal Pipeline combined stages analytics',
+  })
+  @ApiOkResponse({
+    description: 'Lead funnel and opportunity pipeline distribution',
+  })
   @RequirePermissions(PermissionKeys.REPORTS_VIEW)
   async getFunnel(
     @Query() query: FunnelQueryDto,
@@ -87,7 +88,9 @@ export class DashboardController {
   }
 
   @Get('activities')
-  @ApiOperation({ summary: 'CRM activities breakdown and task completion analytics' })
+  @ApiOperation({
+    summary: 'CRM activities breakdown and task completion analytics',
+  })
   @ApiOkResponse({ description: 'Activity metrics and task completion rates' })
   @RequirePermissions(PermissionKeys.REPORTS_VIEW)
   async getActivities(
@@ -101,7 +104,9 @@ export class DashboardController {
 
   @Get('leaderboard')
   @ApiOperation({ summary: 'Sales team performance leaderboard rankings' })
-  @ApiOkResponse({ description: 'Ranked sales representative performance metrics' })
+  @ApiOkResponse({
+    description: 'Ranked sales representative performance metrics',
+  })
   @RequirePermissions(PermissionKeys.REPORTS_VIEW)
   async getLeaderboard(
     @Query() query: LeaderboardQueryDto,
@@ -113,8 +118,14 @@ export class DashboardController {
   }
 
   @Get('rep/:userId')
-  @ApiOperation({ summary: 'Individual sales representative operational cockpit' })
-  @ApiParam({ name: 'userId', description: 'User ObjectId of sales rep', example: '6af1234567890abcdef12345' })
+  @ApiOperation({
+    summary: 'Individual sales representative operational cockpit',
+  })
+  @ApiParam({
+    name: 'userId',
+    description: 'User ObjectId of sales rep',
+    example: '6af1234567890abcdef12345',
+  })
   @ApiOkResponse({ description: 'Individual sales rep KPIs and attainment' })
   @RequirePermissions(PermissionKeys.REPORTS_VIEW)
   async getRepDashboard(
@@ -141,20 +152,21 @@ export class DashboardController {
 
   @Post('quota')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Set or update sales quota target for a representative' })
+  @ApiOperation({
+    summary: 'Set or update sales quota target for a representative',
+  })
   @ApiCreatedResponse({ description: 'Quota assigned successfully' })
   @RequirePermissions(PermissionKeys.REPORTS_VIEW)
-  async setQuota(
-    @Body() dto: SetQuotaDto,
-    @Req() req: AuthenticatedRequest,
-  ) {
+  async setQuota(@Body() dto: SetQuotaDto, @Req() req: AuthenticatedRequest) {
     const callerUserId = new Types.ObjectId(req.user.userId);
     const data = await this.dashboardService.setQuota(callerUserId, dto);
     return { success: true, data };
   }
 
   @Get('daily-summary')
-  @ApiOperation({ summary: 'Actionable daily summary for immediate focus and follow-ups' })
+  @ApiOperation({
+    summary: 'Actionable daily summary for immediate focus and follow-ups',
+  })
   @ApiOkResponse({ description: 'Daily summary counts and priorities' })
   @RequirePermissions(PermissionKeys.REPORTS_VIEW)
   async getDailySummary(@Req() req: AuthenticatedRequest) {
@@ -164,8 +176,12 @@ export class DashboardController {
   }
 
   @Get('conversion')
-  @ApiOperation({ summary: 'Comprehensive lead and deal stage conversion rate analysis' })
-  @ApiOkResponse({ description: 'Conversion analytics across channels and stages' })
+  @ApiOperation({
+    summary: 'Comprehensive lead and deal stage conversion rate analysis',
+  })
+  @ApiOkResponse({
+    description: 'Conversion analytics across channels and stages',
+  })
   @RequirePermissions(PermissionKeys.REPORTS_VIEW)
   async getConversion(
     @Query() query: KpiQueryDto,
@@ -177,8 +193,12 @@ export class DashboardController {
   }
 
   @Get('forecast')
-  @ApiOperation({ summary: 'Weighted revenue forecast and at-risk pipeline health' })
-  @ApiOkResponse({ description: 'Forecast projections and stalled opportunities' })
+  @ApiOperation({
+    summary: 'Weighted revenue forecast and at-risk pipeline health',
+  })
+  @ApiOkResponse({
+    description: 'Forecast projections and stalled opportunities',
+  })
   @RequirePermissions(PermissionKeys.REPORTS_VIEW)
   async getForecast(
     @Query() query: ForecastQueryDto,
@@ -191,7 +211,9 @@ export class DashboardController {
 
   @Post('custom-report')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'On-demand custom tabular and grouped report generator' })
+  @ApiOperation({
+    summary: 'On-demand custom tabular and grouped report generator',
+  })
   @ApiOkResponse({ description: 'Custom report data payload' })
   @RequirePermissions(PermissionKeys.REPORTS_VIEW)
   async runCustomReport(
@@ -216,4 +238,3 @@ export class DashboardController {
     await this.dashboardService.exportReport(scope, query, res);
   }
 }
-

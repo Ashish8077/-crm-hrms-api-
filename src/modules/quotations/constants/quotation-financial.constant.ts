@@ -17,7 +17,7 @@ export const CURRENCY_PRECISION_MAP: Record<string, number> = {
 
 export const QUANTITY_SCALE = 1000; // 3 decimal places for quantities (e.g. 2.500 hrs = 2500)
 
-export function validateCurrency(currency?: string | any): string {
+export function validateCurrency(currency?: unknown): string {
   if (typeof currency !== 'string') {
     return 'INR';
   }
@@ -39,7 +39,8 @@ export function parseDecimalStringToMinor(
   const code = validateCurrency(currency);
   const precision = CURRENCY_PRECISION_MAP[code];
 
-  const str = typeof amountStr === 'number' ? amountStr.toString() : amountStr.trim();
+  const str =
+    typeof amountStr === 'number' ? amountStr.toString() : amountStr.trim();
   const regex = /^\d+(\.\d+)?$/;
   if (!regex.test(str)) {
     throw new AppError(
@@ -59,7 +60,8 @@ export function parseDecimalStringToMinor(
   }
 
   const multiplier = BigInt(Math.pow(10, precision));
-  const minorBigInt = integerPart * multiplier + (fractionPartStr ? BigInt(fractionPartStr) : 0n);
+  const minorBigInt =
+    integerPart * multiplier + (fractionPartStr ? BigInt(fractionPartStr) : 0n);
 
   if (minorBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new AppError(
@@ -123,14 +125,20 @@ export function calculateLineTaxes(
   const taxBasisPoints = Math.round(taxRatePercent * 100);
 
   // 1. Line subtotal = floor((unitPriceMinor * quantityScaled) / 1000)
-  const lineSubtotalMinor = Math.floor((unitPriceMinor * quantityScaled) / QUANTITY_SCALE);
+  const lineSubtotalMinor = Math.floor(
+    (unitPriceMinor * quantityScaled) / QUANTITY_SCALE,
+  );
 
   // 2. Line discount = floor((lineSubtotalMinor * discountBasisPoints) / 10000)
-  const discountMinor = Math.floor((lineSubtotalMinor * discountBasisPoints) / 10000);
+  const discountMinor = Math.floor(
+    (lineSubtotalMinor * discountBasisPoints) / 10000,
+  );
   const netLineTotalMinor = lineSubtotalMinor - discountMinor;
 
   // 3. Line total tax = floor((netLineTotalMinor * taxBasisPoints) / 10000)
-  const totalTaxMinor = Math.floor((netLineTotalMinor * taxBasisPoints) / 10000);
+  const totalTaxMinor = Math.floor(
+    (netLineTotalMinor * taxBasisPoints) / 10000,
+  );
 
   let cgstMinor = 0;
   let sgstMinor = 0;
@@ -161,4 +169,3 @@ export function calculateLineTaxes(
     lineGrandTotalMinor,
   };
 }
-

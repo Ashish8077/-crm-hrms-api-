@@ -1,10 +1,13 @@
-/* eslint-disable @typescript-eslint/unbound-method, @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/unbound-method */
 import { HttpStatus } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 import { QuotationsService } from '../services/quotations.service';
-import { QuotationRepository } from '../repositories/quotation.repository';
+import {
+  QuotationRepository,
+  QuotationLean,
+} from '../repositories/quotation.repository';
 import { QuotationSequenceRepository } from '../repositories/quotation-sequence.repository';
 import { SalesOrderRepository } from '../repositories/sales-order.repository';
 import { SalesOrderSequenceRepository } from '../repositories/sales-order-sequence.repository';
@@ -21,6 +24,8 @@ import { StorageService } from '../../storage/storage.service';
 import { PdfGeneratorService } from '../services/pdf-generator.service';
 import { EmailOutboxProcessorService } from '../services/email-outbox-processor.service';
 import { AppError } from '../../../common/errors/app-error';
+import type { CreateQuotationDto } from '../dto/create-quotation.dto';
+import type { UpdateQuotationStatusDto } from '../dto/update-quotation-status.dto';
 import {
   ApprovalReviewAction,
   ReviewApprovalDto,
@@ -37,7 +42,6 @@ describe('QuotationsService', () => {
   let quotationSequenceRepository: jest.Mocked<QuotationSequenceRepository>;
   let salesOrderRepository: jest.Mocked<SalesOrderRepository>;
   let salesOrderSequenceRepository: jest.Mocked<SalesOrderSequenceRepository>;
-  let emailOutboxRepository: jest.Mocked<EmailOutboxRepository>;
   let activityLogRepository: jest.Mocked<QuotationActivityLogRepository>;
   let productRepository: jest.Mocked<ProductRepository>;
   let dealRepository: jest.Mocked<DealRepository>;
@@ -62,7 +66,7 @@ describe('QuotationsService', () => {
     isActive: true,
   };
 
-  const mockQuoteLean: any = {
+  const mockQuoteLean = {
     _id: quoteId,
     quoteNumber: 'QT-2026-0001',
     title: 'Enterprise Proposal',
@@ -120,14 +124,19 @@ describe('QuotationsService', () => {
     portalTokenRevoked: false,
     createdAt: new Date(),
     updatedAt: new Date(),
-  };
+  } as unknown as QuotationLean;
 
   const mockSession = {
     startTransaction: jest.fn(),
     commitTransaction: jest.fn(),
     abortTransaction: jest.fn(),
     endSession: jest.fn(),
-    withTransaction: jest.fn().mockImplementation(async (cb) => cb(mockSession)),
+    withTransaction: jest
+      .fn()
+      .mockImplementation(
+        (cb: (session: typeof mockSession) => Promise<unknown>) =>
+          cb(mockSession),
+      ),
   };
 
   const mockConnection = {
@@ -150,13 +159,26 @@ describe('QuotationsService', () => {
             findByPortalTokenHash: jest.fn().mockResolvedValue(mockQuoteLean),
             findAllWithPagination: jest.fn().mockResolvedValue({
               data: [mockQuoteLean],
-              meta: { page: 1, limit: 20, total: 1, totalPages: 1, hasNextPage: false, hasPreviousPage: false },
+              meta: {
+                page: 1,
+                limit: 20,
+                total: 1,
+                totalPages: 1,
+                hasNextPage: false,
+                hasPreviousPage: false,
+              },
             }),
-            findSummary: jest.fn().mockResolvedValue({ byStatus: [], byApprovalStatus: [] }),
-            getSummary: jest.fn().mockResolvedValue({ byStatus: [], byApprovalStatus: [] }),
+            findSummary: jest
+              .fn()
+              .mockResolvedValue({ byStatus: [], byApprovalStatus: [] }),
+            getSummary: jest
+              .fn()
+              .mockResolvedValue({ byStatus: [], byApprovalStatus: [] }),
             findRevisionsByRootId: jest.fn().mockResolvedValue([mockQuoteLean]),
             updateById: jest.fn().mockResolvedValue(mockQuoteLean),
-            markConvertedToOrder: jest.fn().mockResolvedValue({ ...mockQuoteLean, convertedToOrder: true }),
+            markConvertedToOrder: jest
+              .fn()
+              .mockResolvedValue({ ...mockQuoteLean, convertedToOrder: true }),
             softDelete: jest.fn().mockResolvedValue(mockQuoteLean),
           },
         },
@@ -169,7 +191,10 @@ describe('QuotationsService', () => {
         {
           provide: SalesOrderRepository,
           useValue: {
-            createSalesOrder: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(), orderNumber: 'SO-2026-0001' }),
+            createSalesOrder: jest.fn().mockResolvedValue({
+              _id: new Types.ObjectId(),
+              orderNumber: 'SO-2026-0001',
+            }),
           },
         },
         {
@@ -181,7 +206,9 @@ describe('QuotationsService', () => {
         {
           provide: EmailOutboxRepository,
           useValue: {
-            createOutboxRecord: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }),
+            createOutboxRecord: jest
+              .fn()
+              .mockResolvedValue({ _id: new Types.ObjectId() }),
             findByQuotationId: jest.fn().mockResolvedValue([]),
             updateDeliveryStatusByMessageId: jest.fn().mockResolvedValue({}),
           },
@@ -212,7 +239,9 @@ describe('QuotationsService', () => {
         {
           provide: DealRepository,
           useValue: {
-            findById: jest.fn().mockResolvedValue({ _id: dealId, title: 'Big Deal' }),
+            findById: jest
+              .fn()
+              .mockResolvedValue({ _id: dealId, title: 'Big Deal' }),
             updateStage: jest.fn().mockResolvedValue({}),
           },
         },
@@ -240,14 +269,20 @@ describe('QuotationsService', () => {
         {
           provide: StorageService,
           useValue: {
-            uploadFile: jest.fn().mockResolvedValue({ key: 'quotations/test.pdf' }),
-            getSignedDownloadUrl: jest.fn().mockResolvedValue('https://s3.local/test.pdf'),
+            uploadFile: jest
+              .fn()
+              .mockResolvedValue({ key: 'quotations/test.pdf' }),
+            getSignedDownloadUrl: jest
+              .fn()
+              .mockResolvedValue('https://s3.local/test.pdf'),
           },
         },
         {
           provide: PdfGeneratorService,
           useValue: {
-            generatePdfBuffer: jest.fn().mockResolvedValue(Buffer.from('PDF_CONTENT')),
+            generatePdfBuffer: jest
+              .fn()
+              .mockResolvedValue(Buffer.from('PDF_CONTENT')),
           },
         },
         {
@@ -264,7 +299,6 @@ describe('QuotationsService', () => {
     quotationSequenceRepository = module.get(QuotationSequenceRepository);
     salesOrderRepository = module.get(SalesOrderRepository);
     salesOrderSequenceRepository = module.get(SalesOrderSequenceRepository);
-    emailOutboxRepository = module.get(EmailOutboxRepository);
     activityLogRepository = module.get(QuotationActivityLogRepository);
     productRepository = module.get(ProductRepository);
     dealRepository = module.get(DealRepository);
@@ -273,7 +307,7 @@ describe('QuotationsService', () => {
 
   describe('create', () => {
     it('should successfully create a new quotation draft (v1) with integer precision and GST split', async () => {
-      const dto: any = {
+      const dto: CreateQuotationDto = {
         title: 'Enterprise Proposal',
         contactId: contactId.toString(),
         dealId: dealId.toString(),
@@ -294,34 +328,40 @@ describe('QuotationsService', () => {
 
       expect(result).toBeDefined();
       expect(result.quoteNumber).toBe('QT-2026-0001');
-      expect(quotationSequenceRepository.getNextSequence).toHaveBeenCalledWith(companyId);
+      expect(quotationSequenceRepository.getNextSequence).toHaveBeenCalledWith(
+        companyId,
+      );
       expect(quotationRepository.create).toHaveBeenCalled();
       expect(activityLogRepository.logActivity).toHaveBeenCalled();
       expect(auditLogsService.createAuditLog).toHaveBeenCalled();
     });
 
     it('should throw AppError BAD_REQUEST if expiryDate is in the past', async () => {
-      const dto: any = {
+      const dto: CreateQuotationDto = {
         contactId: contactId.toString(),
         expiryDate: new Date(Date.now() - 86400000).toISOString(), // Yesterday
         buyerState: 'DL',
         items: [{ productId: productId.toString(), quantity: 1 }],
       };
 
-      await expect(service.create(dto, actorId, companyId, true)).rejects.toThrow(AppError);
+      await expect(
+        service.create(dto, actorId, companyId, true),
+      ).rejects.toThrow(AppError);
     });
 
     it('should throw AppError NOT_FOUND if product does not exist', async () => {
       productRepository.findById.mockResolvedValueOnce(null);
 
-      const dto: any = {
+      const dto: CreateQuotationDto = {
         contactId: contactId.toString(),
         expiryDate: new Date(Date.now() + 86400000).toISOString(),
         buyerState: 'DL',
         items: [{ productId: productId.toString(), quantity: 1 }],
       };
 
-      await expect(service.create(dto, actorId, companyId, true)).rejects.toThrow(AppError);
+      await expect(
+        service.create(dto, actorId, companyId, true),
+      ).rejects.toThrow(AppError);
     });
   });
 
@@ -345,29 +385,37 @@ describe('QuotationsService', () => {
     it('should throw AppError NOT_FOUND when quotation does not exist', async () => {
       quotationRepository.findById.mockResolvedValueOnce(null);
 
-      await expect(service.findById(companyId, quoteId, true)).rejects.toThrow(AppError);
+      await expect(service.findById(companyId, quoteId, true)).rejects.toThrow(
+        AppError,
+      );
     });
   });
 
   describe('updateStatus', () => {
     it('should allow valid transition from DRAFT to SENT', async () => {
-      const dto = { status: QuotationStatus.SENT };
+      const dto: UpdateQuotationStatusDto = { status: QuotationStatus.SENT };
       quotationRepository.updateById.mockResolvedValueOnce({
         ...mockQuoteLean,
         status: QuotationStatus.SENT,
       });
 
-      const result = await service.updateStatus(companyId, quoteId, dto as any, actorId, true);
+      const result = await service.updateStatus(
+        companyId,
+        quoteId,
+        dto,
+        actorId,
+        true,
+      );
 
       expect(result.status).toBe(QuotationStatus.SENT);
       expect(activityLogRepository.logActivity).toHaveBeenCalled();
     });
 
     it('should reject invalid transition from DRAFT directly to EXPIRED', async () => {
-      const dto = { status: QuotationStatus.EXPIRED };
+      const dto: UpdateQuotationStatusDto = { status: QuotationStatus.EXPIRED };
 
       await expect(
-        service.updateStatus(companyId, quoteId, dto as any, actorId, true),
+        service.updateStatus(companyId, quoteId, dto, actorId, true),
       ).rejects.toThrow(AppError);
     });
 
@@ -385,7 +433,7 @@ describe('QuotationsService', () => {
       const result = await service.updateStatus(
         companyId,
         quoteId,
-        { status: QuotationStatus.ACCEPTED } as any,
+        { status: QuotationStatus.ACCEPTED },
         actorId,
         true,
       );
@@ -410,11 +458,9 @@ describe('QuotationsService', () => {
 
       await expect(
         service.reviewApproval(companyId, quoteId, dto, actorId, true),
-      ).rejects.toThrow(
-        expect.objectContaining({
-          statusCode: HttpStatus.FORBIDDEN,
-        }),
-      );
+      ).rejects.toMatchObject({
+        statusCode: HttpStatus.FORBIDDEN,
+      });
     });
 
     it('should approve quotation when reviewed by another user with permission', async () => {
@@ -434,7 +480,13 @@ describe('QuotationsService', () => {
         action: ApprovalReviewAction.APPROVE,
       };
 
-      const result = await service.reviewApproval(companyId, quoteId, dto, actorId, true);
+      const result = await service.reviewApproval(
+        companyId,
+        quoteId,
+        dto,
+        actorId,
+        true,
+      );
 
       expect(result.approvalStatus).toBe(QuotationApprovalStatus.APPROVED);
       expect(result.status).toBe(QuotationStatus.APPROVED);
@@ -449,7 +501,9 @@ describe('QuotationsService', () => {
         portalTokenUsed: false,
         portalTokenExpiresAt: new Date(Date.now() + 86400000),
       };
-      quotationRepository.findByPortalTokenHash.mockResolvedValueOnce(sentQuote);
+      quotationRepository.findByPortalTokenHash.mockResolvedValueOnce(
+        sentQuote,
+      );
       quotationRepository.updateById.mockResolvedValueOnce({
         ...sentQuote,
         status: QuotationStatus.ACCEPTED,
@@ -475,7 +529,9 @@ describe('QuotationsService', () => {
         ...mockQuoteLean,
         portalTokenUsed: true, // Already responded
       };
-      quotationRepository.findByPortalTokenHash.mockResolvedValueOnce(usedQuote);
+      quotationRepository.findByPortalTokenHash.mockResolvedValueOnce(
+        usedQuote,
+      );
 
       await expect(
         service.respondPortal(
@@ -528,4 +584,3 @@ describe('QuotationsService', () => {
     });
   });
 });
-

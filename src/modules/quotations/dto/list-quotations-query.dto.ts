@@ -1,5 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsDateString, IsEnum, IsMongoId, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsMongoId,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 import { PaginationQueryDto } from '../../../common/pagination/dto/pagination-query.dto';
 import {
@@ -13,12 +20,18 @@ export class ListQuotationsQueryDto extends PaginationQueryDto {
   @IsMongoId()
   companyId?: string;
 
-  @ApiPropertyOptional({ description: 'Filter by commercial status', enum: QuotationStatus })
+  @ApiPropertyOptional({
+    description: 'Filter by commercial status',
+    enum: QuotationStatus,
+  })
   @IsOptional()
   @IsEnum(QuotationStatus)
   status?: QuotationStatus;
 
-  @ApiPropertyOptional({ description: 'Filter by approval status', enum: QuotationApprovalStatus })
+  @ApiPropertyOptional({
+    description: 'Filter by approval status',
+    enum: QuotationApprovalStatus,
+  })
   @IsOptional()
   @IsEnum(QuotationApprovalStatus)
   approvalStatus?: QuotationApprovalStatus;
@@ -43,23 +56,32 @@ export class ListQuotationsQueryDto extends PaginationQueryDto {
   @IsMongoId()
   ownerId?: string;
 
-  @ApiPropertyOptional({ description: 'Filter only latest revisions (default: true)', default: true })
+  @ApiPropertyOptional({
+    description: 'Filter only latest revisions (default: true)',
+    default: true,
+  })
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   isLatestRevision?: boolean = true;
 
-  @ApiPropertyOptional({ description: 'Search term by quoteNumber, notes, terms' })
+  @ApiPropertyOptional({
+    description: 'Search term by quoteNumber, notes, terms',
+  })
   @IsOptional()
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ description: 'Filter quotes created on or after (ISO 8601)' })
+  @ApiPropertyOptional({
+    description: 'Filter quotes created on or after (ISO 8601)',
+  })
   @IsOptional()
   @IsDateString()
   startDate?: string;
 
-  @ApiPropertyOptional({ description: 'Filter quotes created on or before (ISO 8601)' })
+  @ApiPropertyOptional({
+    description: 'Filter quotes created on or before (ISO 8601)',
+  })
   @IsOptional()
   @IsDateString()
   endDate?: string;

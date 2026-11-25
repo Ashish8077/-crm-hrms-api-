@@ -4,7 +4,10 @@ import { Type } from 'class-transformer';
 import { QuotationItemDto } from './quotation-item.dto';
 
 export class SpawnRevisionDto {
-  @ApiPropertyOptional({ description: 'Reason for creating a new revision', example: 'Client requested 5% additional volume discount' })
+  @ApiPropertyOptional({
+    description: 'Reason for creating a new revision',
+    example: 'Client requested 5% additional volume discount',
+  })
   @IsOptional()
   @IsString()
   revisionReason?: string;
@@ -14,12 +17,17 @@ export class SpawnRevisionDto {
   @IsString()
   reason?: string;
 
-  @ApiPropertyOptional({ description: 'Updated commercial terms for new revision' })
+  @ApiPropertyOptional({
+    description: 'Updated commercial terms for new revision',
+  })
   @IsOptional()
   @IsString()
   notes?: string;
 
-  @ApiPropertyOptional({ description: 'Optional updated line items for the revision', type: [QuotationItemDto] })
+  @ApiPropertyOptional({
+    description: 'Optional updated line items for the revision',
+    type: [QuotationItemDto],
+  })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })

@@ -17,7 +17,11 @@ export class QuotationItem {
   @Prop({ type: String, trim: true, default: null })
   hsnSacCode?: string | null;
 
-  @Prop({ type: String, required: true, enum: ['PRODUCT', 'SERVICE', 'BUNDLE'] })
+  @Prop({
+    type: String,
+    required: true,
+    enum: ['PRODUCT', 'SERVICE', 'BUNDLE'],
+  })
   type!: string;
 
   @Prop({ type: Number, required: true, min: 1 })
@@ -58,4 +62,3 @@ export class QuotationItem {
 }
 
 export const QuotationItemSchema = SchemaFactory.createForClass(QuotationItem);
-

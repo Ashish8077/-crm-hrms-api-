@@ -1,10 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 import { QuotationStatus } from '../constants/quotation-status.constant';
 
 export class UpdateQuotationStatusDto {
   @ApiProperty({
-    description: 'Target commercial status (DRAFT, SENT, VIEWED, ACCEPTED, REJECTED, EXPIRED)',
+    description:
+      'Target commercial status (DRAFT, SENT, VIEWED, ACCEPTED, REJECTED, EXPIRED)',
     enum: QuotationStatus,
     example: QuotationStatus.ACCEPTED,
   })
@@ -13,7 +20,8 @@ export class UpdateQuotationStatusDto {
   status!: QuotationStatus;
 
   @ApiPropertyOptional({
-    description: 'Mandatory reason if transitioning to REJECTED (minimum 3 characters)',
+    description:
+      'Mandatory reason if transitioning to REJECTED (minimum 3 characters)',
     example: 'Client decided to postpone project to next fiscal year',
   })
   @IsOptional()
@@ -21,4 +29,3 @@ export class UpdateQuotationStatusDto {
   @MinLength(3)
   rejectionReason?: string;
 }
-

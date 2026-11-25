@@ -6,7 +6,10 @@ import { Role, RoleDocument } from '../../roles/schemas/role.schema';
 import { SystemRole } from '../../roles/constants/role.constant';
 import { User, UserDocument } from '../../users/schemas/user.schema';
 import { UserStatus } from '../../users/constants/user-status.constant';
-import { Employee, EmployeeDocument } from '../../employees/schemas/employee.schema';
+import {
+  Employee,
+  EmployeeDocument,
+} from '../../employees/schemas/employee.schema';
 import { EmploymentStatus } from '../../employees/constants/employee.constant';
 import { DataScope } from '../types/data-scope.types';
 
@@ -45,7 +48,8 @@ export class DataScopeService {
     const isAdmin = roleKeys.has(SystemRole.ADMIN);
     const isSalesManager = roleKeys.has(SystemRole.SALES_MANAGER);
     const isFinance = roleKeys.has(SystemRole.FINANCE);
-    const isHr = roleKeys.has(SystemRole.HR) || roleKeys.has(SystemRole.HR_MANAGER);
+    const isHr =
+      roleKeys.has(SystemRole.HR) || roleKeys.has(SystemRole.HR_MANAGER);
 
     // 2. Organization Scope: Super Admin, Admin, Finance, HR
     if (isSuperAdmin || isAdmin || isFinance || isHr) {
@@ -72,7 +76,10 @@ export class DataScopeService {
     if (isSalesManager) {
       const subordinateIds = await this.resolveSubordinates(callerUserId, 3);
       const teamUserIds = Array.from(
-        new Set([callerUserId.toString(), ...subordinateIds.map((id) => id.toString())]),
+        new Set([
+          callerUserId.toString(),
+          ...subordinateIds.map((id) => id.toString()),
+        ]),
       ).map((id) => new Types.ObjectId(id));
 
       return {
@@ -84,10 +91,16 @@ export class DataScopeService {
     }
 
     // Check if the user is a manager with subordinates even without the explicit Sales Manager role
-    const potentialSubordinates = await this.resolveSubordinates(callerUserId, 3);
+    const potentialSubordinates = await this.resolveSubordinates(
+      callerUserId,
+      3,
+    );
     if (potentialSubordinates.length > 0) {
       const teamUserIds = Array.from(
-        new Set([callerUserId.toString(), ...potentialSubordinates.map((id) => id.toString())]),
+        new Set([
+          callerUserId.toString(),
+          ...potentialSubordinates.map((id) => id.toString()),
+        ]),
       ).map((id) => new Types.ObjectId(id));
 
       return {
@@ -163,4 +176,3 @@ export class DataScopeService {
     return subordinateUserIds;
   }
 }
-
