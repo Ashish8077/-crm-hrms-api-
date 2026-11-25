@@ -176,6 +176,11 @@ export enum AuditAction {
   // Employee Salary Actions
   EMPLOYEE_SALARY_ASSIGNED = 'EMPLOYEE_SALARY_ASSIGNED',
   EMPLOYEE_SALARY_REVISED = 'EMPLOYEE_SALARY_REVISED',
+  // Payroll Configuration Actions
+  PAYROLL_SETTINGS_CREATED = 'PAYROLL_SETTINGS_CREATED',
+  PAYROLL_SETTINGS_UPDATED = 'PAYROLL_SETTINGS_UPDATED',
+  PAYROLL_CALCULATION_RULES_UPDATED = 'PAYROLL_CALCULATION_RULES_UPDATED',
+  SALARY_COMPONENT_DELETED = 'SALARY_COMPONENT_DELETED',
   // Extensible for future actions...
 }
 
@@ -212,6 +217,8 @@ export enum AuditTargetModel {
   SALARY_COMPONENT = 'SalaryComponent',
   SALARY_STRUCTURE = 'SalaryStructure',
   EMPLOYEE_SALARY = 'EmployeeSalary',
+  PAYROLL_SETTINGS = 'PayrollSettings',
+  PAYROLL_CALCULATION_RULE = 'PayrollCalculationRule',
 }
 
 export enum AuditLogFailureReason {

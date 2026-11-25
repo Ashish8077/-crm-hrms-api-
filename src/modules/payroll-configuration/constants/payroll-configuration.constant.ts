@@ -1,0 +1,83 @@
+export enum PayrollFrequency {
+  MONTHLY = 'MONTHLY',
+}
+
+export enum WorkingDaysPolicy {
+  CALENDAR_DAYS = 'CALENDAR_DAYS',
+  EXCLUDE_WEEKLY_OFFS = 'EXCLUDE_WEEKLY_OFFS',
+  FIXED_30_DAYS = 'FIXED_30_DAYS',
+  FIXED_WORKING_DAYS = 'FIXED_WORKING_DAYS',
+}
+
+export enum PayrollRoundingMode {
+  HALF_EVEN = 'HALF_EVEN',
+  HALF_UP = 'HALF_UP',
+  HALF_DOWN = 'HALF_DOWN',
+  FLOOR = 'FLOOR',
+  CEIL = 'CEIL',
+}
+
+export enum PayrollProrationPolicy {
+  CALENDAR_DAYS = 'CALENDAR_DAYS',
+  FIXED_30_DAYS = 'FIXED_30_DAYS',
+  WORKING_DAYS = 'WORKING_DAYS',
+}
+
+export enum NegativeNetPayPolicy {
+  REJECT = 'REJECT',
+  CLAMP_TO_ZERO = 'CLAMP_TO_ZERO',
+}
+
+export const PAYROLL_CURRENCY_PRECISION_MAP: Record<string, number> = {
+  INR: 2,
+  USD: 2,
+  EUR: 2,
+  GBP: 2,
+  AED: 2,
+  SAR: 2,
+  SGD: 2,
+};
+
+export const SUPPORTED_PAYROLL_CURRENCIES = Object.keys(
+  PAYROLL_CURRENCY_PRECISION_MAP,
+);
+
+export const PAYROLL_SETTINGS_SINGLETON_KEY = 'DEFAULT';
+export const PAYROLL_CALCULATION_RULES_SINGLETON_KEY = 'DEFAULT';
+
+export const PAYROLL_SETTINGS_CONSTANTS = {
+  CUTOFF_DAY_MIN: 1,
+  CUTOFF_DAY_MAX: 28,
+  PAYMENT_DAY_MIN: 1,
+  PAYMENT_DAY_MAX: 31,
+  FY_START_MONTH_MIN: 1,
+  FY_START_MONTH_MAX: 12,
+  FIXED_WORKING_DAYS_MIN: 1,
+  FIXED_WORKING_DAYS_MAX: 31,
+  ROUNDING_PRECISION_MIN: 0,
+  ROUNDING_PRECISION_MAX: 4,
+} as const;
+
+export const PAYROLL_CONFIGURATION_DEFAULTS = {
+  CURRENCY: 'INR',
+  CURRENCY_PRECISION: 2,
+  PAYROLL_FREQUENCY: PayrollFrequency.MONTHLY,
+  CUTOFF_DAY: 25,
+  PAYMENT_DAY: 1,
+  FINANCIAL_YEAR_START_MONTH: 4,
+  WORKING_DAYS_POLICY: WorkingDaysPolicy.CALENDAR_DAYS,
+  FIXED_WORKING_DAYS_PER_MONTH: null as number | null,
+  IS_PAYROLL_PROCESSING_ENABLED: true,
+  ROUNDING_MODE: PayrollRoundingMode.HALF_EVEN,
+  ROUNDING_PRECISION: 2,
+  PRORATION_POLICY: PayrollProrationPolicy.CALENDAR_DAYS,
+  PRORATE_FIXED_COMPONENTS: true,
+  PRORATE_DEDUCTIONS: false,
+  NEGATIVE_NET_PAY_POLICY: NegativeNetPayPolicy.REJECT,
+  STATUTORY_CONFIG: {
+    pfEnabled: true,
+    esiEnabled: true,
+    ptEnabled: true,
+    tdsEnabled: true,
+  },
+} as const;

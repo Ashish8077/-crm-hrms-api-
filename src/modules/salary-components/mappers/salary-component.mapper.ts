@@ -14,6 +14,7 @@ export interface SalaryComponentResponse {
   type: SalaryComponentType;
   calculationType?: SalaryComponentCalculationType | null;
   percentageOf?: SalaryComponentPercentageBasis | null;
+  defaultValue?: number | null;
   isTaxable: boolean;
   isStatutory: boolean;
   description: string | null;
@@ -35,6 +36,7 @@ export interface SalaryComponentUpdateAuditDetails {
     type?: SalaryComponentAuditChange<SalaryComponentType>;
     calculationType?: SalaryComponentAuditChange<SalaryComponentCalculationType | null>;
     percentageOf?: SalaryComponentAuditChange<SalaryComponentPercentageBasis | null>;
+    defaultValue?: SalaryComponentAuditChange<number | null>;
     isTaxable?: SalaryComponentAuditChange<boolean>;
     isStatutory?: SalaryComponentAuditChange<boolean>;
     description?: SalaryComponentAuditChange<string | null>;
@@ -56,6 +58,7 @@ export class SalaryComponentMapper {
           : component.type,
       calculationType: component.calculationType ?? null,
       percentageOf: component.percentageOf ?? null,
+      defaultValue: component.defaultValue ?? null,
       isTaxable: component.isTaxable,
       isStatutory: component.isStatutory,
       description: component.description ?? null,
@@ -90,6 +93,12 @@ export class SalaryComponentMapper {
       changes.percentageOf = {
         from: before.percentageOf ?? null,
         to: after.percentageOf ?? null,
+      };
+    }
+    if (before.defaultValue !== after.defaultValue) {
+      changes.defaultValue = {
+        from: before.defaultValue ?? null,
+        to: after.defaultValue ?? null,
       };
     }
     if (before.isTaxable !== after.isTaxable) {

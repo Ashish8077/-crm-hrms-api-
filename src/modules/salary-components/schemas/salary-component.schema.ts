@@ -76,6 +76,13 @@ export class SalaryComponent {
   isStatutory!: boolean;
 
   @Prop({
+    type: Number,
+    default: null,
+    min: 0,
+  })
+  defaultValue?: number | null;
+
+  @Prop({
     type: String,
     trim: true,
     maxlength: SALARY_COMPONENT_CONSTANTS.DESCRIPTION_MAX_LENGTH,
@@ -119,4 +126,10 @@ SalaryComponentSchema.index(
     collation: { locale: 'en', strength: 2 },
     name: 'uq_salary_components_code',
   },
+);
+
+// Support filtered listing of active components by type
+SalaryComponentSchema.index(
+  { isActive: 1, type: 1, createdAt: -1 },
+  { name: 'idx_salary_components_active_type_created' },
 );

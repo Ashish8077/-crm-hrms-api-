@@ -48,6 +48,10 @@ export function setupSwagger(app: INestApplication): void {
     .addTag('HR - Expenses', 'Expense management')
     .addTag('HR - Payroll', 'Payroll management')
     .addTag(
+      'Payroll Configuration',
+      'Company payroll settings, calculation rules, and payroll processing preview',
+    )
+    .addTag(
       'Salary Components',
       'Salary component master definitions (earnings, employee deductions, and employer contributions)',
     )
