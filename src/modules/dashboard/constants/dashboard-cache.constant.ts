@@ -47,4 +47,3 @@ export function buildDashboardCacheKey(
 
   return `crm:analytics:${scope.scopeLevel}:${scopeHash}:${endpoint}:${queryHash}`;
 }
-

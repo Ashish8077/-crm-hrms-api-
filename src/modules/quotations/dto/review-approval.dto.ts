@@ -36,7 +36,8 @@ export class ReviewApprovalDto {
 export class RejectApprovalDto {
   @ApiProperty({
     description: 'Mandatory feedback explaining reason for approval rejection',
-    example: 'Discount too aggressive; please reduce discount to under 20% or add multi-year lock',
+    example:
+      'Discount too aggressive; please reduce discount to under 20% or add multi-year lock',
   })
   @IsString()
   @IsNotEmpty()

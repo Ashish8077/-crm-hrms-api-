@@ -16,7 +16,6 @@ import {
 import {
   ApiTags,
   ApiOperation,
-  ApiOkResponse,
   ApiCreatedResponse,
   ApiParam,
   ApiBearerAuth,
@@ -27,7 +26,10 @@ import { ParseObjectIdPipe } from '@nestjs/mongoose';
 import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { PermissionKeys } from '../permissions/constants/permission.constant';
-import type { AuthenticatedRequest } from '../auth/types/auth-request.type';
+import type {
+  AuthenticatedRequest,
+  AuthenticatedUser,
+} from '../auth/types/auth-request.type';
 import { QuotationsService } from './services/quotations.service';
 import { CreateQuotationDto } from './dto/create-quotation.dto';
 import { UpdateQuotationDto } from './dto/update-quotation.dto';
@@ -46,7 +48,7 @@ import { EmailWebhookDto } from './dto/email-webhook.dto';
 @ApiBearerAuth('access-token')
 @Controller('quotes')
 export class QuotationsController {
-  constructor(private readonly quotationsService: QuotationsService) { }
+  constructor(private readonly quotationsService: QuotationsService) {}
 
   private resolveCompanyId(
     req: AuthenticatedRequest,
@@ -59,7 +61,10 @@ export class QuotationsController {
     if (headerCompanyId && Types.ObjectId.isValid(headerCompanyId)) {
       return new Types.ObjectId(headerCompanyId);
     }
-    return new Types.ObjectId((req.user as any)?.companyId || req.user.userId);
+    const userWithCompany = req.user as AuthenticatedUser & {
+      companyId?: string | Types.ObjectId;
+    };
+    return new Types.ObjectId(userWithCompany?.companyId || req.user.userId);
   }
 
   // =========================================================================
@@ -68,8 +73,14 @@ export class QuotationsController {
 
   @Public()
   @Get('portal/:token')
-  @ApiOperation({ summary: 'Customer Portal: View proposal online by secure token' })
-  @ApiParam({ name: 'token', description: 'Hex-encoded random portal token', type: String })
+  @ApiOperation({
+    summary: 'Customer Portal: View proposal online by secure token',
+  })
+  @ApiParam({
+    name: 'token',
+    description: 'Hex-encoded random portal token',
+    type: String,
+  })
   async getPortalView(@Param('token') token: string) {
     return this.quotationsService.getPortalView(token);
   }
@@ -77,8 +88,14 @@ export class QuotationsController {
   @Public()
   @Post('portal/:token/respond')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Customer Portal: Accept or reject quotation proposal' })
-  @ApiParam({ name: 'token', description: 'Hex-encoded random portal token', type: String })
+  @ApiOperation({
+    summary: 'Customer Portal: Accept or reject quotation proposal',
+  })
+  @ApiParam({
+    name: 'token',
+    description: 'Hex-encoded random portal token',
+    type: String,
+  })
   async respondPortal(
     @Param('token') token: string,
     @Body() dto: CustomerResponseDto,
@@ -90,7 +107,9 @@ export class QuotationsController {
   @Public()
   @Post('webhooks/email-delivery')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Webhook: Email delivery, bounce and engagement events' })
+  @ApiOperation({
+    summary: 'Webhook: Email delivery, bounce and engagement events',
+  })
   async handleEmailWebhook(@Body() payload: EmailWebhookDto) {
     return this.quotationsService.handleEmailWebhook(payload);
   }
@@ -107,8 +126,14 @@ export class QuotationsController {
     @Req() req: AuthenticatedRequest,
   ) {
     const companyId = this.resolveCompanyId(req, query.companyId);
-    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(req.user.roleIds);
-    return this.quotationsService.findExpired(companyId, query, isAdminOrManager);
+    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(
+      req.user.roleIds,
+    );
+    return this.quotationsService.findExpired(
+      companyId,
+      query,
+      isAdminOrManager,
+    );
   }
 
   @Get('summary')
@@ -132,7 +157,9 @@ export class QuotationsController {
     @Req() req: AuthenticatedRequest,
   ) {
     const companyId = this.resolveCompanyId(req, dto.companyId);
-    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(req.user.roleIds);
+    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(
+      req.user.roleIds,
+    );
     return this.quotationsService.create(
       dto,
       new Types.ObjectId(req.user.userId),
@@ -143,13 +170,17 @@ export class QuotationsController {
 
   @Get()
   @RequirePermissions(PermissionKeys.QUOTES_VIEW)
-  @ApiOperation({ summary: 'List quotations with filtering, pagination and sorting' })
+  @ApiOperation({
+    summary: 'List quotations with filtering, pagination and sorting',
+  })
   async findAll(
     @Query() query: ListQuotationsQueryDto,
     @Req() req: AuthenticatedRequest,
   ) {
     const companyId = this.resolveCompanyId(req, query.companyId);
-    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(req.user.roleIds);
+    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(
+      req.user.roleIds,
+    );
     return this.quotationsService.findAll(companyId, query, isAdminOrManager);
   }
 
@@ -162,13 +193,17 @@ export class QuotationsController {
     @Req() req: AuthenticatedRequest,
   ) {
     const companyId = this.resolveCompanyId(req);
-    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(req.user.roleIds);
+    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(
+      req.user.roleIds,
+    );
     return this.quotationsService.findById(companyId, id, isAdminOrManager);
   }
 
   @Patch(':id')
   @RequirePermissions(PermissionKeys.QUOTES_EDIT)
-  @ApiOperation({ summary: 'Update quotation draft (before approval/acceptance)' })
+  @ApiOperation({
+    summary: 'Update quotation draft (before approval/acceptance)',
+  })
   @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async update(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
@@ -176,7 +211,9 @@ export class QuotationsController {
     @Req() req: AuthenticatedRequest,
   ) {
     const companyId = this.resolveCompanyId(req);
-    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(req.user.roleIds);
+    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(
+      req.user.roleIds,
+    );
     return this.quotationsService.update(
       companyId,
       id,
@@ -196,7 +233,9 @@ export class QuotationsController {
     @Req() req: AuthenticatedRequest,
   ) {
     const companyId = this.resolveCompanyId(req);
-    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(req.user.roleIds);
+    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(
+      req.user.roleIds,
+    );
     return this.quotationsService.updateStatus(
       companyId,
       id,
@@ -233,7 +272,10 @@ export class QuotationsController {
     @Res() res: Response,
   ) {
     const companyId = this.resolveCompanyId(req);
-    const { buffer, filename } = await this.quotationsService.downloadPdf(companyId, id);
+    const { buffer, filename } = await this.quotationsService.downloadPdf(
+      companyId,
+      id,
+    );
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${filename}"`,
@@ -248,7 +290,9 @@ export class QuotationsController {
 
   @Post(':id/send')
   @RequirePermissions(PermissionKeys.QUOTES_EDIT)
-  @ApiOperation({ summary: 'Send quotation email to client with portal link & PDF attachment' })
+  @ApiOperation({
+    summary: 'Send quotation email to client with portal link & PDF attachment',
+  })
   @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async sendEmail(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
@@ -293,7 +337,9 @@ export class QuotationsController {
     @Req() req: AuthenticatedRequest,
   ) {
     const companyId = this.resolveCompanyId(req);
-    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(req.user.roleIds);
+    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(
+      req.user.roleIds,
+    );
     return this.quotationsService.duplicate(
       companyId,
       id,
@@ -311,8 +357,14 @@ export class QuotationsController {
     @Req() req: AuthenticatedRequest,
   ) {
     const companyId = this.resolveCompanyId(req);
-    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(req.user.roleIds);
-    return this.quotationsService.findRevisions(companyId, id, isAdminOrManager);
+    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(
+      req.user.roleIds,
+    );
+    return this.quotationsService.findRevisions(
+      companyId,
+      id,
+      isAdminOrManager,
+    );
   }
 
   @Post(':id/revisions')
@@ -325,7 +377,9 @@ export class QuotationsController {
     @Req() req: AuthenticatedRequest,
   ) {
     const companyId = this.resolveCompanyId(req);
-    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(req.user.roleIds);
+    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(
+      req.user.roleIds,
+    );
     return this.quotationsService.spawnRevision(
       companyId,
       id,
@@ -345,7 +399,9 @@ export class QuotationsController {
     @Req() req: AuthenticatedRequest,
   ) {
     const companyId = this.resolveCompanyId(req);
-    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(req.user.roleIds);
+    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(
+      req.user.roleIds,
+    );
     return this.quotationsService.extendValidity(
       companyId,
       id,
@@ -369,7 +425,9 @@ export class QuotationsController {
     @Req() req: AuthenticatedRequest,
   ) {
     const companyId = this.resolveCompanyId(req);
-    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(req.user.roleIds);
+    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(
+      req.user.roleIds,
+    );
     return this.quotationsService.submitApproval(
       companyId,
       id,
@@ -389,7 +447,9 @@ export class QuotationsController {
     @Req() req: AuthenticatedRequest,
   ) {
     const companyId = this.resolveCompanyId(req);
-    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(req.user.roleIds);
+    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(
+      req.user.roleIds,
+    );
     return this.quotationsService.reviewApproval(
       companyId,
       id,
@@ -405,7 +465,9 @@ export class QuotationsController {
 
   @Post(':id/convert-to-order')
   @RequirePermissions(PermissionKeys.QUOTES_EDIT)
-  @ApiOperation({ summary: 'Convert accepted quotation into a confirmed Sales Order' })
+  @ApiOperation({
+    summary: 'Convert accepted quotation into a confirmed Sales Order',
+  })
   @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async convertToOrder(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
@@ -413,7 +475,9 @@ export class QuotationsController {
     @Req() req: AuthenticatedRequest,
   ) {
     const companyId = this.resolveCompanyId(req);
-    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(req.user.roleIds);
+    const isAdminOrManager = await this.quotationsService.isUserAdminOrManager(
+      req.user.roleIds,
+    );
     return this.quotationsService.convertToOrder(
       companyId,
       id,
@@ -429,7 +493,9 @@ export class QuotationsController {
 
   @Get(':id/emails')
   @RequirePermissions(PermissionKeys.QUOTES_VIEW)
-  @ApiOperation({ summary: 'Get quotation email dispatch and delivery history' })
+  @ApiOperation({
+    summary: 'Get quotation email dispatch and delivery history',
+  })
   @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async getEmailHistory(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
@@ -441,7 +507,9 @@ export class QuotationsController {
 
   @Get(':id/activities')
   @RequirePermissions(PermissionKeys.QUOTES_VIEW)
-  @ApiOperation({ summary: 'Get quotation lifecycle activity and audit history' })
+  @ApiOperation({
+    summary: 'Get quotation lifecycle activity and audit history',
+  })
   @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async getActivityHistory(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
@@ -457,7 +525,9 @@ export class QuotationsController {
 
   @Delete(':id')
   @RequirePermissions(PermissionKeys.QUOTES_DELETE)
-  @ApiOperation({ summary: 'Soft-delete a quotation (if not accepted/converted)' })
+  @ApiOperation({
+    summary: 'Soft-delete a quotation (if not accepted/converted)',
+  })
   @ApiParam({ name: 'id', description: 'Quotation ObjectId', type: String })
   async softDelete(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,

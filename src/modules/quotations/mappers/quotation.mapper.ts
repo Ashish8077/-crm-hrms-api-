@@ -153,9 +153,19 @@ export class QuotationMapper {
       return resp;
     });
 
-    let contactSummary: any = null;
-    if (quote.contactId && typeof quote.contactId === 'object' && 'firstName' in quote.contactId) {
-      const c = quote.contactId as any;
+    let contactSummary: QuotationResponse['contact'] = null;
+    if (
+      quote.contactId &&
+      typeof quote.contactId === 'object' &&
+      'firstName' in quote.contactId
+    ) {
+      const c = quote.contactId as unknown as {
+        _id: Types.ObjectId | string;
+        firstName: string;
+        lastName: string;
+        email?: string;
+        phone?: string;
+      };
       contactSummary = {
         id: c._id.toString(),
         firstName: c.firstName,
@@ -165,9 +175,17 @@ export class QuotationMapper {
       };
     }
 
-    let dealSummary: any = null;
-    if (quote.dealId && typeof quote.dealId === 'object' && 'title' in quote.dealId) {
-      const d = quote.dealId as any;
+    let dealSummary: QuotationResponse['deal'] = null;
+    if (
+      quote.dealId &&
+      typeof quote.dealId === 'object' &&
+      'title' in quote.dealId
+    ) {
+      const d = quote.dealId as unknown as {
+        _id: Types.ObjectId | string;
+        title: string;
+        stage?: string;
+      };
       dealSummary = {
         id: d._id.toString(),
         title: d.title,
@@ -175,21 +193,30 @@ export class QuotationMapper {
       };
     }
 
-    let ownerSummary: any = null;
-    if (quote.ownerId && typeof quote.ownerId === 'object' && 'email' in quote.ownerId) {
-      const u = quote.ownerId as any;
+    let ownerSummary: QuotationResponse['owner'] = null;
+    if (
+      quote.ownerId &&
+      typeof quote.ownerId === 'object' &&
+      'email' in quote.ownerId
+    ) {
+      const u = quote.ownerId as unknown as {
+        _id: Types.ObjectId | string;
+        email?: string;
+      };
       ownerSummary = {
         id: u._id.toString(),
         email: u.email,
       };
     }
 
-    const extractId = (val: any): string | null => {
+    const extractId = (val: unknown): string | null => {
       if (!val) return null;
       if (typeof val === 'object' && '_id' in val) {
-        return val._id.toString();
+        return (val as { _id: Types.ObjectId | string })._id.toString();
       }
-      return val.toString();
+      if (typeof val === 'string') return val;
+      if (val instanceof Types.ObjectId) return val.toString();
+      return (val as { toString(): string }).toString();
     };
 
     return {
@@ -290,4 +317,3 @@ export class QuotationMapper {
     };
   }
 }
-

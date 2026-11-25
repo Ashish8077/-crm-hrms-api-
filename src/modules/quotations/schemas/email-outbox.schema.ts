@@ -12,7 +12,11 @@ export interface EmailOutboxContext {
   customMessage?: string;
 }
 
-@Schema({ collection: 'quotation_email_outbox', timestamps: true, versionKey: false })
+@Schema({
+  collection: 'quotation_email_outbox',
+  timestamps: true,
+  versionKey: false,
+})
 export class EmailOutbox {
   @Prop({ type: Types.ObjectId, ref: 'Quotation', required: true, index: true })
   quotationId!: Types.ObjectId;
@@ -47,7 +51,15 @@ export class EmailOutbox {
 
   @Prop({
     type: String,
-    enum: ['PENDING', 'PROCESSING', 'SENT', 'DELIVERED', 'BOUNCED', 'FAILED', 'FAILED_PERMANENT'],
+    enum: [
+      'PENDING',
+      'PROCESSING',
+      'SENT',
+      'DELIVERED',
+      'BOUNCED',
+      'FAILED',
+      'FAILED_PERMANENT',
+    ],
     default: 'PENDING',
     index: true,
   })

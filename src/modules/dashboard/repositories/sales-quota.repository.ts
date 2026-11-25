@@ -79,6 +79,6 @@ export class SalesQuotaRepository {
       .lean<SalesQuotaLean>()
       .exec();
 
-    return updated!;
+    return updated;
   }
 }

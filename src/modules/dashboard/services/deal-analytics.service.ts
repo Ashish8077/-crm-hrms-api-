@@ -51,7 +51,9 @@ export class DealAnalyticsService {
           count: { $sum: 1 },
           totalAmount: { $sum: '$amount' },
           weightedAmount: {
-            $sum: { $multiply: ['$amount', { $divide: ['$probability', 100] }] },
+            $sum: {
+              $multiply: ['$amount', { $divide: ['$probability', 100] }],
+            },
           },
           avgCycleDays: {
             $avg: {
@@ -76,7 +78,15 @@ export class DealAnalyticsService {
       },
     ];
 
-    const results = await this.dealModel.aggregate(pipeline).exec();
+    const results = await this.dealModel
+      .aggregate<{
+        _id: { status: DealStatus; currency?: string | null };
+        count: number;
+        totalAmount: number;
+        weightedAmount: number;
+        avgCycleDays: number | null;
+      }>(pipeline)
+      .exec();
 
     let totalDeals = 0;
     let openDeals = 0;
@@ -98,10 +108,14 @@ export class DealAnalyticsService {
 
       if (status === DealStatus.OPEN) {
         openDeals += count;
-        pipelineValue[curr] = Number(((pipelineValue[curr] || 0) + r.weightedAmount).toFixed(2));
+        pipelineValue[curr] = Number(
+          ((pipelineValue[curr] || 0) + r.weightedAmount).toFixed(2),
+        );
       } else if (status === DealStatus.WON) {
         wonDeals += count;
-        totalRevenue[curr] = Number(((totalRevenue[curr] || 0) + r.totalAmount).toFixed(2));
+        totalRevenue[curr] = Number(
+          ((totalRevenue[curr] || 0) + r.totalAmount).toFixed(2),
+        );
         wonCountByCurrency[curr] = (wonCountByCurrency[curr] || 0) + count;
         if (r.avgCycleDays !== null && r.avgCycleDays !== undefined) {
           cycleDaysSum += r.avgCycleDays * count;
@@ -118,8 +132,10 @@ export class DealAnalyticsService {
     }
 
     const closedDeals = wonDeals + lostDeals;
-    const winRate = closedDeals > 0 ? Number(((wonDeals / closedDeals) * 100).toFixed(2)) : 0;
-    const avgSalesCycleDays = cycleDaysCount > 0 ? Math.round(cycleDaysSum / cycleDaysCount) : 0;
+    const winRate =
+      closedDeals > 0 ? Number(((wonDeals / closedDeals) * 100).toFixed(2)) : 0;
+    const avgSalesCycleDays =
+      cycleDaysCount > 0 ? Math.round(cycleDaysSum / cycleDaysCount) : 0;
 
     return {
       dealMetrics: {
@@ -169,23 +185,43 @@ export class DealAnalyticsService {
       },
     ];
 
-    const results = await this.dealModel.aggregate(pipeline).exec();
+    const results = await this.dealModel
+      .aggregate<{
+        _id: { stage: string; currency?: string | null };
+        count: number;
+        totalAmount: number;
+        avgProbability: number;
+      }>(pipeline)
+      .exec();
 
     const stageMap = new Map<
       string,
-      { count: number; totalAmountByCurrency: Record<string, number>; avgProb: number; probWeight: number }
+      {
+        count: number;
+        totalAmountByCurrency: Record<string, number>;
+        avgProb: number;
+        probWeight: number;
+      }
     >();
 
     for (const r of results) {
       const stage = r._id.stage;
       const curr = r._id.currency || DEFAULT_CURRENCY;
       if (!stageMap.has(stage)) {
-        stageMap.set(stage, { count: 0, totalAmountByCurrency: {}, avgProb: 0, probWeight: 0 });
+        stageMap.set(stage, {
+          count: 0,
+          totalAmountByCurrency: {},
+          avgProb: 0,
+          probWeight: 0,
+        });
       }
       const entry = stageMap.get(stage)!;
       entry.count += r.count;
       entry.totalAmountByCurrency[curr] = Number(
-        ((entry.totalAmountByCurrency[curr] || 0) + (scope.canViewFinancial ? r.totalAmount : 0)).toFixed(2),
+        (
+          (entry.totalAmountByCurrency[curr] || 0) +
+          (scope.canViewFinancial ? r.totalAmount : 0)
+        ).toFixed(2),
       );
       entry.probWeight += r.avgProbability * r.count;
     }
@@ -194,7 +230,8 @@ export class DealAnalyticsService {
     const stages = allStages.map((stage) => {
       const entry = stageMap.get(stage);
       const count = entry?.count || 0;
-      const avgProbability = count > 0 ? Math.round(entry!.probWeight / count) : 0;
+      const avgProbability =
+        count > 0 ? Math.round(entry!.probWeight / count) : 0;
       return {
         stage,
         count,
@@ -230,10 +267,14 @@ export class DealAnalyticsService {
     let dateProjection: Record<string, unknown>;
     switch (granularity) {
       case PerformanceGranularity.DAY:
-        dateProjection = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } };
+        dateProjection = {
+          $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
+        };
         break;
       case PerformanceGranularity.WEEK:
-        dateProjection = { $dateToString: { format: '%Y-W%V', date: '$createdAt' } };
+        dateProjection = {
+          $dateToString: { format: '%Y-W%V', date: '$createdAt' },
+        };
         break;
       case PerformanceGranularity.QUARTER:
         dateProjection = {
@@ -249,7 +290,9 @@ export class DealAnalyticsService {
         break;
       case PerformanceGranularity.MONTH:
       default:
-        dateProjection = { $dateToString: { format: '%Y-%m', date: '$createdAt' } };
+        dateProjection = {
+          $dateToString: { format: '%Y-%m', date: '$createdAt' },
+        };
         break;
     }
 
@@ -281,11 +324,7 @@ export class DealAnalyticsService {
           },
           revenueWon: {
             $sum: {
-              $cond: [
-                { $eq: ['$status', DealStatus.WON] },
-                '$amount',
-                0,
-              ],
+              $cond: [{ $eq: ['$status', DealStatus.WON] }, '$amount', 0],
             },
           },
         },
@@ -293,14 +332,24 @@ export class DealAnalyticsService {
       { $sort: { _id: 1 } },
     ];
 
-    const results = await this.dealModel.aggregate(pipeline).exec();
+    const results = await this.dealModel
+      .aggregate<{
+        _id: string;
+        dealsCreated: number;
+        dealsWon: number;
+        dealsClosed: number;
+        revenueWon: number;
+      }>(pipeline)
+      .exec();
 
     let totalRevenueWon = 0;
     let peakPeriod = '';
     let peakPeriodRevenue = 0;
 
     const trends = results.map((r) => {
-      const revenue = scope.canViewFinancial ? Number(r.revenueWon.toFixed(2)) : 0;
+      const revenue = scope.canViewFinancial
+        ? Number(r.revenueWon.toFixed(2))
+        : 0;
       totalRevenueWon += revenue;
       if (revenue > peakPeriodRevenue) {
         peakPeriodRevenue = revenue;
@@ -316,7 +365,10 @@ export class DealAnalyticsService {
       };
     });
 
-    const avgRevenue = trends.length > 0 ? Number((totalRevenueWon / trends.length).toFixed(2)) : 0;
+    const avgRevenue =
+      trends.length > 0
+        ? Number((totalRevenueWon / trends.length).toFixed(2))
+        : 0;
 
     return {
       granularity,
@@ -345,7 +397,9 @@ export class DealAnalyticsService {
     const qEndMonth = qStartMonth + 3;
 
     const quarterStartDate = new Date(Date.UTC(targetYear, qStartMonth, 1));
-    const quarterEndDate = new Date(Date.UTC(targetYear, qEndMonth, 0, 23, 59, 59, 999));
+    const quarterEndDate = new Date(
+      Date.UTC(targetYear, qEndMonth, 0, 23, 59, 59, 999),
+    );
 
     const matchFilter: Record<string, unknown> = {
       ownerId: { $in: scope.ownerIds },
@@ -359,7 +413,9 @@ export class DealAnalyticsService {
 
     const openDeals = await this.dealModel
       .find(matchFilter)
-      .select('title amount currency probability expectedCloseDate stage updatedAt')
+      .select(
+        'title amount currency probability expectedCloseDate stage updatedAt',
+      )
       .lean()
       .exec();
 
@@ -370,7 +426,6 @@ export class DealAnalyticsService {
     let closingThisQuarterWeighted = 0;
 
     const now = Date.now();
-    const fourteenDaysAgo = new Date(now - 14 * 24 * 60 * 60 * 1000);
     const atRiskDeals: Array<{
       dealId: string;
       name: string;
@@ -395,14 +450,21 @@ export class DealAnalyticsService {
         }
 
         // Stalled detection: expectedCloseDate in past OR updatedAt > 14 days ago in early stage
-        const updatedDate = deal.updatedAt ? new Date(deal.updatedAt) : new Date();
-        const daysStalled = Math.max(0, Math.floor((now - updatedDate.getTime()) / (1000 * 60 * 60 * 24)));
+        const updatedDate = deal.updatedAt
+          ? new Date(deal.updatedAt)
+          : new Date();
+        const daysStalled = Math.max(
+          0,
+          Math.floor((now - updatedDate.getTime()) / (1000 * 60 * 60 * 24)),
+        );
 
         if (closeDate < new Date() || daysStalled >= 14) {
           atRiskDeals.push({
             dealId: deal._id.toString(),
             name: deal.title,
-            expectedCloseDate: deal.expectedCloseDate ? deal.expectedCloseDate.toISOString().slice(0, 10) : null,
+            expectedCloseDate: deal.expectedCloseDate
+              ? deal.expectedCloseDate.toISOString().slice(0, 10)
+              : null,
             daysStalled,
             amount: amt,
             stage: deal.stage,
@@ -415,7 +477,10 @@ export class DealAnalyticsService {
     let confidence: 'HIGH' | 'MEDIUM' | 'LOW' = 'MEDIUM';
     if (atRiskDeals.length > openDeals.length * 0.4) {
       confidence = 'LOW';
-    } else if (weightedForecast > 0 && atRiskDeals.length <= openDeals.length * 0.15) {
+    } else if (
+      weightedForecast > 0 &&
+      atRiskDeals.length <= openDeals.length * 0.15
+    ) {
       confidence = 'HIGH';
     }
 
@@ -474,9 +539,18 @@ export class DealAnalyticsService {
       },
     ];
 
-    const results = await this.dealModel.aggregate(pipeline).exec();
+    const results = await this.dealModel
+      .aggregate<{
+        _id: Types.ObjectId;
+        dealsWon: number;
+        revenueGenerated: number;
+      }>(pipeline)
+      .exec();
     return new Map<string, { dealsWon: number; revenueGenerated: number }>(
-      results.map((r) => [r._id.toString(), { dealsWon: r.dealsWon, revenueGenerated: r.revenueGenerated }]),
+      results.map((r) => [
+        r._id.toString(),
+        { dealsWon: r.dealsWon, revenueGenerated: r.revenueGenerated },
+      ]),
     );
   }
 
@@ -520,4 +594,3 @@ export class DealAnalyticsService {
     };
   }
 }
-

@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
-import {
-  SalesOrder,
-  SalesOrderDocument,
-} from '../schemas/sales-order.schema';
+import { SalesOrder, SalesOrderDocument } from '../schemas/sales-order.schema';
 
 export type SalesOrderLean = SalesOrder & { _id: Types.ObjectId };
 

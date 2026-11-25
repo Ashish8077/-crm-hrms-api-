@@ -1,4 +1,9 @@
-export const ALLOWED_ENTITIES = ['leads', 'deals', 'activities', 'tasks'] as const;
+export const ALLOWED_ENTITIES = [
+  'leads',
+  'deals',
+  'activities',
+  'tasks',
+] as const;
 export type AllowedEntity = (typeof ALLOWED_ENTITIES)[number];
 
 export const ALLOWED_FIELDS: Record<AllowedEntity, string[]> = {
@@ -65,4 +70,3 @@ export const ALLOWED_GROUP_BY: Record<AllowedEntity, string[]> = {
   activities: ['type', 'outcome', 'performedBy', 'entityType'],
   tasks: ['status', 'priority', 'assignedTo'],
 };
-

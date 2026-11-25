@@ -21,7 +21,13 @@ export class SalesQuota {
   @Prop({ type: Number, required: true, min: 0 })
   quotaAmount!: number;
 
-  @Prop({ type: String, required: true, uppercase: true, trim: true, default: 'USD' })
+  @Prop({
+    type: String,
+    required: true,
+    uppercase: true,
+    trim: true,
+    default: 'USD',
+  })
   currency!: string;
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
@@ -45,4 +51,3 @@ SalesQuotaSchema.index(
   { year: 1, month: 1, deletedAt: 1 },
   { name: 'idx_quotas_period_lookup' },
 );
-

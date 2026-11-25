@@ -1,7 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 
-export type QuotationActivityLogDocument = HydratedDocument<QuotationActivityLog>;
+export type QuotationActivityLogDocument =
+  HydratedDocument<QuotationActivityLog>;
 
 export interface ActivityMetadata {
   previousStatus?: string;
@@ -16,7 +17,11 @@ export interface ActivityMetadata {
   userAgent?: string;
 }
 
-@Schema({ collection: 'quotation_activity_logs', timestamps: true, versionKey: false })
+@Schema({
+  collection: 'quotation_activity_logs',
+  timestamps: true,
+  versionKey: false,
+})
 export class QuotationActivityLog {
   @Prop({ type: Types.ObjectId, ref: 'Quotation', required: true, index: true })
   quotationId!: Types.ObjectId;
@@ -73,5 +78,10 @@ export class QuotationActivityLog {
   userAgent?: string | null;
 }
 
-export const QuotationActivityLogSchema = SchemaFactory.createForClass(QuotationActivityLog);
-QuotationActivityLogSchema.index({ companyId: 1, quotationId: 1, createdAt: -1 });
+export const QuotationActivityLogSchema =
+  SchemaFactory.createForClass(QuotationActivityLog);
+QuotationActivityLogSchema.index({
+  companyId: 1,
+  quotationId: 1,
+  createdAt: -1,
+});

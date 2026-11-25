@@ -3,8 +3,10 @@ import { IsOptional, IsString } from 'class-validator';
 
 export class SubmitApprovalDto {
   @ApiPropertyOptional({
-    description: 'Note to the approving manager explaining discount or margin justification',
-    example: 'Special discount requested for strategic enterprise multi-year commitment',
+    description:
+      'Note to the approving manager explaining discount or margin justification',
+    example:
+      'Special discount requested for strategic enterprise multi-year commitment',
   })
   @IsOptional()
   @IsString()

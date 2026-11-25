@@ -12,7 +12,13 @@ export class SalesOrder {
   @Prop({ type: String, required: true, uppercase: true, index: true })
   orderNumber!: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'Quotation', required: true, unique: true, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'Quotation',
+    required: true,
+    unique: true,
+    index: true,
+  })
   quotationId!: Types.ObjectId;
 
   @Prop({ type: Types.ObjectId, ref: 'Company', required: true, index: true })
@@ -66,10 +72,10 @@ export class SalesOrder {
   currency!: string;
 
   @Prop({ type: Object, default: null })
-  billingAddress?: any;
+  billingAddress?: unknown;
 
   @Prop({ type: Object, default: null })
-  shippingAddress?: any;
+  shippingAddress?: unknown;
 
   @Prop({ type: String, trim: true, default: null })
   notes?: string | null;

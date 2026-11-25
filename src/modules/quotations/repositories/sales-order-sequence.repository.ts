@@ -35,6 +35,10 @@ export class SalesOrderSequenceRepository {
     companyId: Types.ObjectId,
     session?: ClientSession,
   ): Promise<string> {
-    return this.getNextOrderNumber(companyId, new Date().getFullYear(), session);
+    return this.getNextOrderNumber(
+      companyId,
+      new Date().getFullYear(),
+      session,
+    );
   }
 }

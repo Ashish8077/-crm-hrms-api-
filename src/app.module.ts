@@ -22,6 +22,9 @@ import { StorageModule } from './modules/storage/storage.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { LeavesModule } from './modules/leaves/leaves.module';
 import { WorkSchedulesModule } from './modules/work-schedules/work-schedules.module';
+import { SalaryComponentsModule } from './modules/salary-components/salary-components.module';
+import { SalaryStructuresModule } from './modules/salary-structures/salary-structures.module';
+import { EmployeeSalariesModule } from './modules/employee-salaries/employee-salaries.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
@@ -85,6 +88,9 @@ import { PermissionsGuard } from './modules/authorization/guards/permissions.gua
     AttendanceModule,
     LeavesModule,
     WorkSchedulesModule,
+    SalaryComponentsModule,
+    SalaryStructuresModule,
+    EmployeeSalariesModule,
   ],
   controllers: [AppController],
   providers: [

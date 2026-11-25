@@ -17,7 +17,10 @@ export class CustomReportFilterDto {
   @IsString()
   field!: string;
 
-  @ApiProperty({ description: 'Filter operator', enum: ['eq', 'ne', 'in', 'gt', 'lt', 'gte', 'lte'] })
+  @ApiProperty({
+    description: 'Filter operator',
+    enum: ['eq', 'ne', 'in', 'gt', 'lt', 'gte', 'lte'],
+  })
   @IsEnum(['eq', 'ne', 'in', 'gt', 'lt', 'gte', 'lte'])
   operator!: 'eq' | 'ne' | 'in' | 'gt' | 'lt' | 'gte' | 'lte';
 
@@ -26,11 +29,18 @@ export class CustomReportFilterDto {
 }
 
 export class CustomReportDto {
-  @ApiProperty({ description: 'Target entity', enum: ALLOWED_ENTITIES, example: 'deals' })
+  @ApiProperty({
+    description: 'Target entity',
+    enum: ALLOWED_ENTITIES,
+    example: 'deals',
+  })
   @IsEnum(ALLOWED_ENTITIES)
   entity!: string;
 
-  @ApiProperty({ description: 'Fields to select/project', example: ['stage', 'amount', 'currency'] })
+  @ApiProperty({
+    description: 'Fields to select/project',
+    example: ['stage', 'amount', 'currency'],
+  })
   @IsArray()
   @IsString({ each: true })
   fields!: string[];
@@ -40,12 +50,18 @@ export class CustomReportDto {
   @IsOptional()
   groupBy?: string;
 
-  @ApiPropertyOptional({ description: 'Filter start date (ISO 8601)', example: '2026-01-01' })
+  @ApiPropertyOptional({
+    description: 'Filter start date (ISO 8601)',
+    example: '2026-01-01',
+  })
   @IsDateString()
   @IsOptional()
   startDate?: string;
 
-  @ApiPropertyOptional({ description: 'Filter end date (ISO 8601)', example: '2026-12-31' })
+  @ApiPropertyOptional({
+    description: 'Filter end date (ISO 8601)',
+    example: '2026-12-31',
+  })
   @IsDateString()
   @IsOptional()
   endDate?: string;
@@ -55,7 +71,11 @@ export class CustomReportDto {
   @IsOptional()
   sortBy?: string;
 
-  @ApiPropertyOptional({ description: 'Sort direction', enum: ['asc', 'desc'], default: 'desc' })
+  @ApiPropertyOptional({
+    description: 'Sort direction',
+    enum: ['asc', 'desc'],
+    default: 'desc',
+  })
   @IsEnum(['asc', 'desc'])
   @IsOptional()
   sortOrder?: 'asc' | 'desc' = 'desc';

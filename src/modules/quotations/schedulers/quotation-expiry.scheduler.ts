@@ -25,24 +25,50 @@ export class QuotationExpiryScheduler {
     private readonly activityLogRepository: QuotationActivityLogRepository,
   ) {}
 
+  private getErrorDetails(err: unknown): { message?: string; stack?: string } {
+    if (err instanceof Error) {
+      return { message: err.message, stack: err.stack };
+    }
+    if (typeof err === 'object' && err !== null && 'message' in err) {
+      return {
+        message: typeof err.message === 'string' ? err.message : undefined,
+      };
+    }
+    return {};
+  }
+
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { timeZone: 'UTC' })
   async handleQuotationLifecycleJob(): Promise<void> {
     const lockVal = `cron-${process.pid}-${randomUUID().slice(0, 8)}`;
     const lockDurationMs = 300000; // 5 minutes
 
-    const acquired = await this.acquireDistributedLock(this.lockKey, lockVal, lockDurationMs);
+    const acquired = await this.acquireDistributedLock(
+      this.lockKey,
+      lockVal,
+      lockDurationMs,
+    );
     if (!acquired) {
-      this.logger.log('Quotation expiry cron lock already held by another instance. Skipping.');
+      this.logger.log(
+        'Quotation expiry cron lock already held by another instance. Skipping.',
+      );
       return;
     }
 
     try {
-      this.logger.log('Starting daily quotation expiry & reminder background run...');
+      this.logger.log(
+        'Starting daily quotation expiry & reminder background run...',
+      );
       await this.processAdvanceReminders();
       await this.processExpiredQuotations();
-      this.logger.log('Daily quotation expiry & reminder background run completed.');
-    } catch (err: any) {
-      this.logger.error(`Error in quotation expiry scheduler: ${err.message}`, err.stack);
+      this.logger.log(
+        'Daily quotation expiry & reminder background run completed.',
+      );
+    } catch (err: unknown) {
+      const { message, stack } = this.getErrorDetails(err);
+      this.logger.error(
+        `Error in quotation expiry scheduler: ${message}`,
+        stack,
+      );
     } finally {
       await this.releaseDistributedLock(this.lockKey, lockVal);
     }
@@ -63,18 +89,23 @@ export class QuotationExpiryScheduler {
       .limit(100)
       .exec();
 
-    this.logger.log(`Found ${quotesNeedingReminder.length} quotation(s) eligible for 48h expiry reminder`);
+    this.logger.log(
+      `Found ${quotesNeedingReminder.length} quotation(s) eligible for 48h expiry reminder`,
+    );
 
     for (const quote of quotesNeedingReminder) {
       try {
-        const contact = quote.contactId as any;
+        const contact = quote.contactId as unknown as {
+          email?: string;
+          firstName?: string;
+        } | null;
         const recipientEmail = contact?.email;
 
         if (recipientEmail) {
-          const idempotencyKey = `quote-reminder-${quote._id}-${now.toISOString().split('T')[0]}`;
+          const idempotencyKey = `quote-reminder-${quote._id.toString()}-${now.toISOString().split('T')[0]}`;
           const subject = `Reminder: Quotation #${quote.quoteNumber} expires soon`;
           const htmlBody = `
-            <p>Dear ${contact.firstName || 'Customer'},</p>
+            <p>Dear ${contact?.firstName || 'Customer'},</p>
             <p>This is a friendly reminder that quotation <strong>#${quote.quoteNumber}</strong> is set to expire on <strong>${quote.expiryDate.toISOString().split('T')[0]}</strong>.</p>
             <p>Please review and confirm your acceptance before expiration.</p>
           `;
@@ -104,8 +135,10 @@ export class QuotationExpiryScheduler {
             null,
           );
         }
-      } catch (err: any) {
-        this.logger.warn(`Could not dispatch reminder for quote ${quote._id}: ${err.message}`);
+      } catch (err: unknown) {
+        this.logger.warn(
+          `Could not dispatch reminder for quote ${quote._id.toString()}: ${this.getErrorDetails(err).message}`,
+        );
       }
     }
   }
@@ -122,13 +155,20 @@ export class QuotationExpiryScheduler {
       .limit(200)
       .exec();
 
-    this.logger.log(`Found ${expiredQuotes.length} quotation(s) past expiry date`);
+    this.logger.log(
+      `Found ${expiredQuotes.length} quotation(s) past expiry date`,
+    );
 
     for (const quote of expiredQuotes) {
       try {
         await this.quotationModel.updateOne(
-          { _id: quote._id, status: { $in: [QuotationStatus.SENT, QuotationStatus.VIEWED] } },
-          { $set: { status: QuotationStatus.EXPIRED, portalTokenRevoked: true } },
+          {
+            _id: quote._id,
+            status: { $in: [QuotationStatus.SENT, QuotationStatus.VIEWED] },
+          },
+          {
+            $set: { status: QuotationStatus.EXPIRED, portalTokenRevoked: true },
+          },
         );
 
         await this.activityLogRepository.logActivity(
@@ -138,8 +178,10 @@ export class QuotationExpiryScheduler {
           'Quotation marked as expired by automated scheduler',
           null,
         );
-      } catch (err: any) {
-        this.logger.warn(`Error expiring quote ${quote._id}: ${err.message}`);
+      } catch (err: unknown) {
+        this.logger.warn(
+          `Error expiring quote ${quote._id.toString()}: ${this.getErrorDetails(err).message}`,
+        );
       }
     }
   }
@@ -158,7 +200,10 @@ export class QuotationExpiryScheduler {
     }
   }
 
-  private async releaseDistributedLock(key: string, val: string): Promise<void> {
+  private async releaseDistributedLock(
+    key: string,
+    val: string,
+  ): Promise<void> {
     const script = `
       if redis.call("get", KEYS[1]) == ARGV[1] then
         return redis.call("del", KEYS[1])

@@ -1,8 +1,4 @@
-import {
-  HttpStatus,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { ClientSession, Connection, Types } from 'mongoose';
 import { createHash, randomBytes } from 'crypto';
@@ -22,15 +18,25 @@ import { DealRepository } from '../../deals/repositories/deal.repository';
 import { DealStage } from '../../deals/constants/deal-stage.constant';
 import { StorageService } from '../../storage/storage.service';
 import { RedisService } from '../../../common/redis/redis.service';
-import { QuotationRepository, QuotationLean } from '../repositories/quotation.repository';
+import {
+  QuotationRepository,
+  QuotationLean,
+} from '../repositories/quotation.repository';
 import { QuotationSequenceRepository } from '../repositories/quotation-sequence.repository';
-import { SalesOrderRepository } from '../repositories/sales-order.repository';
+import {
+  SalesOrderRepository,
+  SalesOrderLean,
+} from '../repositories/sales-order.repository';
 import { SalesOrderSequenceRepository } from '../repositories/sales-order-sequence.repository';
 import { EmailOutboxRepository } from '../repositories/email-outbox.repository';
 import { QuotationActivityLogRepository } from '../repositories/quotation-activity-log.repository';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { EmailOutboxProcessorService } from './email-outbox-processor.service';
-import { QuotationMapper, QuotationResponse, PublicPortalQuotationResponse } from '../mappers/quotation.mapper';
+import {
+  QuotationMapper,
+  QuotationResponse,
+  PublicPortalQuotationResponse,
+} from '../mappers/quotation.mapper';
 import {
   ApprovalTierLevel,
   CustomerResponseAction,
@@ -229,12 +235,15 @@ export class QuotationsService {
     );
 
     // Sequence & IDs
-    const quoteNumber = await this.quotationSequenceRepository.getNextSequence(companyId);
+    const quoteNumber =
+      await this.quotationSequenceRepository.getNextSequence(companyId);
     const quoteId = new Types.ObjectId();
 
     // Generate secure customer portal token
     const portalTokenRaw = randomBytes(32).toString('hex');
-    const portalTokenHash = createHash('sha256').update(portalTokenRaw).digest('hex');
+    const portalTokenHash = createHash('sha256')
+      .update(portalTokenRaw)
+      .digest('hex');
 
     const quoteDoc = {
       _id: quoteId,
@@ -255,7 +264,8 @@ export class QuotationsService {
           ? QuotationApprovalStatus.NOT_SUBMITTED
           : QuotationApprovalStatus.NOT_REQUIRED,
       requiredApprovalTiers,
-      currentApprovalTier: requiredApprovalTiers.length > 0 ? requiredApprovalTiers[0] : 1,
+      currentApprovalTier:
+        requiredApprovalTiers.length > 0 ? requiredApprovalTiers[0] : 1,
       quoteDate,
       expiryDate,
       items: processedItems,
@@ -283,7 +293,7 @@ export class QuotationsService {
       updatedBy: actorId,
     };
 
-    const created = await this.quotationRepository.create(quoteDoc as any);
+    const created = await this.quotationRepository.create(quoteDoc);
 
     // Activity Log
     await this.activityLogRepository.logActivity(
@@ -306,8 +316,14 @@ export class QuotationsService {
       userAgent: null,
     });
 
-    const populated = await this.quotationRepository.findById(companyId, quoteId);
-    return QuotationMapper.toResponse(populated || created, callerIsAdminOrManager);
+    const populated = await this.quotationRepository.findById(
+      companyId,
+      quoteId,
+    );
+    return QuotationMapper.toResponse(
+      populated || created,
+      callerIsAdminOrManager,
+    );
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -318,7 +334,10 @@ export class QuotationsService {
     query: ListQuotationsQueryDto,
     callerIsAdminOrManager: boolean,
   ) {
-    const result = await this.quotationRepository.findAllWithPagination(companyId, query);
+    const result = await this.quotationRepository.findAllWithPagination(
+      companyId,
+      query,
+    );
     return {
       data: QuotationMapper.toResponseList(result.data, callerIsAdminOrManager),
       meta: result.meta,
@@ -401,11 +420,16 @@ export class QuotationsService {
     };
 
     if (dto.title !== undefined) updateData.title = dto.title;
-    if (dto.contactId !== undefined) updateData.contactId = new Types.ObjectId(dto.contactId);
-    if (dto.dealId !== undefined) updateData.dealId = dto.dealId ? new Types.ObjectId(dto.dealId) : null;
-    if (dto.leadId !== undefined) updateData.leadId = dto.leadId ? new Types.ObjectId(dto.leadId) : null;
-    if (dto.ownerId !== undefined) updateData.ownerId = new Types.ObjectId(dto.ownerId);
-    if (dto.termsAndConditions !== undefined) updateData.termsAndConditions = dto.termsAndConditions;
+    if (dto.contactId !== undefined)
+      updateData.contactId = new Types.ObjectId(dto.contactId);
+    if (dto.dealId !== undefined)
+      updateData.dealId = dto.dealId ? new Types.ObjectId(dto.dealId) : null;
+    if (dto.leadId !== undefined)
+      updateData.leadId = dto.leadId ? new Types.ObjectId(dto.leadId) : null;
+    if (dto.ownerId !== undefined)
+      updateData.ownerId = new Types.ObjectId(dto.ownerId);
+    if (dto.termsAndConditions !== undefined)
+      updateData.termsAndConditions = dto.termsAndConditions;
     if (dto.notes !== undefined) updateData.notes = dto.notes;
 
     if (dto.expiryDate !== undefined) {
@@ -423,9 +447,15 @@ export class QuotationsService {
 
     // Recalculate if items or states changed
     if (dto.items || dto.buyerState || dto.sellerState || dto.currency) {
-      const currency = validateCurrency(dto.currency || quote.currency || 'INR');
-      const sellerState = (dto.sellerState || quote.sellerState || 'DL').trim().toUpperCase();
-      const buyerState = (dto.buyerState || quote.buyerState).trim().toUpperCase();
+      const currency = validateCurrency(
+        dto.currency || quote.currency || 'INR',
+      );
+      const sellerState = (dto.sellerState || quote.sellerState || 'DL')
+        .trim()
+        .toUpperCase();
+      const buyerState = (dto.buyerState || quote.buyerState)
+        .trim()
+        .toUpperCase();
       const isInterState = sellerState !== buyerState;
 
       const itemsToProcess = dto.items || quote.items;
@@ -447,7 +477,7 @@ export class QuotationsService {
         if (!product) {
           throw new AppError(
             ErrorCode.RESOURCE_NOT_FOUND,
-            `Product not found: ${itemDto.productId}`,
+            `Product not found: ${itemDto.productId.toString()}`,
             HttpStatus.NOT_FOUND,
           );
         }
@@ -456,13 +486,17 @@ export class QuotationsService {
         const costPriceMinor = Math.round(Number(product.costPrice || 0) * 100);
         const taxRatePercent = Number(product.taxRate ?? 18);
         const discountPercent =
-          'discountPercent' in itemDto && (itemDto as any).discountPercent !== undefined
-            ? Number((itemDto as any).discountPercent)
-            : Number(((itemDto as any).discountBasisPoints ?? 0) / 100);
+          'discountPercent' in itemDto && itemDto.discountPercent !== undefined
+            ? Number(itemDto.discountPercent)
+            : 'discountBasisPoints' in itemDto
+              ? Number((itemDto.discountBasisPoints ?? 0) / 100)
+              : 0;
         const qty =
-          'quantity' in itemDto && (itemDto as any).quantity !== undefined
-            ? Number((itemDto as any).quantity)
-            : Number(((itemDto as any).quantityScaled ?? 1000) / 1000);
+          'quantity' in itemDto && itemDto.quantity !== undefined
+            ? Number(itemDto.quantity)
+            : 'quantityScaled' in itemDto
+              ? Number((itemDto.quantityScaled ?? 1000) / 1000)
+              : 1;
 
         const calc = calculateLineTaxes(
           unitPriceMinor,
@@ -474,7 +508,7 @@ export class QuotationsService {
         );
 
         processedItems.push({
-          _id: (itemDto as any)._id || new Types.ObjectId(),
+          _id: '_id' in itemDto ? itemDto._id : new Types.ObjectId(),
           productId,
           name: product.name,
           sku: product.sku,
@@ -544,7 +578,11 @@ export class QuotationsService {
           : QuotationApprovalStatus.NOT_REQUIRED;
     }
 
-    const updated = await this.quotationRepository.updateById(companyId, id, updateData);
+    const updated = await this.quotationRepository.updateById(
+      companyId,
+      id,
+      updateData,
+    );
     if (!updated) {
       throw new AppError(
         ErrorCode.VALIDATION_ERROR,
@@ -609,7 +647,10 @@ export class QuotationsService {
         QuotationStatus.REJECTED,
         QuotationStatus.CANCELLED,
       ],
-      [QuotationStatus.APPROVED]: [QuotationStatus.SENT, QuotationStatus.CANCELLED],
+      [QuotationStatus.APPROVED]: [
+        QuotationStatus.SENT,
+        QuotationStatus.CANCELLED,
+      ],
       [QuotationStatus.SENT]: [
         QuotationStatus.VIEWED,
         QuotationStatus.ACCEPTED,
@@ -651,7 +692,11 @@ export class QuotationsService {
       if (dto.rejectionReason) updateData.rejectionReason = dto.rejectionReason;
     }
 
-    const updated = await this.quotationRepository.updateById(companyId, id, updateData);
+    const updated = await this.quotationRepository.updateById(
+      companyId,
+      id,
+      updateData,
+    );
     if (!updated) {
       throw new AppError(
         ErrorCode.VALIDATION_ERROR,
@@ -664,8 +709,10 @@ export class QuotationsService {
     if (targetStatus === QuotationStatus.ACCEPTED && quote.dealId) {
       try {
         await this.dealServiceCloseDealWon(quote.dealId, actorId);
-      } catch (err: any) {
-        this.logger.warn(`Could not auto-close deal ${quote.dealId} as WON: ${err.message}`);
+      } catch (err: unknown) {
+        this.logger.warn(
+          `Could not auto-close deal ${quote.dealId.toString()} as WON: ${this.getErrorMessage(err)}`,
+        );
       }
     }
 
@@ -694,7 +741,10 @@ export class QuotationsService {
   // ─────────────────────────────────────────────────────────────────────────────
   // 8. Generate PDF
   // ─────────────────────────────────────────────────────────────────────────────
-  async generatePdf(companyId: Types.ObjectId, id: Types.ObjectId): Promise<Buffer> {
+  async generatePdf(
+    companyId: Types.ObjectId,
+    id: Types.ObjectId,
+  ): Promise<Buffer> {
     const quote = await this.quotationRepository.findById(companyId, id);
     if (!quote) {
       throw new AppError(
@@ -715,13 +765,16 @@ export class QuotationsService {
           mimetype: 'application/pdf',
           originalname: `${quote.quoteNumber}.pdf`,
           size: pdfBuffer.length,
-        } as any,
+        } as unknown as Express.Multer.File,
         folder,
         ['application/pdf'],
       );
       pdfKey = uploadResult.key;
-    } catch (err: any) {
-      this.logger.warn(`Storage upload warning for quote PDF ${id}: ${err.message || err}. Retaining in-memory buffer.`);
+    } catch (err: unknown) {
+      const errMsg = this.getErrorMessage(err);
+      this.logger.warn(
+        `Storage upload warning for quote PDF ${id.toString()}: ${errMsg || 'Unknown error'}. Retaining in-memory buffer.`,
+      );
     }
 
     if (pdfKey) {
@@ -764,7 +817,12 @@ export class QuotationsService {
     id: Types.ObjectId,
     dto: SendQuotationEmailDto,
     actorId: Types.ObjectId,
-  ): Promise<{ message: string; outboxId: string; portalToken?: string; portalLink?: string }> {
+  ): Promise<{
+    message: string;
+    outboxId: string;
+    portalToken?: string;
+    portalLink?: string;
+  }> {
     const quote = await this.quotationRepository.findById(companyId, id);
     if (!quote) {
       throw new AppError(
@@ -774,7 +832,10 @@ export class QuotationsService {
       );
     }
 
-    if (quote.status === QuotationStatus.EXPIRED || quote.status === QuotationStatus.SUPERSEDED) {
+    if (
+      quote.status === QuotationStatus.EXPIRED ||
+      quote.status === QuotationStatus.SUPERSEDED
+    ) {
       throw new AppError(
         ErrorCode.VALIDATION_ERROR,
         `Cannot send email for ${quote.status} quotation.`,
@@ -783,10 +844,15 @@ export class QuotationsService {
     }
 
     const portalTokenRaw = randomBytes(32).toString('hex');
-    const portalTokenHash = createHash('sha256').update(portalTokenRaw).digest('hex');
+    const portalTokenHash = createHash('sha256')
+      .update(portalTokenRaw)
+      .digest('hex');
 
     await this.quotationRepository.updateById(companyId, id, {
-      status: quote.status === QuotationStatus.DRAFT ? QuotationStatus.SENT : quote.status,
+      status:
+        quote.status === QuotationStatus.DRAFT
+          ? QuotationStatus.SENT
+          : quote.status,
       portalTokenHash,
       portalTokenExpiresAt: quote.expiryDate,
       portalTokenRevoked: false,
@@ -795,7 +861,11 @@ export class QuotationsService {
 
     const recipientEmail =
       dto.recipientEmail ||
-      (quote.contactId && typeof quote.contactId === 'object' && (quote.contactId as any).email) ||
+      (quote.contactId &&
+      typeof quote.contactId === 'object' &&
+      'email' in quote.contactId
+        ? (quote.contactId as { email?: string }).email
+        : undefined) ||
       '';
 
     if (!recipientEmail) {
@@ -807,7 +877,8 @@ export class QuotationsService {
     }
 
     const idempotencyKey = `quote-send-${id.toString()}-${Date.now()}`;
-    const subject = dto.subject || `Quotation #${quote.quoteNumber} from Enterprise CRM`;
+    const subject =
+      dto.subject || `Quotation #${quote.quoteNumber} from Enterprise CRM`;
     const portalLink = `${process.env.APP_BASE_URL || 'https://crm.local'}/portal/quotes/${portalTokenRaw}`;
 
     const defaultHtml = `
@@ -823,7 +894,9 @@ export class QuotationsService {
       quotationId: id,
       recipientEmail,
       subject,
-      htmlBody: dto.message ? `<p>${dto.message}</p>${defaultHtml}` : defaultHtml,
+      htmlBody: dto.message
+        ? `<p>${dto.message}</p>${defaultHtml}`
+        : defaultHtml,
       idempotencyKey,
       status: EmailDeliveryStatus.PENDING,
       retryCount: 0,
@@ -831,9 +904,13 @@ export class QuotationsService {
     });
 
     setImmediate(() => {
-      this.emailOutboxProcessorService.processPendingOutbox().catch((e) => {
-        this.logger.error(`Immediate outbox processing error: ${e.message}`);
-      });
+      this.emailOutboxProcessorService
+        .processPendingOutbox()
+        .catch((e: unknown) => {
+          this.logger.error(
+            `Immediate outbox processing error: ${this.getErrorMessage(e)}`,
+          );
+        });
     });
 
     await this.activityLogRepository.logActivity(
@@ -870,7 +947,12 @@ export class QuotationsService {
     companyId: Types.ObjectId,
     id: Types.ObjectId,
     actorId: Types.ObjectId,
-  ): Promise<{ message: string; outboxId: string; portalToken?: string; portalLink?: string }> {
+  ): Promise<{
+    message: string;
+    outboxId: string;
+    portalToken?: string;
+    portalLink?: string;
+  }> {
     return this.sendEmail(companyId, id, {}, actorId);
   }
 
@@ -892,12 +974,15 @@ export class QuotationsService {
       );
     }
 
-    const quoteNumber = await this.quotationSequenceRepository.getNextSequence(companyId);
+    const quoteNumber =
+      await this.quotationSequenceRepository.getNextSequence(companyId);
     const newId = new Types.ObjectId();
     const expiryDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     const portalTokenRaw = randomBytes(32).toString('hex');
-    const portalTokenHash = createHash('sha256').update(portalTokenRaw).digest('hex');
+    const portalTokenHash = createHash('sha256')
+      .update(portalTokenRaw)
+      .digest('hex');
 
     const clonedItems = original.items.map((item) => ({
       ...item,
@@ -948,7 +1033,7 @@ export class QuotationsService {
       updatedBy: actorId,
     };
 
-    const created = await this.quotationRepository.create(clonedDoc as any);
+    const created = await this.quotationRepository.create(clonedDoc);
 
     await this.activityLogRepository.logActivity(
       companyId,
@@ -1001,7 +1086,11 @@ export class QuotationsService {
 
     try {
       await session.withTransaction(async (s: ClientSession) => {
-        const current = await this.quotationRepository.findById(companyId, id, s);
+        const current = await this.quotationRepository.findById(
+          companyId,
+          id,
+          s,
+        );
         if (!current) {
           throw new AppError(
             ErrorCode.RESOURCE_NOT_FOUND,
@@ -1035,7 +1124,9 @@ export class QuotationsService {
         const nextRevisionNumber = current.revisionNumber + 1;
         const newQuoteId = new Types.ObjectId();
         const portalTokenRaw = randomBytes(32).toString('hex');
-        const portalTokenHash = createHash('sha256').update(portalTokenRaw).digest('hex');
+        const portalTokenHash = createHash('sha256')
+          .update(portalTokenRaw)
+          .digest('hex');
         const expiryDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
         let finalItems: QuotationItem[] = [];
@@ -1073,8 +1164,12 @@ export class QuotationsService {
               );
             }
 
-            const unitPriceMinor = Math.round(Number(product.unitPrice || 0) * 100);
-            const costPriceMinor = Math.round(Number(product.costPrice || 0) * 100);
+            const unitPriceMinor = Math.round(
+              Number(product.unitPrice || 0) * 100,
+            );
+            const costPriceMinor = Math.round(
+              Number(product.costPrice || 0) * 100,
+            );
             const taxRatePercent = Number(product.taxRate ?? 18);
             const discountPercent =
               itemDto.discountPercent !== undefined
@@ -1136,7 +1231,7 @@ export class QuotationsService {
             }
           }
         } else {
-          finalItems = current.items.map((item: any) => ({
+          finalItems = current.items.map((item) => ({
             ...item,
             _id: new Types.ObjectId(),
           }));
@@ -1169,7 +1264,8 @@ export class QuotationsService {
               ? QuotationApprovalStatus.NOT_SUBMITTED
               : QuotationApprovalStatus.NOT_REQUIRED,
           requiredApprovalTiers,
-          currentApprovalTier: requiredApprovalTiers.length > 0 ? requiredApprovalTiers[0] : 1,
+          currentApprovalTier:
+            requiredApprovalTiers.length > 0 ? requiredApprovalTiers[0] : 1,
           quoteDate: new Date(),
           expiryDate,
           items: finalItems,
@@ -1197,7 +1293,10 @@ export class QuotationsService {
           updatedBy: actorId,
         };
 
-        createdRevision = await this.quotationRepository.create(newRevisionDoc as any, s);
+        createdRevision = await this.quotationRepository.create(
+          newRevisionDoc,
+          s,
+        );
 
         await this.activityLogRepository.logActivity(
           companyId,
@@ -1264,7 +1363,11 @@ export class QuotationsService {
       updateData.status = QuotationStatus.SENT;
     }
 
-    const updated = await this.quotationRepository.updateById(companyId, id, updateData);
+    const updated = await this.quotationRepository.updateById(
+      companyId,
+      id,
+      updateData,
+    );
 
     await this.activityLogRepository.logActivity(
       companyId,
@@ -1387,7 +1490,11 @@ export class QuotationsService {
       );
     }
 
-    const updated = await this.quotationRepository.updateById(companyId, id, updateData);
+    const updated = await this.quotationRepository.updateById(
+      companyId,
+      id,
+      updateData,
+    );
 
     await this.activityLogRepository.logActivity(
       companyId,
@@ -1436,7 +1543,10 @@ export class QuotationsService {
     if (!quote.clientViewedAt) {
       await this.quotationRepository.updateById(quote.companyId, quote._id, {
         clientViewedAt: new Date(),
-        status: quote.status === QuotationStatus.SENT ? QuotationStatus.VIEWED : quote.status,
+        status:
+          quote.status === QuotationStatus.SENT
+            ? QuotationStatus.VIEWED
+            : quote.status,
       });
 
       await this.activityLogRepository.logActivity(
@@ -1458,7 +1568,12 @@ export class QuotationsService {
     token: string,
     dto: CustomerResponseDto,
     clientIp?: string,
-  ): Promise<{ success: boolean; message: string; quoteNumber: string; status: string }> {
+  ): Promise<{
+    success: boolean;
+    message: string;
+    quoteNumber: string;
+    status: string;
+  }> {
     const hash = createHash('sha256').update(token).digest('hex');
     const quote = await this.quotationRepository.findByPortalTokenHash(hash);
 
@@ -1486,7 +1601,7 @@ export class QuotationsService {
       );
     }
 
-    const action = dto.action.toUpperCase();
+    const action = dto.action.toUpperCase() as CustomerResponseAction;
     const updateData: Record<string, any> = {
       portalTokenUsed: true,
       digitalSignatureIp: clientIp || null,
@@ -1495,7 +1610,10 @@ export class QuotationsService {
     const reason = dto.rejectionReason || dto.customerFeedback || null;
 
     if (action === CustomerResponseAction.ACCEPT) {
-      if (!dto.digitalSignatureName || dto.digitalSignatureName.trim().length < 2) {
+      if (
+        !dto.digitalSignatureName ||
+        dto.digitalSignatureName.trim().length < 2
+      ) {
         throw new AppError(
           ErrorCode.VALIDATION_ERROR,
           'A valid digitalSignatureName is mandatory when accepting a quotation proposal.',
@@ -1510,8 +1628,10 @@ export class QuotationsService {
       if (quote.dealId) {
         try {
           await this.dealServiceCloseDealWon(quote.dealId, quote.ownerId);
-        } catch (err: any) {
-          this.logger.warn(`Could not close linked deal ${quote.dealId} as WON: ${err.message}`);
+        } catch (err: unknown) {
+          this.logger.warn(
+            `Could not close linked deal ${quote.dealId.toString()} as WON: ${this.getErrorMessage(err)}`,
+          );
         }
       }
     } else if (action === CustomerResponseAction.REJECT) {
@@ -1563,9 +1683,9 @@ export class QuotationsService {
     dto: ConvertToOrderDto,
     actorId: Types.ObjectId,
     callerIsAdminOrManager: boolean,
-  ): Promise<{ salesOrder: any; quotation: QuotationResponse }> {
+  ): Promise<{ salesOrder: SalesOrderLean; quotation: QuotationResponse }> {
     const session = await this.connection.startSession();
-    let createdOrder: any = null;
+    let createdOrder: SalesOrderLean | null = null;
     let updatedQuote: QuotationLean | null = null;
 
     try {
@@ -1595,7 +1715,8 @@ export class QuotationsService {
           );
         }
 
-        const orderNumber = await this.salesOrderSequenceRepository.getNextSequence(companyId, s);
+        const orderNumber =
+          await this.salesOrderSequenceRepository.getNextSequence(companyId, s);
         const orderId = new Types.ObjectId();
 
         const casResult = await this.quotationRepository.markConvertedToOrder(
@@ -1668,8 +1789,11 @@ export class QuotationsService {
     }
 
     return {
-      salesOrder: createdOrder,
-      quotation: QuotationMapper.toResponse(updatedQuote!, callerIsAdminOrManager),
+      salesOrder: createdOrder!,
+      quotation: QuotationMapper.toResponse(
+        updatedQuote!,
+        callerIsAdminOrManager,
+      ),
     };
   }
 
@@ -1750,7 +1874,9 @@ export class QuotationsService {
   // ─────────────────────────────────────────────────────────────────────────────
   // 23. Webhook: Email Delivery Events
   // ─────────────────────────────────────────────────────────────────────────────
-  async handleEmailWebhook(payload: EmailWebhookDto): Promise<{ success: boolean }> {
+  async handleEmailWebhook(
+    payload: EmailWebhookDto,
+  ): Promise<{ success: boolean }> {
     const { messageId, event } = payload;
     if (!messageId) return { success: true };
 
@@ -1760,7 +1886,10 @@ export class QuotationsService {
     else if (event === 'clicked') status = EmailDeliveryStatus.CLICKED;
     else if (event === 'bounced') status = EmailDeliveryStatus.BOUNCED;
 
-    await this.emailOutboxRepository.updateDeliveryStatusByMessageId(messageId, status);
+    await this.emailOutboxRepository.updateDeliveryStatusByMessageId(
+      messageId,
+      status,
+    );
     return { success: true };
   }
 
@@ -1793,6 +1922,14 @@ export class QuotationsService {
     return Array.from(new Set(tiers)).sort((a, b) => b - a); // highest tier first
   }
 
+  private getErrorMessage(err: unknown): string | undefined {
+    if (err instanceof Error) return err.message;
+    if (typeof err === 'object' && err !== null && 'message' in err) {
+      return typeof err.message === 'string' ? err.message : undefined;
+    }
+    return undefined;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Private Helper: Auto Close Deal Won
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1807,8 +1944,10 @@ export class QuotationsService {
         100,
         actorId,
       );
-    } catch (err: any) {
-      this.logger.warn(`Could not update deal ${dealId} stage: ${err.message}`);
+    } catch (err: unknown) {
+      this.logger.warn(
+        `Could not update deal ${dealId.toString()} stage: ${this.getErrorMessage(err)}`,
+      );
     }
   }
 }

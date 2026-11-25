@@ -48,7 +48,10 @@ export class UpdateQuotationDto {
   @IsDateString()
   expiryDate?: string;
 
-  @ApiPropertyOptional({ description: 'Updated line items', type: [QuotationItemDto] })
+  @ApiPropertyOptional({
+    description: 'Updated line items',
+    type: [QuotationItemDto],
+  })
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
