@@ -116,6 +116,7 @@ export class PayrollCalculationRuleService {
           prorationPolicy: dto.prorationPolicy,
           prorateFixedComponents: dto.prorateFixedComponents,
           prorateDeductions: dto.prorateDeductions,
+          prorateEmployerContributions: dto.prorateEmployerContributions,
           negativeNetPayPolicy: dto.negativeNetPayPolicy,
           statutoryConfig: mergedStatutory,
           componentExecutionOrder: dto.componentExecutionOrder,

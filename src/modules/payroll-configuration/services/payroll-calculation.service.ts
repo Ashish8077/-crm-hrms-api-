@@ -119,6 +119,9 @@ export class PayrollCalculationService {
     const prorateDeductions =
       ruleDoc?.prorateDeductions ??
       PAYROLL_CONFIGURATION_DEFAULTS.PRORATE_DEDUCTIONS;
+    const prorateEmployerContributions =
+      ruleDoc?.prorateEmployerContributions ??
+      PAYROLL_CONFIGURATION_DEFAULTS.PRORATE_EMPLOYER_CONTRIBUTIONS;
     const negativeNetPayPolicy =
       ruleDoc?.negativeNetPayPolicy ??
       PAYROLL_CONFIGURATION_DEFAULTS.NEGATIVE_NET_PAY_POLICY;
@@ -372,8 +375,10 @@ export class PayrollCalculationService {
 
     // 7. Evaluate components in dependency order using Decimal arithmetic
     const resolvedAmounts = new Map<string, Decimal>();
+    const unproratedAmounts = new Map<string, Decimal>();
     const lineItemsByCode = new Map<string, PayrollPreviewLineItem>();
     let runningGrossEarnings = toDecimal(0);
+    let unproratedGrossEarnings = toDecimal(0);
 
     // Evaluate all earning components (and any non-gross dependencies) first;
     // topological sort guarantees every component's dependencies are resolved first.
@@ -384,10 +389,12 @@ export class PayrollCalculationService {
     for (const node of executionNodes) {
       let baseDec: Decimal | null = null;
       let rawAmount: Decimal;
+      let unproratedAmount: Decimal;
       let prorated = false;
 
       if (node.input.calculationType === PayrollPreviewCalculationType.FIXED) {
-        rawAmount = toDecimal(node.resolvedAmountValue!);
+        unproratedAmount = toDecimal(node.resolvedAmountValue!);
+        rawAmount = unproratedAmount;
         if (prorationApplied) {
           if (
             node.normalizedType === SalaryComponentType.EARNING &&
@@ -401,22 +408,39 @@ export class PayrollCalculationService {
           ) {
             rawAmount = rawAmount.times(prorationFactor);
             prorated = true;
+          } else if (
+            node.normalizedType === SalaryComponentType.EMPLOYER_CONTRIBUTION &&
+            prorateEmployerContributions
+          ) {
+            rawAmount = rawAmount.times(prorationFactor);
+            prorated = true;
           }
         }
       } else {
         const base = node.resolvedPercentageOf!;
+        let unproratedBaseDec: Decimal;
         if (AGGREGATE_GROSS_BASES.has(base)) {
           // All earning nodes appear before any node that depends on GROSS
           baseDec = runningGrossEarnings;
+          unproratedBaseDec = unproratedGrossEarnings;
         } else if (base === 'BASIC_AND_DA') {
           const basicVal = resolvedAmounts.get('BASIC') ?? toDecimal(0);
           const daVal = resolvedAmounts.get('DA') ?? toDecimal(0);
           baseDec = basicVal.plus(daVal);
+          unproratedBaseDec = (
+            unproratedAmounts.get('BASIC') ?? toDecimal(0)
+          ).plus(unproratedAmounts.get('DA') ?? toDecimal(0));
         } else {
           baseDec = resolvedAmounts.get(base) ?? toDecimal(0);
+          unproratedBaseDec = unproratedAmounts.get(base) ?? toDecimal(0);
         }
 
+        unproratedAmount = computePercentage(
+          unproratedBaseDec,
+          node.resolvedPercentage!,
+        );
         rawAmount = computePercentage(baseDec, node.resolvedPercentage!);
+
         if (
           prorationApplied &&
           node.normalizedType === SalaryComponentType.EMPLOYEE_DEDUCTION &&
@@ -432,6 +456,25 @@ export class PayrollCalculationService {
             rawAmount = rawAmount.times(prorationFactor);
             prorated = true;
           }
+        } else if (
+          prorationApplied &&
+          node.normalizedType === SalaryComponentType.EMPLOYER_CONTRIBUTION
+        ) {
+          if (!prorateEmployerContributions) {
+            // Preserve unprorated base & amount when prorateEmployerContributions=false
+            baseDec = unproratedBaseDec;
+            rawAmount = unproratedAmount;
+            prorated = false;
+          } else if (!AGGREGATE_GROSS_BASES.has(base)) {
+            const baseNode = nodeByCode.get(base);
+            const baseWasProrated = baseNode
+              ? (lineItemsByCode.get(base)?.prorated ?? false)
+              : false;
+            if (!baseWasProrated) {
+              rawAmount = rawAmount.times(prorationFactor);
+              prorated = true;
+            }
+          }
         }
       }
 
@@ -443,8 +486,15 @@ export class PayrollCalculationService {
       const roundedDec = toDecimal(roundedNum);
       resolvedAmounts.set(node.code, roundedDec);
 
+      const unproratedRoundedDec = toDecimal(
+        this.roundWithRule(unproratedAmount, roundingPrecision, roundingMode),
+      );
+      unproratedAmounts.set(node.code, unproratedRoundedDec);
+
       if (node.normalizedType === SalaryComponentType.EARNING) {
         runningGrossEarnings = runningGrossEarnings.plus(roundedDec);
+        unproratedGrossEarnings =
+          unproratedGrossEarnings.plus(unproratedRoundedDec);
       }
 
       const lineItem: PayrollPreviewLineItem = {

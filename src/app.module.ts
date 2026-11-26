@@ -26,6 +26,8 @@ import { SalaryComponentsModule } from './modules/salary-components/salary-compo
 import { SalaryStructuresModule } from './modules/salary-structures/salary-structures.module';
 import { EmployeeSalariesModule } from './modules/employee-salaries/employee-salaries.module';
 import { PayrollConfigurationModule } from './modules/payroll-configuration/payroll-configuration.module';
+import { PayrollPeriodsModule } from './modules/payroll-periods/payroll-periods.module';
+import { PayrollCalculationsModule } from './modules/payroll-calculations/payroll-calculations.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
@@ -93,6 +95,8 @@ import { PermissionsGuard } from './modules/authorization/guards/permissions.gua
     SalaryStructuresModule,
     EmployeeSalariesModule,
     PayrollConfigurationModule,
+    PayrollPeriodsModule,
+    PayrollCalculationsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -35,6 +35,7 @@ describe('PayrollCalculationRuleService', () => {
     prorationPolicy: PayrollProrationPolicy.CALENDAR_DAYS,
     prorateFixedComponents: true,
     prorateDeductions: false,
+    prorateEmployerContributions: false,
     negativeNetPayPolicy: NegativeNetPayPolicy.REJECT,
     statutoryConfig: {
       pfEnabled: true,

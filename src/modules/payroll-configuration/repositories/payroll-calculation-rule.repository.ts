@@ -21,6 +21,7 @@ export interface UpsertPayrollCalculationRuleInput {
   prorationPolicy?: PayrollProrationPolicy;
   prorateFixedComponents?: boolean;
   prorateDeductions?: boolean;
+  prorateEmployerContributions?: boolean;
   negativeNetPayPolicy?: NegativeNetPayPolicy;
   statutoryConfig?: StatutoryCalculationFlags;
   componentExecutionOrder?: string[];
@@ -88,6 +89,8 @@ export class PayrollCalculationRuleRepository {
       prorateFixedComponents:
         PAYROLL_CONFIGURATION_DEFAULTS.PRORATE_FIXED_COMPONENTS,
       prorateDeductions: PAYROLL_CONFIGURATION_DEFAULTS.PRORATE_DEDUCTIONS,
+      prorateEmployerContributions:
+        PAYROLL_CONFIGURATION_DEFAULTS.PRORATE_EMPLOYER_CONTRIBUTIONS,
       negativeNetPayPolicy:
         PAYROLL_CONFIGURATION_DEFAULTS.NEGATIVE_NET_PAY_POLICY,
       statutoryConfig: { ...PAYROLL_CONFIGURATION_DEFAULTS.STATUTORY_CONFIG },

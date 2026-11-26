@@ -103,6 +103,15 @@ export class UpdateCalculationRulesDto {
   prorateDeductions?: boolean;
 
   @ApiPropertyOptional({
+    description:
+      'Whether employer contribution components are prorated by payable days',
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  prorateEmployerContributions?: boolean;
+
+  @ApiPropertyOptional({
     description: 'How negative net pay is handled',
     enum: NegativeNetPayPolicy,
     example: NegativeNetPayPolicy.REJECT,

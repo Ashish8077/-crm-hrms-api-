@@ -109,6 +109,13 @@ export class PayrollCalculationRule {
   prorateDeductions!: boolean;
 
   @Prop({
+    type: Boolean,
+    required: true,
+    default: PAYROLL_CONFIGURATION_DEFAULTS.PRORATE_EMPLOYER_CONTRIBUTIONS,
+  })
+  prorateEmployerContributions!: boolean;
+
+  @Prop({
     type: String,
     required: true,
     enum: Object.values(NegativeNetPayPolicy),

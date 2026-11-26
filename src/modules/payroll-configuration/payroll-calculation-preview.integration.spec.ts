@@ -903,6 +903,88 @@ describe('Payroll Calculation Preview Integration & Safety Suite', () => {
       ).toBe(5000);
       expect(res.data.summary.grossEarnings).toBe(15000);
     });
+
+    it('controls EMPLOYER_CONTRIBUTION proration explicitly via prorateEmployerContributions (false default vs true)', async () => {
+      const basic = createMaster('BASIC', 'Basic', SalaryComponentType.EARNING);
+      const erPf = createMaster(
+        'EMPLOYER_PF',
+        'Employer PF',
+        SalaryComponentType.EMPLOYER_CONTRIBUTION,
+      );
+      const gratuity = createMaster(
+        'GRATUITY',
+        'Gratuity',
+        SalaryComponentType.EMPLOYER_CONTRIBUTION,
+      );
+
+      const componentsPayload = [
+        {
+          componentId: basic._id.toString(),
+          calculationType: PayrollPreviewCalculationType.FIXED,
+          amount: 18000,
+        },
+        {
+          componentId: erPf._id.toString(),
+          calculationType: PayrollPreviewCalculationType.PERCENTAGE,
+          percentage: 12,
+          percentageOf: 'BASIC',
+        },
+        {
+          componentId: gratuity._id.toString(),
+          calculationType: PayrollPreviewCalculationType.FIXED,
+          amount: 650,
+        },
+      ];
+
+      // 1. Legacy/default rule omitting prorateEmployerContributions -> stays false (₹2,160 + ₹650)
+      currentRules = {
+        prorateFixedComponents: true,
+        prorateDeductions: true,
+      };
+      const disabledDto = await validateBody(CalculatePayrollPreviewDto, {
+        totalDaysInPeriod: 30,
+        payableDays: 15,
+        components: componentsPayload,
+      });
+      const disabledRes = await controller.calculatePreview(disabledDto);
+      expect(disabledRes.data.summary.grossEarnings).toBe(9000);
+      expect(disabledRes.data.summary.employerContributions).toBe(2810);
+      expect(
+        disabledRes.data.employerContributions.find(
+          (c) => c.code === 'EMPLOYER_PF',
+        )?.calculatedAmount,
+      ).toBe(2160);
+      expect(
+        disabledRes.data.employerContributions.find(
+          (c) => c.code === 'GRATUITY',
+        )?.calculatedAmount,
+      ).toBe(650);
+
+      // 2. prorateEmployerContributions = true -> prorates to ₹1,080 + ₹325
+      currentRules = {
+        prorateFixedComponents: true,
+        prorateDeductions: true,
+        prorateEmployerContributions: true,
+      };
+      const enabledDto = await validateBody(CalculatePayrollPreviewDto, {
+        totalDaysInPeriod: 30,
+        payableDays: 15,
+        components: componentsPayload,
+      });
+      const enabledRes = await controller.calculatePreview(enabledDto);
+      expect(enabledRes.data.summary.grossEarnings).toBe(9000);
+      expect(enabledRes.data.summary.employerContributions).toBe(1405);
+      expect(enabledRes.data.summary.netSalary).toBe(9000);
+      expect(
+        enabledRes.data.employerContributions.find(
+          (c) => c.code === 'EMPLOYER_PF',
+        )?.calculatedAmount,
+      ).toBe(1080);
+      expect(
+        enabledRes.data.employerContributions.find((c) => c.code === 'GRATUITY')
+          ?.calculatedAmount,
+      ).toBe(325);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════════

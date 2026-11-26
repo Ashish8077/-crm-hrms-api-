@@ -5,6 +5,7 @@ import {
 } from '../schemas/payroll-calculation-rule.schema';
 import {
   NegativeNetPayPolicy,
+  PAYROLL_CONFIGURATION_DEFAULTS,
   PayrollFrequency,
   PayrollProrationPolicy,
   PayrollRoundingMode,
@@ -34,6 +35,7 @@ export interface PayrollCalculationRuleResponse {
   prorationPolicy: PayrollProrationPolicy;
   prorateFixedComponents: boolean;
   prorateDeductions: boolean;
+  prorateEmployerContributions: boolean;
   negativeNetPayPolicy: NegativeNetPayPolicy;
   statutoryConfig: StatutoryCalculationFlags;
   componentExecutionOrder: string[];
@@ -73,6 +75,9 @@ export class PayrollConfigurationMapper {
       prorationPolicy: rule.prorationPolicy,
       prorateFixedComponents: rule.prorateFixedComponents,
       prorateDeductions: rule.prorateDeductions,
+      prorateEmployerContributions:
+        rule.prorateEmployerContributions ??
+        PAYROLL_CONFIGURATION_DEFAULTS.PRORATE_EMPLOYER_CONTRIBUTIONS,
       negativeNetPayPolicy: rule.negativeNetPayPolicy,
       statutoryConfig: {
         pfEnabled: rule.statutoryConfig.pfEnabled,

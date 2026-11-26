@@ -118,6 +118,8 @@ class InMemoryPayrollCalculationRuleRepository {
         prorateFixedComponents:
           PAYROLL_CONFIGURATION_DEFAULTS.PRORATE_FIXED_COMPONENTS,
         prorateDeductions: PAYROLL_CONFIGURATION_DEFAULTS.PRORATE_DEDUCTIONS,
+        prorateEmployerContributions:
+          PAYROLL_CONFIGURATION_DEFAULTS.PRORATE_EMPLOYER_CONTRIBUTIONS,
         negativeNetPayPolicy:
           PAYROLL_CONFIGURATION_DEFAULTS.NEGATIVE_NET_PAY_POLICY,
         statutoryConfig: {
@@ -179,6 +181,8 @@ class InMemoryPayrollCalculationRuleRepository {
       prorateFixedComponents:
         PAYROLL_CONFIGURATION_DEFAULTS.PRORATE_FIXED_COMPONENTS,
       prorateDeductions: PAYROLL_CONFIGURATION_DEFAULTS.PRORATE_DEDUCTIONS,
+      prorateEmployerContributions:
+        PAYROLL_CONFIGURATION_DEFAULTS.PRORATE_EMPLOYER_CONTRIBUTIONS,
       negativeNetPayPolicy:
         PAYROLL_CONFIGURATION_DEFAULTS.NEGATIVE_NET_PAY_POLICY,
       statutoryConfig: { ...PAYROLL_CONFIGURATION_DEFAULTS.STATUTORY_CONFIG },
@@ -197,6 +201,9 @@ class InMemoryPayrollCalculationRuleRepository {
       prorateFixedComponents:
         data.prorateFixedComponents ?? existing.prorateFixedComponents,
       prorateDeductions: data.prorateDeductions ?? existing.prorateDeductions,
+      prorateEmployerContributions:
+        data.prorateEmployerContributions ??
+        existing.prorateEmployerContributions,
       negativeNetPayPolicy:
         data.negativeNetPayPolicy ?? existing.negativeNetPayPolicy,
       statutoryConfig: data.statutoryConfig
@@ -372,6 +379,7 @@ describe('Payroll Calculation Rules Integration & Validation Suite', () => {
         prorationPolicy: PayrollProrationPolicy.WORKING_DAYS,
         prorateFixedComponents: false,
         prorateDeductions: true,
+        prorateEmployerContributions: false,
         negativeNetPayPolicy: NegativeNetPayPolicy.CLAMP_TO_ZERO,
         statutoryConfig: {
           pfEnabled: true,
@@ -454,6 +462,7 @@ describe('Payroll Calculation Rules Integration & Validation Suite', () => {
         prorationPolicy: PayrollProrationPolicy.CALENDAR_DAYS,
         prorateFixedComponents: true,
         prorateDeductions: false,
+        prorateEmployerContributions: false,
         negativeNetPayPolicy: NegativeNetPayPolicy.REJECT,
         statutoryConfig: { ...PAYROLL_CONFIGURATION_DEFAULTS.STATUTORY_CONFIG },
         componentExecutionOrder: [],
@@ -704,17 +713,19 @@ describe('Payroll Calculation Rules Integration & Validation Suite', () => {
       });
     });
 
-    it('3.5 Validates boolean values for prorateFixedComponents and prorateDeductions', async () => {
+    it('3.5 Validates boolean values for prorateFixedComponents, prorateDeductions, and prorateEmployerContributions', async () => {
       const dto = await validateBody(UpdateCalculationRulesDto, {
         prorateFixedComponents: false,
         prorateDeductions: true,
+        prorateEmployerContributions: true,
       });
       expect(dto.prorateFixedComponents).toBe(false);
       expect(dto.prorateDeductions).toBe(true);
+      expect(dto.prorateEmployerContributions).toBe(true);
 
       await expect(
         validateBody(UpdateCalculationRulesDto, {
-          prorateFixedComponents: 'not-a-boolean',
+          prorateEmployerContributions: 'not-a-boolean',
         }),
       ).rejects.toMatchObject({
         code: ErrorCode.VALIDATION_ERROR,

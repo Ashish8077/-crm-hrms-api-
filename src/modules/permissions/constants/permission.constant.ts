@@ -66,6 +66,7 @@ export enum PermissionModule {
   EMPLOYEE_SALARIES = 'employee.salaries',
   PAYROLL = 'payroll',
   PAYROLL_SETTINGS = 'payroll.settings',
+  PAYROLL_CALCULATIONS = 'payroll.calculations',
   PAYSLIPS = 'payslips',
   TAX = 'tax',
 
@@ -584,5 +585,33 @@ export const PermissionKeys = {
   PAYROLL_SETTINGS_EDIT: PermissionKey.of(
     PermissionModule.PAYROLL_SETTINGS,
     PermissionAction.EDIT,
+  ),
+
+  // Payroll Periods
+  PAYROLL_PERIODS_VIEW: PermissionKey.of(
+    PermissionModule.PAYROLL,
+    PermissionAction.VIEW,
+  ),
+  PAYROLL_PERIODS_CREATE: PermissionKey.of(
+    PermissionModule.PAYROLL,
+    PermissionAction.CREATE,
+  ),
+  PAYROLL_PERIODS_EDIT: PermissionKey.of(
+    PermissionModule.PAYROLL,
+    PermissionAction.EDIT,
+  ),
+  PAYROLL_PERIODS_APPROVE: PermissionKey.of(
+    PermissionModule.PAYROLL,
+    PermissionAction.APPROVE,
+  ),
+
+  // Payroll Calculations
+  PAYROLL_CALCULATIONS_VIEW: PermissionKey.of(
+    PermissionModule.PAYROLL_CALCULATIONS,
+    PermissionAction.VIEW,
+  ),
+  PAYROLL_CALCULATIONS_CREATE: PermissionKey.of(
+    PermissionModule.PAYROLL_CALCULATIONS,
+    PermissionAction.CREATE,
   ),
 } as const;

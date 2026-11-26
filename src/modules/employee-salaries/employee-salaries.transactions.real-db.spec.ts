@@ -1,3 +1,7 @@
+import * as dns from 'node:dns/promises';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   HttpStatus,
   INestApplication,
@@ -64,14 +68,45 @@ import {
 } from '../audit-logs/constants/audit-log.constant';
 import { AppError } from '../../common/errors/app-error';
 
-const REAL_MONGODB_URI =
-  process.env.MONGODB_URI ||
-  'REDACTED_MONGODB_URI';
+const EXPECTED_TEST_DATABASE = 'crm_hrms_test';
+
+function resolveMongoUri(
+  testEnvPath: string = path.resolve(process.cwd(), '.env.test'),
+): string | null {
+  if (!fs.existsSync(testEnvPath)) {
+    return null;
+  }
+
+  const content = fs.readFileSync(testEnvPath, 'utf8');
+  const match = /^MONGODB_URI=(.+)$/m.exec(content);
+
+  const uri = match?.[1]?.trim().replace(/^["']|["']$/g, '');
+
+  if (!uri) {
+    return null;
+  }
+
+  let databaseName: string;
+
+  try {
+    databaseName = decodeURIComponent(new URL(uri).pathname.slice(1));
+  } catch {
+    throw new Error('Invalid test MongoDB URI.');
+  }
+
+  if (databaseName !== EXPECTED_TEST_DATABASE) {
+    throw new Error(
+      `Unsafe test database. Expected ${EXPECTED_TEST_DATABASE}.`,
+    );
+  }
+
+  return uri;
+}
 
 describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency', () => {
   jest.setTimeout(60000);
 
-  let connection: Connection;
+  let connection: Connection | null = null;
   let employeeSalaryModel: Model<EmployeeSalaryDocument>;
   let employeeModel: Model<EmployeeDocument>;
   let salaryStructureModel: Model<SalaryStructureDocument>;
@@ -92,31 +127,51 @@ describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency
   const actorId = new Types.ObjectId();
 
   beforeAll(async () => {
+    const uri = resolveMongoUri();
+    if (!uri) {
+      console.warn('Real MongoDB URI not configured; skipping live DB checks.');
+      return;
+    }
+
     try {
-      connection = await mongoose
-        .createConnection(REAL_MONGODB_URI, {
+      // Fast 1.5s DNS pre-check so offline sandboxes skip immediately without hanging
+      const srvHost = uri.includes('mongodb+srv://')
+        ? uri.split('@')[1]?.split('/')[0]
+        : null;
+      if (srvHost) {
+        await Promise.race([
+          dns.resolveSrv(`_mongodb._tcp.${srvHost}`),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('DNS offline timeout')), 1500),
+          ),
+        ]);
+      }
+
+      const conn = await mongoose
+        .createConnection(uri, {
           serverSelectionTimeoutMS: 8000,
           connectTimeoutMS: 10000,
         })
         .asPromise();
+      connection = conn;
 
-      employeeSalaryModel = connection.model<EmployeeSalaryDocument>(
+      employeeSalaryModel = conn.model<EmployeeSalaryDocument>(
         EmployeeSalary.name,
         EmployeeSalarySchema,
       );
-      employeeModel = connection.model<EmployeeDocument>(
-        EmployeeEmployeeSchemaModelName(connection),
+      employeeModel = conn.model<EmployeeDocument>(
+        EmployeeEmployeeSchemaModelName(conn),
         EmployeeSchema,
       );
-      salaryStructureModel = connection.model<SalaryStructureDocument>(
+      salaryStructureModel = conn.model<SalaryStructureDocument>(
         SalaryStructure.name,
         SalaryStructureSchema,
       );
-      salaryComponentModel = connection.model<SalaryComponentDocument>(
+      salaryComponentModel = conn.model<SalaryComponentDocument>(
         SalaryComponent.name,
         SalaryComponentSchema,
       );
-      auditLogModel = connection.model<AuditLogDocument>(
+      auditLogModel = conn.model<AuditLogDocument>(
         AuditLog.name,
         AuditLogSchema,
       );
@@ -134,7 +189,7 @@ describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency
       const auditLogRepository = new AuditLogRepository(auditLogModel);
       auditLogsService = new AuditLogsService(auditLogRepository);
       service = new EmployeeSalariesService(
-        connection,
+        conn,
         repository,
         calculationService,
         auditLogsService,
@@ -145,11 +200,11 @@ describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency
 
       isConnected = true;
     } catch (err: unknown) {
-      console.warn(
-        'Real MongoDB replica set not accessible (offline sandbox):',
-        (err as Error).message,
-      );
+      await connection?.close(true).catch(() => undefined);
+      connection = null;
       isConnected = false;
+
+      throw err;
     }
   });
 
@@ -296,6 +351,54 @@ describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency
 
     return { basicId, hraId, structure1Id, structure2Id };
   }
+
+  describe('0. Test MongoDB URI Validation', () => {
+    it('reads strictly from .env.test, ignores process.env.MONGODB_URI, and enforces crm_hrms_test', () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mongo-uri-test-'));
+      const tmpEnv = path.join(tmpDir, '.env.test');
+      const prevEnv = process.env.MONGODB_URI;
+
+      try {
+        // Must ignore process.env.MONGODB_URI even if set to production
+        process.env.MONGODB_URI = 'mongodb://localhost:27017/crm_hrms_prod';
+        expect(resolveMongoUri(tmpEnv)).toBeNull();
+
+        fs.writeFileSync(
+          tmpEnv,
+          'MONGODB_URI=mongodb+srv://cluster0.example.invalid/crm_hrms_test?retryWrites=true\n',
+        );
+        expect(resolveMongoUri(tmpEnv)).toContain('crm_hrms_test');
+
+        fs.writeFileSync(tmpEnv, 'MONGODB_URI=not-a-valid-uri\n');
+        expect(() => resolveMongoUri(tmpEnv)).toThrow(
+          'Invalid test MongoDB URI.',
+        );
+
+        fs.writeFileSync(
+          tmpEnv,
+          'MONGODB_URI=mongodb+srv://cluster0.example.invalid/\n',
+        );
+        expect(() => resolveMongoUri(tmpEnv)).toThrow(
+          `Unsafe test database. Expected ${EXPECTED_TEST_DATABASE}.`,
+        );
+
+        fs.writeFileSync(
+          tmpEnv,
+          'MONGODB_URI=mongodb+srv://cluster0.example.invalid/crm_hrms?retryWrites=true\n',
+        );
+        expect(() => resolveMongoUri(tmpEnv)).toThrow(
+          `Unsafe test database. Expected ${EXPECTED_TEST_DATABASE}.`,
+        );
+      } finally {
+        if (prevEnv === undefined) {
+          delete process.env.MONGODB_URI;
+        } else {
+          process.env.MONGODB_URI = prevEnv;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
 
   describe('1. Real MongoDB Index Verification', () => {
     it('verifies all 4 critical indexes exist on the real replica set collection', async () => {
