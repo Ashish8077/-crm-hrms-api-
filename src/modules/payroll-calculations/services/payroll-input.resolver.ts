@@ -9,7 +9,7 @@ import {
   EmployeeDocument,
 } from '../../employees/schemas/employee.schema';
 import { EmployeeLean } from '../../employees/repositories/employee.repository';
-import { ActiveEmploymentStatuses } from '../../employees/constants/employee.constant';
+import { evaluateEmployeePayrollPeriodEligibility } from '../../employees/utils/payroll-eligibility.util';
 import { EmployeeSalaryRepository } from '../../employee-salaries/repositories/employee-salary.repository';
 import { EmployeeSalaryLean } from '../../employee-salaries/schemas/employee-salary.schema';
 import { normalizeEffectiveDate } from '../../employee-salaries/constants/employee-salary.constant';
@@ -123,7 +123,7 @@ export class PayrollInputResolver {
       );
     }
 
-    // 2. Validate Employee eligibility
+    // 2 & 3. Validate Employee eligibility & active employment tenure using shared payroll eligibility policy
     if (!employeeRaw) {
       throw new AppError(
         ErrorCode.RESOURCE_NOT_FOUND,
@@ -132,23 +132,6 @@ export class PayrollInputResolver {
       );
     }
 
-    if (employeeRaw.deletedAt !== null) {
-      throw new AppError(
-        ErrorCode.RESOURCE_NOT_FOUND,
-        `Employee '${employeeRaw.employeeCode}' is soft-deleted and ineligible for payroll calculation.`,
-        HttpStatus.NOT_FOUND,
-      );
-    }
-
-    if (!ActiveEmploymentStatuses.includes(employeeRaw.employmentStatus)) {
-      throw new AppError(
-        ErrorCode.VALIDATION_ERROR,
-        `Employee '${employeeRaw.employeeCode}' has status '${employeeRaw.employmentStatus}' and is not eligible for payroll. Eligible statuses: ${ActiveEmploymentStatuses.join(', ')}.`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    // 3. Resolve active employment tenure window & eligible days within this payroll period
     const tenure = this.resolveEligibleTenure(employeeRaw, period);
 
     const payableDays = requestedPayableDays ?? tenure.eligibleDays;
@@ -249,64 +232,60 @@ export class PayrollInputResolver {
   } {
     const periodStart = normalizeEffectiveDate(period.startDate);
     const periodEnd = normalizeEffectiveDate(period.endDate);
-    const joiningDate = normalizeEffectiveDate(employee.dateOfJoining);
+    const periodStartStr = periodStart.toISOString().slice(0, 10);
+    const periodEndStr = periodEnd.toISOString().slice(0, 10);
 
-    // If employee joined after the payroll period, they are not eligible for this period
-    if (joiningDate.getTime() > periodEnd.getTime()) {
-      throw new AppError(
-        ErrorCode.VALIDATION_ERROR,
-        `Employee '${employee.employeeCode}' joined on ${joiningDate.toISOString().slice(0, 10)}, after payroll period '${period.periodCode}' ended (${periodEnd.toISOString().slice(0, 10)}). Ineligible for this payroll period.`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    // Mid-month joiner: tenure begins at joining date if joining date is after period start
-    const effectiveTenureStart =
-      joiningDate.getTime() > periodStart.getTime() ? joiningDate : periodStart;
-
-    // Mid-month leaver: check for lastWorkingDate, terminationDate, or resignationDate
-    const empExtra = employee as {
-      lastWorkingDate?: Date;
-      terminationDate?: Date;
-      resignationDate?: Date;
-    };
-    const exitDateRaw =
-      empExtra.lastWorkingDate ??
-      empExtra.terminationDate ??
-      empExtra.resignationDate;
-
-    let effectiveTenureEnd = periodEnd;
-    if (exitDateRaw) {
-      const exitDate = normalizeEffectiveDate(exitDateRaw);
-      if (exitDate.getTime() < periodStart.getTime()) {
-        throw new AppError(
-          ErrorCode.VALIDATION_ERROR,
-          `Employee '${employee.employeeCode}' left on ${exitDate.toISOString().slice(0, 10)}, before payroll period '${period.periodCode}' started (${periodStart.toISOString().slice(0, 10)}). Ineligible for this payroll period.`,
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-      if (exitDate.getTime() < periodEnd.getTime()) {
-        effectiveTenureEnd = exitDate;
-      }
-    }
-
-    if (effectiveTenureStart.getTime() > effectiveTenureEnd.getTime()) {
-      throw new AppError(
-        ErrorCode.VALIDATION_ERROR,
-        `Employee '${employee.employeeCode}' has invalid employment tenure window (${effectiveTenureStart.toISOString().slice(0, 10)} to ${effectiveTenureEnd.toISOString().slice(0, 10)}) in period '${period.periodCode}'.`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    const eligibleDays = calculateCalendarDaysInclusive(
-      effectiveTenureStart,
-      effectiveTenureEnd,
+    const decision = evaluateEmployeePayrollPeriodEligibility(
+      employee,
+      periodStartStr,
+      periodEndStr,
     );
 
+    if (!decision.eligible) {
+      switch (decision.reason) {
+        case 'SOFT_DELETED':
+          throw new AppError(
+            ErrorCode.RESOURCE_NOT_FOUND,
+            `Employee '${employee.employeeCode}' is soft-deleted and ineligible for payroll calculation.`,
+            HttpStatus.NOT_FOUND,
+          );
+        case 'MISSING_RELIABLE_EXIT_DATE':
+          throw new AppError(
+            ErrorCode.VALIDATION_ERROR,
+            `Employee '${employee.employeeCode}' has status '${employee.employmentStatus}' without a reliable effective exit date (lastWorkingDate or terminationDate) and is ineligible for payroll.`,
+            HttpStatus.BAD_REQUEST,
+          );
+        case 'UNSUPPORTED_EMPLOYMENT_STATUS':
+          throw new AppError(
+            ErrorCode.VALIDATION_ERROR,
+            `Employee '${employee.employeeCode}' has unsupported employment status '${employee.employmentStatus}' for payroll.`,
+            HttpStatus.BAD_REQUEST,
+          );
+        case 'JOINED_AFTER_PERIOD':
+          throw new AppError(
+            ErrorCode.VALIDATION_ERROR,
+            `Employee '${employee.employeeCode}' joined on ${decision.dateOfJoiningStr ?? 'unknown'}, after payroll period '${period.periodCode}' ended (${periodEndStr}). Ineligible for this payroll period.`,
+            HttpStatus.BAD_REQUEST,
+          );
+        case 'EXITED_BEFORE_PERIOD':
+          throw new AppError(
+            ErrorCode.VALIDATION_ERROR,
+            `Employee '${employee.employeeCode}' left on ${decision.effectiveExitDateStr ?? 'unknown'}, before payroll period '${period.periodCode}' started (${periodStartStr}). Ineligible for this payroll period.`,
+            HttpStatus.BAD_REQUEST,
+          );
+        default:
+          throw new AppError(
+            ErrorCode.VALIDATION_ERROR,
+            `Employee '${employee.employeeCode}' has invalid employment tenure window in period '${period.periodCode}'.`,
+            HttpStatus.BAD_REQUEST,
+          );
+      }
+    }
+
     return {
-      effectiveTenureStart,
-      effectiveTenureEnd,
-      eligibleDays,
+      effectiveTenureStart: decision.effectiveTenureStart,
+      effectiveTenureEnd: decision.effectiveTenureEnd,
+      eligibleDays: decision.eligibleDays,
     };
   }
 

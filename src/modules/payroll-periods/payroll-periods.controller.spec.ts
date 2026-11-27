@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { PayrollPeriodsController } from './payroll-periods.controller';
 import { PayrollPeriodsService } from './services/payroll-periods.service';
+import { PayrollAttendanceSummaryService } from './services/payroll-attendance-summary.service';
 import { PayrollPeriodResponse } from './mappers/payroll-period.mapper';
 import { PayrollPeriodStatus } from './constants/payroll-period.constant';
 import { PayrollFrequency } from '../payroll-configuration/constants/payroll-configuration.constant';
@@ -60,6 +61,12 @@ describe('PayrollPeriodsController', () => {
             getById: jest.fn(),
             update: jest.fn(),
             updateStatus: jest.fn(),
+          },
+        },
+        {
+          provide: PayrollAttendanceSummaryService,
+          useValue: {
+            getPeriodAttendanceSummary: jest.fn(),
           },
         },
       ],

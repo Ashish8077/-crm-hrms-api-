@@ -6,6 +6,7 @@ import { Types } from 'mongoose';
 import { ParseObjectIdPipe } from '@nestjs/mongoose';
 import { PayrollPeriodsController } from './payroll-periods.controller';
 import { PayrollPeriodsService } from './services/payroll-periods.service';
+import { PayrollAttendanceSummaryService } from './services/payroll-attendance-summary.service';
 import {
   PayrollPeriodPaginationOptions,
   PayrollPeriodQueryFilter,
@@ -349,6 +350,12 @@ describe('Payroll Periods Module - Complete Integration Test Suite', () => {
       controllers: [PayrollPeriodsController],
       providers: [
         PayrollPeriodsService,
+        {
+          provide: PayrollAttendanceSummaryService,
+          useValue: {
+            getPeriodAttendanceSummary: jest.fn(),
+          },
+        },
         {
           provide: PayrollPeriodRepository,
           useValue: repository,

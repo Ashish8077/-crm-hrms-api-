@@ -22,10 +22,13 @@ import {
 import { Types } from 'mongoose';
 import { ParseObjectIdPipe } from '@nestjs/mongoose';
 import { PayrollPeriodsService } from './services/payroll-periods.service';
+import { PayrollAttendanceSummaryService } from './services/payroll-attendance-summary.service';
 import { CreatePayrollPeriodDto } from './dto/create-payroll-period.dto';
 import { UpdatePayrollPeriodDto } from './dto/update-payroll-period.dto';
 import { UpdatePayrollPeriodStatusDto } from './dto/update-payroll-period-status.dto';
 import { ListPayrollPeriodsQueryDto } from './dto/list-payroll-periods-query.dto';
+import { PayrollAttendanceSummaryQueryDto } from './dto/payroll-attendance-summary-query.dto';
+import { PayrollPeriodAttendanceSummaryResponseDto } from './dto/payroll-attendance-summary-response.dto';
 import { PayrollPeriodResponse } from './mappers/payroll-period.mapper';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { PermissionKeys } from '../permissions/constants/permission.constant';
@@ -39,7 +42,10 @@ import { PaginationMeta } from '../../common/pagination/types/pagination.types';
   version: '1',
 })
 export class PayrollPeriodsController {
-  constructor(private readonly payrollPeriodsService: PayrollPeriodsService) {}
+  constructor(
+    private readonly payrollPeriodsService: PayrollPeriodsService,
+    private readonly payrollAttendanceSummaryService: PayrollAttendanceSummaryService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new payroll period' })
@@ -93,6 +99,38 @@ export class PayrollPeriodsController {
   ): Promise<{ success: true; data: PayrollPeriodResponse }> {
     const period = await this.payrollPeriodsService.getById(id);
     return { success: true, data: period };
+  }
+
+  @Get(':periodId/attendance-summary')
+  @ApiOperation({
+    summary: 'Get employee-wise attendance summary for a payroll period',
+    description:
+      'Read-only resolution of employee attendance, approved/cancellation-requested leaves, holidays, weekly offs, tenure overlap, and data-quality anomalies for a payroll period.',
+  })
+  @ApiParam({
+    name: 'periodId',
+    description: 'Payroll Period ID',
+    type: String,
+  })
+  @ApiOkResponse({
+    description: 'Employee-wise attendance summary for the payroll period.',
+    type: PayrollPeriodAttendanceSummaryResponseDto,
+  })
+  @ApiNotFoundResponse({ description: 'Payroll period not found.' })
+  @RequirePermissions(PermissionKeys.PAYROLL_PERIODS_VIEW)
+  async getAttendanceSummary(
+    @Param('periodId', ParseObjectIdPipe) periodId: Types.ObjectId,
+    @Query() query: PayrollAttendanceSummaryQueryDto,
+  ): Promise<{
+    success: true;
+    data: PayrollPeriodAttendanceSummaryResponseDto;
+  }> {
+    const data =
+      await this.payrollAttendanceSummaryService.getPeriodAttendanceSummary(
+        periodId,
+        query,
+      );
+    return { success: true, data };
   }
 
   @Patch(':id')

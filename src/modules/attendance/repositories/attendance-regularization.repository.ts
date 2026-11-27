@@ -125,4 +125,27 @@ export class AttendanceRegularizationRepository {
     }
     return query.lean<AttendanceRegularizationLean>().exec();
   }
+
+  async findByIds(ids: Types.ObjectId[]): Promise<
+    Array<{
+      _id: Types.ObjectId;
+      employeeId: Types.ObjectId;
+      attendanceDate: string;
+      status: RegularizationStatus;
+    }>
+  > {
+    if (ids.length === 0) return [];
+    return this.regularizationModel
+      .find({ _id: { $in: ids }, deletedAt: null })
+      .select('_id employeeId attendanceDate status')
+      .lean<
+        Array<{
+          _id: Types.ObjectId;
+          employeeId: Types.ObjectId;
+          attendanceDate: string;
+          status: RegularizationStatus;
+        }>
+      >()
+      .exec();
+  }
 }

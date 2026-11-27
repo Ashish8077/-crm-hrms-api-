@@ -10,6 +10,20 @@ import { EmploymentStatus } from '../constants/employee.constant';
 
 export type EmployeeLean = Employee & { _id: Types.ObjectId };
 
+export interface PayrollAttendanceEmployeeProjection {
+  _id: Types.ObjectId;
+  employeeCode: string;
+  firstName: string;
+  lastName: string;
+  dateOfJoining: Date;
+  lastWorkingDate?: Date | null;
+  terminationDate?: Date | null;
+  employmentStatus: EmploymentStatus;
+  branchId: Types.ObjectId;
+  departmentId: Types.ObjectId;
+  designationId: Types.ObjectId;
+}
+
 @Injectable()
 export class EmployeeRepository {
   constructor(
@@ -344,5 +358,57 @@ export class EmployeeRepository {
       mongooseQuery.session(session);
     }
     return mongooseQuery.lean<EmployeeLean[]>().exec();
+  }
+
+  /**
+   * Batch read-only projection of employees potentially overlapping a payroll period.
+   * Deliberately excludes `resignationDate` fallback so only explicit exit dates
+   * (`lastWorkingDate` / `terminationDate`) qualify separated employees.
+   */
+  async findForPayrollAttendanceSummary(options?: {
+    branchId?: Types.ObjectId;
+    departmentId?: Types.ObjectId;
+    employeeId?: Types.ObjectId;
+    minExitDate?: Date;
+    maxJoiningDate?: Date;
+  }): Promise<PayrollAttendanceEmployeeProjection[]> {
+    const query: Record<string, unknown> = { deletedAt: null };
+
+    if (options?.employeeId) {
+      query._id = options.employeeId;
+    }
+    if (options?.branchId) {
+      query.branchId = options.branchId;
+    }
+    if (options?.departmentId) {
+      query.departmentId = options.departmentId;
+    }
+    if (options?.maxJoiningDate) {
+      query.dateOfJoining = { $lte: options.maxJoiningDate };
+    }
+    if (options?.minExitDate) {
+      query.$or = [
+        {
+          employmentStatus: {
+            $in: [
+              EmploymentStatus.ACTIVE,
+              EmploymentStatus.PROBATION,
+              EmploymentStatus.NOTICE_PERIOD,
+            ],
+          },
+        },
+        { lastWorkingDate: { $gte: options.minExitDate } },
+        { terminationDate: { $gte: options.minExitDate } },
+      ];
+    }
+
+    return this.employeeModel
+      .find(query)
+      .select(
+        '_id employeeCode firstName lastName dateOfJoining lastWorkingDate terminationDate employmentStatus branchId departmentId designationId',
+      )
+      .sort({ employeeCode: 1, _id: 1 })
+      .lean<PayrollAttendanceEmployeeProjection[]>()
+      .exec();
   }
 }

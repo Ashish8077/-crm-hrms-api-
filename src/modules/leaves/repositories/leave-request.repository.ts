@@ -211,4 +211,32 @@ export class LeaveRequestRepository implements OnModuleInit {
     );
     return query.lean<LeaveRequestLean>().exec();
   }
+
+  /**
+   * Batch query for leave requests overlapping a payroll period across multiple employees.
+   * Uses the ix_leave_requests_status_dates index (`status`, `startDate`, `endDate`, `deletedAt`).
+   */
+  async findOverlappingForEmployees(
+    employeeIds: Types.ObjectId[],
+    startDate: string,
+    endDate: string,
+    statuses: LeaveRequestStatus[],
+  ): Promise<LeaveRequestLean[]> {
+    if (employeeIds.length === 0 || statuses.length === 0) return [];
+
+    return this.leaveRequestModel
+      .find({
+        status: { $in: statuses },
+        startDate: { $lte: endDate },
+        endDate: { $gte: startDate },
+        deletedAt: null,
+        employeeId: { $in: employeeIds },
+      })
+      .select(
+        '_id employeeId leaveTypeId leaveTypeSnapshot startDate endDate totalDays isHalfDay halfDaySession excludedDates status',
+      )
+      .sort({ employeeId: 1, startDate: 1, _id: 1 })
+      .lean<LeaveRequestLean[]>()
+      .exec();
+  }
 }
