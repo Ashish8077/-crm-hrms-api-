@@ -119,7 +119,12 @@ describe('PayrollRecordRepository', () => {
       {
         _id: recordId,
         deletedAt: null,
-        status: PayrollRecordStatus.CALCULATED,
+        status: {
+          $in: [
+            PayrollRecordStatus.CALCULATED,
+            PayrollRecordStatus.INVALIDATED,
+          ],
+        },
         __v: 0,
       },
       expect.objectContaining({

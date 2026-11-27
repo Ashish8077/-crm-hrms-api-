@@ -13,6 +13,7 @@ import {
   EmploymentType,
 } from '../../employees/constants/employee.constant';
 import { PayrollLeaveAttendanceResolverService } from './payroll-leave-attendance-resolver.service';
+import { PayrollProcessingService } from '../../payroll-calculations/services/payroll-processing.service';
 import { PayrollPeriodStatus } from '../constants/payroll-period.constant';
 import { PayrollFrequency } from '../../payroll-configuration/constants/payroll-configuration.constant';
 import { AppError } from '../../../common/errors/app-error';
@@ -33,6 +34,7 @@ describe('PayrollPeriodsService', () => {
   let authorizationService: jest.Mocked<AuthorizationService>;
   let employeeRepo: { findForPayrollAttendanceSummary: jest.Mock };
   let leaveAttendanceResolver: { resolveBatch: jest.Mock };
+  let processingService: { verifyPeriodCompletionReadiness: jest.Mock };
 
   const actorId = new Types.ObjectId();
   const periodId = new Types.ObjectId();
@@ -115,6 +117,14 @@ describe('PayrollPeriodsService', () => {
             resolveBatch: jest.fn().mockResolvedValue(new Map()),
           },
         },
+        {
+          provide: PayrollProcessingService,
+          useValue: {
+            verifyPeriodCompletionReadiness: jest
+              .fn()
+              .mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
@@ -125,6 +135,7 @@ describe('PayrollPeriodsService', () => {
     authorizationService = module.get(AuthorizationService);
     employeeRepo = module.get(EmployeeRepository);
     leaveAttendanceResolver = module.get(PayrollLeaveAttendanceResolverService);
+    processingService = module.get(PayrollProcessingService);
   });
 
   afterEach(() => {
@@ -1060,6 +1071,38 @@ describe('PayrollPeriodsService', () => {
           }),
         }),
       );
+    });
+
+    it('invokes verifyPeriodCompletionReadiness and blocks COMPLETED or FINALIZED transition when processing is incomplete', async () => {
+      const processingPeriod = createMockPeriod({
+        status: PayrollPeriodStatus.PROCESSING,
+      });
+      periodRepo.findById.mockResolvedValue(processingPeriod);
+      processingService.verifyPeriodCompletionReadiness.mockRejectedValue(
+        new AppError(
+          ErrorCode.CONCURRENT_MODIFICATION,
+          'Payroll period cannot be completed because 2 eligible employees are unprocessed or stale.',
+          HttpStatus.CONFLICT,
+        ),
+      );
+
+      await expect(
+        service.updateStatus(
+          periodId,
+          { status: PayrollPeriodStatus.COMPLETED },
+          actorId,
+          [roleId],
+          clientMetadata,
+        ),
+      ).rejects.toMatchObject({
+        code: ErrorCode.CONCURRENT_MODIFICATION,
+        statusCode: HttpStatus.CONFLICT,
+      });
+
+      expect(
+        processingService.verifyPeriodCompletionReadiness,
+      ).toHaveBeenCalledWith(processingPeriod);
+      expect(periodRepo.updateStatus).not.toHaveBeenCalled();
     });
   });
 });

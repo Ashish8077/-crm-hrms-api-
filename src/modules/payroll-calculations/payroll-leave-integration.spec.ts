@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/require-await */
 import { HttpStatus, ValidationError, ValidationPipe } from '@nestjs/common';
-import { getModelToken } from '@nestjs/mongoose';
+import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
@@ -308,6 +308,19 @@ describe('Payroll Leave & Attendance LOP Integration (Step 4.2 Comprehensive Sui
             findById: jest.fn((id: Types.ObjectId) =>
               Promise.resolve(periods.get(id.toHexString()) ?? null),
             ),
+            verifyPeriodMutableAndBumpVersion: jest.fn(
+              (
+                id: Types.ObjectId,
+                allowed: ReadonlyArray<PayrollPeriodStatus>,
+              ) => {
+                const p = periods.get(id.toHexString());
+                if (!p || p.deletedAt !== null || !allowed.includes(p.status)) {
+                  return Promise.resolve(false);
+                }
+                p.__v = (p.__v ?? 0) + 1;
+                return Promise.resolve(true);
+              },
+            ),
           },
         },
         {
@@ -319,13 +332,17 @@ describe('Payroll Leave & Attendance LOP Integration (Step 4.2 Comprehensive Sui
                   Promise.resolve(employees.get(id.toHexString()) ?? null),
               }),
             })),
-            find: jest.fn(() => ({
-              sort: () => ({
-                lean: () => ({
-                  exec: () => Promise.resolve(Array.from(employees.values())),
+            find: jest.fn(() => {
+              const queryChain = {
+                select: () => queryChain,
+                sort: () => ({
+                  lean: () => ({
+                    exec: () => Promise.resolve(Array.from(employees.values())),
+                  }),
                 }),
-              }),
-            })),
+              };
+              return queryChain;
+            }),
           },
         },
         {
@@ -454,6 +471,17 @@ describe('Payroll Leave & Attendance LOP Integration (Step 4.2 Comprehensive Sui
         {
           provide: AuditLogsService,
           useValue: { createAuditLog: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: getConnectionToken(),
+          useValue: {
+            startSession: jest.fn().mockResolvedValue({
+              withTransaction: jest.fn(async (cb: (s: unknown) => unknown) =>
+                cb({}),
+              ),
+              endSession: jest.fn().mockResolvedValue(undefined),
+            }),
+          },
         },
         {
           provide: AuthorizationService,

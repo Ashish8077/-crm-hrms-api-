@@ -104,6 +104,19 @@ export class PayrollRecordRepository {
     return saved.toObject() as PayrollRecordLean;
   }
 
+  async createMany(
+    inputs: CreatePayrollRecordInput[],
+    session?: ClientSession,
+  ): Promise<PayrollRecordLean[]> {
+    if (inputs.length === 0) return [];
+    const docs = inputs.map((input) => ({
+      ...input,
+      deletedAt: null,
+    }));
+    const saved = await this.payrollRecordModel.insertMany(docs, { session });
+    return saved.map((d) => d.toObject() as PayrollRecordLean);
+  }
+
   async recalculateAtomically(
     id: Types.ObjectId,
     expectedVersion: number,
@@ -114,7 +127,12 @@ export class PayrollRecordRepository {
       {
         _id: id,
         deletedAt: null,
-        status: PayrollRecordStatus.CALCULATED,
+        status: {
+          $in: [
+            PayrollRecordStatus.CALCULATED,
+            PayrollRecordStatus.INVALIDATED,
+          ],
+        },
         __v: expectedVersion,
       },
       {
@@ -126,6 +144,10 @@ export class PayrollRecordRepository {
           totalDeductions: input.totalDeductions,
           employerContributions: input.employerContributions,
           netSalary: input.netSalary,
+          status: PayrollRecordStatus.CALCULATED,
+          invalidatedAt: null,
+          invalidatedBy: null,
+          invalidationReason: null,
           calculatedAt: input.calculatedAt,
           updatedBy: input.updatedBy,
         },
@@ -142,5 +164,137 @@ export class PayrollRecordRepository {
     );
 
     return query.lean<PayrollRecordLean>().exec();
+  }
+
+  async invalidateCalculatedByPeriodAndEmployees(
+    params: {
+      payrollPeriodId: Types.ObjectId;
+      employeeIds: Types.ObjectId[];
+      reason: string;
+      actorId: Types.ObjectId;
+      invalidatedAt: Date;
+    },
+    session?: ClientSession,
+  ): Promise<number> {
+    if (params.employeeIds.length === 0) return 0;
+    const res = await this.payrollRecordModel
+      .updateMany(
+        {
+          payrollPeriodId: params.payrollPeriodId,
+          employeeId: { $in: params.employeeIds },
+          deletedAt: null,
+          status: PayrollRecordStatus.CALCULATED,
+        },
+        {
+          $set: {
+            status: PayrollRecordStatus.INVALIDATED,
+            invalidatedAt: params.invalidatedAt,
+            invalidatedBy: params.actorId,
+            invalidationReason: params.reason,
+            updatedBy: params.actorId,
+          },
+          $inc: { __v: 1 },
+        },
+        { session },
+      )
+      .exec();
+    return res.modifiedCount;
+  }
+
+  /**
+   * Batch fetches active PayrollRecords for a set of employees in a period using uq_payroll_records_period_employee.
+   * Includes INVALIDATED records so reactivated employees can cleanly transition back to CALCULATED.
+   */
+  async findActiveByPeriodAndEmployees(
+    payrollPeriodId: Types.ObjectId,
+    employeeIds: Types.ObjectId[],
+    session?: ClientSession,
+  ): Promise<PayrollRecordLean[]> {
+    if (employeeIds.length === 0) return [];
+    const query = this.payrollRecordModel
+      .find({
+        payrollPeriodId,
+        employeeId: { $in: employeeIds },
+        deletedAt: null,
+      })
+      .select(
+        '_id payrollPeriodId employeeId salaryAssignmentId salaryStructureId status calculationVersion calculatedAt __v calculationSnapshot.inputFingerprint calculationSnapshot.engineVersion grossEarnings totalDeductions employerContributions netSalary invalidatedAt invalidatedBy invalidationReason',
+      );
+    if (session) {
+      query.session(session);
+    }
+    return query.lean<PayrollRecordLean[]>().exec();
+  }
+
+  /**
+   * Fetches full PayrollRecord documents including complete calculationSnapshot for audit preservation
+   * before invalidation or recalculation overwrites the active record.
+   */
+  async findFullByPeriodAndEmployees(
+    payrollPeriodId: Types.ObjectId,
+    employeeIds: Types.ObjectId[],
+    session?: ClientSession,
+  ): Promise<PayrollRecordLean[]> {
+    if (employeeIds.length === 0) return [];
+    const query = this.payrollRecordModel.find({
+      payrollPeriodId,
+      employeeId: { $in: employeeIds },
+      deletedAt: null,
+    });
+    if (session) {
+      query.session(session);
+    }
+    return query.lean<PayrollRecordLean[]>().exec();
+  }
+
+  /**
+   * Fetches compact status and fingerprint summaries for all non-invalidated PayrollRecords in a period.
+   */
+  async findActiveSummariesByPeriod(
+    payrollPeriodId: Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<
+    Array<{
+      _id: Types.ObjectId;
+      employeeId: Types.ObjectId;
+      status: PayrollRecordStatus;
+      calculationVersion: number;
+      calculatedAt: Date;
+      inputFingerprint: string | null;
+    }>
+  > {
+    const query = this.payrollRecordModel
+      .find({
+        payrollPeriodId,
+        deletedAt: null,
+        status: { $ne: PayrollRecordStatus.INVALIDATED },
+      })
+      .select(
+        '_id employeeId status calculationVersion calculatedAt calculationSnapshot.inputFingerprint',
+      );
+    if (session) {
+      query.session(session);
+    }
+    const docs = await query
+      .lean<
+        Array<{
+          _id: Types.ObjectId;
+          employeeId: Types.ObjectId;
+          status: PayrollRecordStatus;
+          calculationVersion: number;
+          calculatedAt: Date;
+          calculationSnapshot?: { inputFingerprint?: string | null };
+        }>
+      >()
+      .exec();
+
+    return docs.map((d) => ({
+      _id: d._id,
+      employeeId: d.employeeId,
+      status: d.status,
+      calculationVersion: d.calculationVersion,
+      calculatedAt: d.calculatedAt,
+      inputFingerprint: d.calculationSnapshot?.inputFingerprint ?? null,
+    }));
   }
 }

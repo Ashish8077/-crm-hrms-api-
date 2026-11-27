@@ -1,6 +1,6 @@
 import { HttpStatus } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { getModelToken } from '@nestjs/mongoose';
+import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 import { PayrollCalculationService } from './payroll-calculation.service';
 import { PayrollInputResolver } from './payroll-input.resolver';
@@ -52,7 +52,10 @@ import { ErrorCode } from '../../../common/errors/error-codes';
 
 describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () => {
   let service: PayrollCalculationService;
-  let periodRepo: { findById: jest.Mock };
+  let periodRepo: {
+    findById: jest.Mock;
+    verifyPeriodMutableAndBumpVersion: jest.Mock;
+  };
   let employeeModel: { findById: jest.Mock };
   let employeeSalaryRepo: { findAllByEmployeeId: jest.Mock };
   let structureRepo: { findById: jest.Mock };
@@ -66,6 +69,11 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
     isDuplicateKeyError: jest.Mock;
   };
   let auditLogsService: { createAuditLog: jest.Mock };
+  let connectionMock: { startSession: jest.Mock };
+  let sessionMock: {
+    withTransaction: jest.Mock;
+    endSession: jest.Mock;
+  };
   let leaveAttendanceResolver: { resolveForEmployee: jest.Mock };
 
   const actorId = new Types.ObjectId();
@@ -260,7 +268,10 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
           ),
       ),
     };
-    periodRepo = { findById: jest.fn().mockResolvedValue(makePeriod()) };
+    periodRepo = {
+      findById: jest.fn().mockResolvedValue(makePeriod()),
+      verifyPeriodMutableAndBumpVersion: jest.fn().mockResolvedValue(true),
+    };
     employeeModel = { findById: jest.fn() };
     mockEmployeeLookup(makeEmployee());
     employeeSalaryRepo = {
@@ -299,6 +310,15 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
     auditLogsService = {
       createAuditLog: jest.fn().mockResolvedValue(undefined),
     };
+    sessionMock = {
+      withTransaction: jest.fn(async (work: (s: unknown) => Promise<unknown>) =>
+        work(sessionMock),
+      ),
+      endSession: jest.fn().mockResolvedValue(undefined),
+    };
+    connectionMock = {
+      startSession: jest.fn().mockResolvedValue(sessionMock),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -327,6 +347,7 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
           useValue: leaveAttendanceResolver,
         },
         { provide: AuditLogsService, useValue: auditLogsService },
+        { provide: getConnectionToken(), useValue: connectionMock },
       ],
     }).compile();
 
@@ -1758,11 +1779,19 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
       expect(res.totalDeductions).toBe('3600.00');
       expect(res.employerContributions).toBe('3600.00');
       expect(res.netSalary).toBe('18900.00');
+      expect(payrollRecordRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payrollPeriodId: periodId,
+          employeeId,
+        }),
+        sessionMock,
+      );
       expect(auditLogsService.createAuditLog).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.PAYROLL_CALCULATION_EXECUTED,
           targetModel: AuditTargetModel.PAYROLL_RECORD,
         }),
+        sessionMock,
       );
     });
 
@@ -1860,11 +1889,18 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
       expect(res.calculationVersion).toBe(2);
       expect(res.version).toBe(1);
       expect(res.netSalary).toBe('41400.00');
+      expect(payrollRecordRepo.recalculateAtomically).toHaveBeenCalledWith(
+        existingId,
+        0,
+        expect.any(Object),
+        sessionMock,
+      );
       expect(auditLogsService.createAuditLog).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.PAYROLL_CALCULATION_RECALCULATED,
           targetModel: AuditTargetModel.PAYROLL_RECORD,
         }),
+        sessionMock,
       );
     });
 
@@ -1891,6 +1927,200 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
         code: ErrorCode.CONCURRENT_MODIFICATION,
         statusCode: HttpStatus.CONFLICT,
       });
+    });
+
+    it('aborts transaction and rethrows when PAYROLL_CALCULATION_RECALCULATED audit creation fails', async () => {
+      const existingId = new Types.ObjectId();
+      payrollRecordRepo.findByPeriodAndEmployee.mockResolvedValue({
+        _id: existingId,
+        status: PayrollRecordStatus.CALCULATED,
+        calculationVersion: 1,
+        __v: 0,
+      });
+      payrollRecordRepo.recalculateAtomically.mockResolvedValue({
+        _id: existingId,
+        payrollPeriodId: periodId,
+        employeeId,
+        salaryAssignmentId: assignmentId,
+        salaryStructureId: structureId,
+        calculationSnapshot: {},
+        grossEarnings: '45000.00',
+        totalDeductions: '3600.00',
+        employerContributions: '3600.00',
+        netSalary: '41400.00',
+        status: PayrollRecordStatus.CALCULATED,
+        calculationVersion: 2,
+        calculatedAt: new Date(),
+        createdBy: actorId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        __v: 1,
+      });
+      auditLogsService.createAuditLog.mockRejectedValueOnce(
+        new Error('Audit write failure during recalculation'),
+      );
+
+      await expect(
+        service.calculateAndPersistEmployeePayroll(
+          {
+            payrollPeriodId: periodId.toString(),
+            employeeId: employeeId.toString(),
+            recalculate: true,
+          },
+          actorId,
+        ),
+      ).rejects.toThrow('Audit write failure during recalculation');
+
+      expect(sessionMock.withTransaction).toHaveBeenCalledTimes(1);
+      expect(sessionMock.endSession).toHaveBeenCalledTimes(1);
+      expect(payrollRecordRepo.recalculateAtomically).toHaveBeenCalledWith(
+        existingId,
+        0,
+        expect.any(Object),
+        sessionMock,
+      );
+    });
+
+    it('aborts transaction and rethrows when PAYROLL_CALCULATION_EXECUTED audit creation fails', async () => {
+      payrollRecordRepo.create.mockImplementation(
+        (input: Record<string, unknown>) =>
+          Promise.resolve({
+            _id: new Types.ObjectId(),
+            ...input,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            __v: 0,
+          }),
+      );
+      auditLogsService.createAuditLog.mockRejectedValueOnce(
+        new Error('Audit write failure during initial calculation'),
+      );
+
+      await expect(
+        service.calculateAndPersistEmployeePayroll(
+          {
+            payrollPeriodId: periodId.toString(),
+            employeeId: employeeId.toString(),
+          },
+          actorId,
+        ),
+      ).rejects.toThrow('Audit write failure during initial calculation');
+
+      expect(sessionMock.withTransaction).toHaveBeenCalledTimes(1);
+      expect(sessionMock.endSession).toHaveBeenCalledTimes(1);
+      expect(payrollRecordRepo.create).toHaveBeenCalledWith(
+        expect.any(Object),
+        sessionMock,
+      );
+    });
+
+    it('rejects initial calculation and recalculation inside transaction when period becomes COMPLETED/FINALIZED before commit', async () => {
+      periodRepo.verifyPeriodMutableAndBumpVersion.mockResolvedValue(false);
+
+      await expect(
+        service.calculateAndPersistEmployeePayroll(
+          {
+            payrollPeriodId: periodId.toString(),
+            employeeId: employeeId.toString(),
+          },
+          actorId,
+        ),
+      ).rejects.toMatchObject({
+        code: ErrorCode.CONCURRENT_MODIFICATION,
+        statusCode: HttpStatus.CONFLICT,
+      });
+      expect(payrollRecordRepo.create).not.toHaveBeenCalled();
+
+      payrollRecordRepo.findByPeriodAndEmployee.mockResolvedValue({
+        _id: new Types.ObjectId(),
+        status: PayrollRecordStatus.CALCULATED,
+        calculationVersion: 1,
+        __v: 0,
+      });
+
+      await expect(
+        service.calculateAndPersistEmployeePayroll(
+          {
+            payrollPeriodId: periodId.toString(),
+            employeeId: employeeId.toString(),
+            recalculate: true,
+          },
+          actorId,
+        ),
+      ).rejects.toMatchObject({
+        code: ErrorCode.CONCURRENT_MODIFICATION,
+        statusCode: HttpStatus.CONFLICT,
+      });
+      expect(payrollRecordRepo.recalculateAtomically).not.toHaveBeenCalled();
+    });
+
+    it('preserves fixed expectedVersion __v and period mutability check across withTransaction retries', async () => {
+      const existingId = new Types.ObjectId();
+      payrollRecordRepo.findByPeriodAndEmployee.mockResolvedValue({
+        _id: existingId,
+        status: PayrollRecordStatus.CALCULATED,
+        calculationVersion: 1,
+        __v: 3,
+      });
+
+      let attempt = 0;
+      sessionMock.withTransaction.mockImplementationOnce(
+        async (work: (s: unknown) => Promise<unknown>) => {
+          attempt++;
+          try {
+            return await work(sessionMock);
+          } catch {
+            attempt++;
+            return await work(sessionMock);
+          }
+        },
+      );
+      payrollRecordRepo.recalculateAtomically
+        .mockRejectedValueOnce(new Error('TransientTransactionError'))
+        .mockImplementationOnce(
+          (_id: unknown, _ver: unknown, input: Record<string, unknown>) =>
+            Promise.resolve({
+              _id: existingId,
+              payrollPeriodId: periodId,
+              employeeId,
+              ...input,
+              status: PayrollRecordStatus.CALCULATED,
+              calculationVersion: 2,
+              createdBy: actorId,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              __v: 4,
+            }),
+        );
+
+      const res = await service.calculateAndPersistEmployeePayroll(
+        {
+          payrollPeriodId: periodId.toString(),
+          employeeId: employeeId.toString(),
+          recalculate: true,
+        },
+        actorId,
+      );
+
+      expect(attempt).toBe(2);
+      expect(res.calculationVersion).toBe(2);
+      expect(
+        periodRepo.verifyPeriodMutableAndBumpVersion,
+      ).toHaveBeenCalledTimes(2);
+      expect(payrollRecordRepo.recalculateAtomically).toHaveBeenNthCalledWith(
+        1,
+        existingId,
+        3,
+        expect.any(Object),
+        sessionMock,
+      );
+      expect(payrollRecordRepo.recalculateAtomically).toHaveBeenNthCalledWith(
+        2,
+        existingId,
+        3,
+        expect.any(Object),
+        sessionMock,
+      );
     });
   });
 });

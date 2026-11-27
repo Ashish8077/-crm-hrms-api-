@@ -38,6 +38,7 @@ export class PayrollCalculationMapper {
   ): PayrollCalculationSnapshotResponseDto {
     return {
       engineVersion: snapshot.engineVersion,
+      inputFingerprint: snapshot.inputFingerprint ?? null,
       calculatedAt:
         snapshot.calculatedAt instanceof Date
           ? snapshot.calculatedAt.toISOString()

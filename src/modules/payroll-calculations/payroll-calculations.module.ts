@@ -1,9 +1,13 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
   PayrollRecord,
   PayrollRecordSchema,
 } from './schemas/payroll-record.schema';
+import {
+  PayrollProcessingFailure,
+  PayrollProcessingFailureSchema,
+} from './schemas/payroll-processing-failure.schema';
 import { Employee, EmployeeSchema } from '../employees/schemas/employee.schema';
 import {
   SalaryComponent,
@@ -14,7 +18,9 @@ import { EmployeeSalariesModule } from '../employee-salaries/employee-salaries.m
 import { SalaryStructuresModule } from '../salary-structures/salary-structures.module';
 import { PayrollConfigurationModule } from '../payroll-configuration/payroll-configuration.module';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
+import { AuthorizationModule } from '../authorization/authorization.module';
 import { PayrollRecordRepository } from './repositories/payroll-record.repository';
+import { PayrollProcessingFailureRepository } from './repositories/payroll-processing-failure.repository';
 import { PayrollInputResolver } from './services/payroll-input.resolver';
 import { SalaryComponentResolver } from './services/salary-component.resolver';
 import { ComponentDependencyResolver } from './services/component-dependency.resolver';
@@ -23,24 +29,35 @@ import { ProrationCalculator } from './services/proration.calculator';
 import { PayrollTotalsCalculator } from './services/payroll-totals.calculator';
 import { PayrollSnapshotBuilder } from './services/payroll-snapshot.builder';
 import { PayrollCalculationService } from './services/payroll-calculation.service';
+import { PayrollProcessingService } from './services/payroll-processing.service';
 import { PayrollCalculationsController } from './payroll-calculations.controller';
+import { PayrollPeriodProcessingController } from './controllers/payroll-period-processing.controller';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: PayrollRecord.name, schema: PayrollRecordSchema },
+      {
+        name: PayrollProcessingFailure.name,
+        schema: PayrollProcessingFailureSchema,
+      },
       { name: Employee.name, schema: EmployeeSchema },
       { name: SalaryComponent.name, schema: SalaryComponentSchema },
     ]),
-    PayrollPeriodsModule,
+    forwardRef(() => PayrollPeriodsModule),
     EmployeeSalariesModule,
     SalaryStructuresModule,
     PayrollConfigurationModule,
     AuditLogsModule,
+    AuthorizationModule,
   ],
-  controllers: [PayrollCalculationsController],
+  controllers: [
+    PayrollCalculationsController,
+    PayrollPeriodProcessingController,
+  ],
   providers: [
     PayrollRecordRepository,
+    PayrollProcessingFailureRepository,
     PayrollInputResolver,
     SalaryComponentResolver,
     ComponentDependencyResolver,
@@ -49,7 +66,13 @@ import { PayrollCalculationsController } from './payroll-calculations.controller
     PayrollTotalsCalculator,
     PayrollSnapshotBuilder,
     PayrollCalculationService,
+    PayrollProcessingService,
   ],
-  exports: [PayrollRecordRepository, PayrollCalculationService],
+  exports: [
+    PayrollRecordRepository,
+    PayrollProcessingFailureRepository,
+    PayrollCalculationService,
+    PayrollProcessingService,
+  ],
 })
 export class PayrollCalculationsModule {}

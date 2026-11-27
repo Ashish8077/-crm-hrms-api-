@@ -9,6 +9,7 @@ import {
 import {
   PayrollPeriodSortableField,
   PayrollPeriodStatus,
+  PayrollProcessingStatus,
 } from '../constants/payroll-period.constant';
 import { PayrollFrequency } from '../../payroll-configuration/constants/payroll-configuration.constant';
 import { PaginatedResult } from '../../../common/pagination/types/pagination.types';
@@ -266,5 +267,270 @@ export class PayrollPeriodRepository {
     );
 
     return query.lean<PayrollPeriodLean>().exec();
+  }
+
+  /**
+   * Atomically acquires the per-period payroll processing lock if the period is in DRAFT or PROCESSING
+   * and no live worker holds an active non-stale lock. Recovering stale locks safely restores stuck runs.
+   */
+  async acquireProcessingLock(
+    params: {
+      periodId: Types.ObjectId;
+      runId: string;
+      actorId: Types.ObjectId;
+      now: Date;
+      staleCutoff: Date;
+    },
+    session?: ClientSession,
+  ): Promise<PayrollPeriodLean | null> {
+    const { periodId, runId, actorId, now, staleCutoff } = params;
+
+    return this.periodModel
+      .findOneAndUpdate(
+        {
+          _id: periodId,
+          deletedAt: null,
+          status: {
+            $in: [PayrollPeriodStatus.DRAFT, PayrollPeriodStatus.PROCESSING],
+          },
+          $or: [
+            { 'processing.processingStatus': { $exists: false } },
+            {
+              'processing.processingStatus': {
+                $ne: PayrollProcessingStatus.PROCESSING,
+              },
+            },
+            { 'processing.heartbeatAt': { $lt: staleCutoff } },
+            {
+              'processing.heartbeatAt': null,
+              'processing.lastAttemptAt': { $lt: staleCutoff },
+            },
+          ],
+        },
+        [
+          {
+            $set: {
+              status: PayrollPeriodStatus.PROCESSING,
+              updatedBy: actorId,
+              __v: { $add: [{ $ifNull: ['$__v', 0] }, 1] },
+              processing: {
+                processingStatus: PayrollProcessingStatus.PROCESSING,
+                totalEligibleEmployees: {
+                  $ifNull: ['$processing.totalEligibleEmployees', 0],
+                },
+                processedEmployees: 0,
+                successfulEmployees: {
+                  $ifNull: ['$processing.successfulEmployees', 0],
+                },
+                failedEmployees: {
+                  $ifNull: ['$processing.failedEmployees', 0],
+                },
+                skippedUpToDateEmployees: 0,
+                recalculatedEmployees: 0,
+                processingAttempts: {
+                  $add: [{ $ifNull: ['$processing.processingAttempts', 0] }, 1],
+                },
+                startedAt: {
+                  $ifNull: ['$processing.startedAt', now],
+                },
+                completedAt: null,
+                lastAttemptAt: now,
+                heartbeatAt: now,
+                activeRunId: runId,
+                lastErrorSummary: null,
+              },
+            },
+          },
+        ],
+        { returnDocument: 'after', updatePipeline: true, session },
+      )
+      .lean<PayrollPeriodLean>()
+      .exec();
+  }
+
+  async verifyActiveRunOwnership(
+    periodId: Types.ObjectId,
+    runId: string,
+  ): Promise<boolean> {
+    const count = await this.periodModel
+      .countDocuments({
+        _id: periodId,
+        deletedAt: null,
+        status: { $ne: PayrollPeriodStatus.FINALIZED },
+        'processing.activeRunId': runId,
+      })
+      .exec();
+    return count > 0;
+  }
+
+  async verifyPeriodMutableAndBumpVersion(
+    periodId: Types.ObjectId,
+    allowedStatuses: ReadonlyArray<PayrollPeriodStatus>,
+    session?: ClientSession,
+  ): Promise<boolean> {
+    const updated = await this.periodModel
+      .updateOne(
+        {
+          _id: periodId,
+          deletedAt: null,
+          status: { $in: allowedStatuses },
+        },
+        {
+          $inc: { __v: 1 },
+        },
+        { session },
+      )
+      .exec();
+    return updated.matchedCount > 0;
+  }
+
+  async touchActiveRunLock(
+    params: {
+      periodId: Types.ObjectId;
+      runId: string;
+      now: Date;
+    },
+    session?: ClientSession,
+  ): Promise<boolean> {
+    const updated = await this.periodModel
+      .updateOne(
+        {
+          _id: params.periodId,
+          deletedAt: null,
+          status: {
+            $in: [PayrollPeriodStatus.DRAFT, PayrollPeriodStatus.PROCESSING],
+          },
+          'processing.activeRunId': params.runId,
+        },
+        {
+          $set: {
+            'processing.heartbeatAt': params.now,
+          },
+          $inc: { __v: 1 },
+        },
+        { session },
+      )
+      .exec();
+    return updated.matchedCount > 0;
+  }
+
+  async updateProcessingProgress(
+    params: {
+      periodId: Types.ObjectId;
+      runId: string;
+      totalEligibleEmployees: number;
+      processedEmployees: number;
+      successfulEmployees: number;
+      failedEmployees: number;
+      skippedUpToDateEmployees: number;
+      recalculatedEmployees: number;
+      heartbeatAt: Date;
+    },
+    session?: ClientSession,
+  ): Promise<boolean> {
+    const {
+      periodId,
+      runId,
+      totalEligibleEmployees,
+      processedEmployees,
+      successfulEmployees,
+      failedEmployees,
+      skippedUpToDateEmployees,
+      recalculatedEmployees,
+      heartbeatAt,
+    } = params;
+
+    const updated = await this.periodModel
+      .updateOne(
+        {
+          _id: periodId,
+          deletedAt: null,
+          status: {
+            $in: [PayrollPeriodStatus.DRAFT, PayrollPeriodStatus.PROCESSING],
+          },
+          'processing.activeRunId': runId,
+        },
+        {
+          $set: {
+            'processing.totalEligibleEmployees': totalEligibleEmployees,
+            'processing.processedEmployees': processedEmployees,
+            'processing.successfulEmployees': successfulEmployees,
+            'processing.failedEmployees': failedEmployees,
+            'processing.skippedUpToDateEmployees': skippedUpToDateEmployees,
+            'processing.recalculatedEmployees': recalculatedEmployees,
+            'processing.heartbeatAt': heartbeatAt,
+          },
+          $inc: { __v: 1 },
+        },
+        { session },
+      )
+      .exec();
+
+    return updated.matchedCount > 0;
+  }
+
+  async completeProcessingRun(
+    params: {
+      periodId: Types.ObjectId;
+      runId: string;
+      processingStatus:
+        | PayrollProcessingStatus.COMPLETED
+        | PayrollProcessingStatus.COMPLETED_WITH_ERRORS
+        | PayrollProcessingStatus.FAILED;
+      totalEligibleEmployees: number;
+      processedEmployees: number;
+      successfulEmployees: number;
+      failedEmployees: number;
+      skippedUpToDateEmployees: number;
+      recalculatedEmployees: number;
+      completedAt: Date;
+      lastErrorSummary: string | null;
+    },
+    session?: ClientSession,
+  ): Promise<PayrollPeriodLean | null> {
+    const {
+      periodId,
+      runId,
+      processingStatus,
+      totalEligibleEmployees,
+      processedEmployees,
+      successfulEmployees,
+      failedEmployees,
+      skippedUpToDateEmployees,
+      recalculatedEmployees,
+      completedAt,
+      lastErrorSummary,
+    } = params;
+
+    return this.periodModel
+      .findOneAndUpdate(
+        {
+          _id: periodId,
+          deletedAt: null,
+          status: {
+            $in: [PayrollPeriodStatus.DRAFT, PayrollPeriodStatus.PROCESSING],
+          },
+          'processing.activeRunId': runId,
+        },
+        {
+          $set: {
+            'processing.processingStatus': processingStatus,
+            'processing.totalEligibleEmployees': totalEligibleEmployees,
+            'processing.processedEmployees': processedEmployees,
+            'processing.successfulEmployees': successfulEmployees,
+            'processing.failedEmployees': failedEmployees,
+            'processing.skippedUpToDateEmployees': skippedUpToDateEmployees,
+            'processing.recalculatedEmployees': recalculatedEmployees,
+            'processing.completedAt': completedAt,
+            'processing.heartbeatAt': completedAt,
+            'processing.activeRunId': null,
+            'processing.lastErrorSummary': lastErrorSummary,
+          },
+          $inc: { __v: 1 },
+        },
+        { returnDocument: 'after', session },
+      )
+      .lean<PayrollPeriodLean>()
+      .exec();
   }
 }

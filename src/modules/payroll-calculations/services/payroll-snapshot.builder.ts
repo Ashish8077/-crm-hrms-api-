@@ -26,8 +26,16 @@ export class PayrollSnapshotBuilder {
     proration: ProrationResult;
     totals: PayrollTotalsResult;
     calculatedAt: Date;
+    inputFingerprint?: string | null;
   }): PayrollCalculationSnapshot {
-    const { inputs, executionOrder, proration, totals, calculatedAt } = params;
+    const {
+      inputs,
+      executionOrder,
+      proration,
+      totals,
+      calculatedAt,
+      inputFingerprint,
+    } = params;
     const {
       period,
       employee,
@@ -61,6 +69,7 @@ export class PayrollSnapshotBuilder {
 
     return {
       engineVersion: PAYROLL_CALCULATION_ENGINE_VERSION,
+      inputFingerprint: inputFingerprint ?? null,
       calculatedAt,
       payrollPeriodId: period._id.toString(),
       periodCode: period.periodCode,

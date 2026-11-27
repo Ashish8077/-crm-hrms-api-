@@ -5,7 +5,10 @@ import { PayrollPeriodsController } from './payroll-periods.controller';
 import { PayrollPeriodsService } from './services/payroll-periods.service';
 import { PayrollAttendanceSummaryService } from './services/payroll-attendance-summary.service';
 import { PayrollPeriodResponse } from './mappers/payroll-period.mapper';
-import { PayrollPeriodStatus } from './constants/payroll-period.constant';
+import {
+  PayrollPeriodStatus,
+  PayrollProcessingStatus,
+} from './constants/payroll-period.constant';
 import { PayrollFrequency } from '../payroll-configuration/constants/payroll-configuration.constant';
 import type { AuthenticatedRequest } from '../auth/types/auth-request.type';
 
@@ -41,6 +44,20 @@ describe('PayrollPeriodsController', () => {
     month: 4,
     year: 2026,
     status: PayrollPeriodStatus.DRAFT,
+    processing: {
+      processingStatus: PayrollProcessingStatus.NOT_STARTED,
+      totalEligibleEmployees: 0,
+      processedEmployees: 0,
+      successfulEmployees: 0,
+      failedEmployees: 0,
+      skippedUpToDateEmployees: 0,
+      recalculatedEmployees: 0,
+      processingAttempts: 0,
+      startedAt: null,
+      completedAt: null,
+      lastAttemptAt: null,
+      lastErrorSummary: null,
+    },
     notes: 'Regular cycle',
     createdBy: actorId.toHexString(),
     updatedBy: actorId.toHexString(),

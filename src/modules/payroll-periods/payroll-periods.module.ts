@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
   PayrollPeriod,
@@ -17,6 +17,7 @@ import { BranchesModule } from '../branches/branches.module';
 import { AttendanceModule } from '../attendance/attendance.module';
 import { LeavesModule } from '../leaves/leaves.module';
 import { WorkSchedulesModule } from '../work-schedules/work-schedules.module';
+import { PayrollCalculationsModule } from '../payroll-calculations/payroll-calculations.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { WorkSchedulesModule } from '../work-schedules/work-schedules.module';
     AttendanceModule,
     LeavesModule,
     WorkSchedulesModule,
+    forwardRef(() => PayrollCalculationsModule),
   ],
   controllers: [PayrollPeriodsController],
   providers: [

@@ -16,7 +16,7 @@ export interface CreateAuditLogParams {
   ipAddress: string | null;
   userAgent: string | null;
   email?: string | null;
-  reason?: string | null;
+  reason?: AuditLogFailureReason | null;
 }
 
 @Injectable()
@@ -38,6 +38,24 @@ export class AuditLogsService {
     } catch (error) {
       this.logger.error(
         `Failed to create audit log: ${(error as Error).message}`,
+        (error as Error).stack,
+      );
+      if (session) {
+        throw error;
+      }
+    }
+  }
+
+  async createAuditLogsBulk(
+    items: CreateAuditLogParams[],
+    session?: ClientSession,
+  ): Promise<void> {
+    if (items.length === 0) return;
+    try {
+      await this.auditLogRepository.createMany(items, session);
+    } catch (error) {
+      this.logger.error(
+        `Failed to create audit logs batch: ${(error as Error).message}`,
         (error as Error).stack,
       );
       if (session) {

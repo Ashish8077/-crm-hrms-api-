@@ -65,6 +65,7 @@ describe('PayrollPeriodRepository', () => {
       findById: jest.fn(),
       find: jest.fn(),
       findOneAndUpdate: jest.fn(),
+      updateOne: jest.fn(),
       countDocuments: jest.fn(),
     });
 
@@ -253,6 +254,64 @@ describe('PayrollPeriodRepository', () => {
         expect.objectContaining({ returnDocument: 'after' }),
       );
       expect(result?.status).toBe(PayrollPeriodStatus.PROCESSING);
+    });
+  });
+
+  describe('concurrency & mutability guards', () => {
+    it('verifyPeriodMutableAndBumpVersion checks editable period statuses and increments __v inside session', async () => {
+      (mockModel.updateOne as jest.Mock).mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+      });
+      const mockSession = {} as unknown as ClientSession;
+
+      const ok = await repository.verifyPeriodMutableAndBumpVersion(
+        mockPeriodId,
+        [PayrollPeriodStatus.DRAFT, PayrollPeriodStatus.PROCESSING],
+        mockSession,
+      );
+
+      expect(ok).toBe(true);
+      expect(mockModel.updateOne).toHaveBeenCalledWith(
+        {
+          _id: mockPeriodId,
+          deletedAt: null,
+          status: {
+            $in: [PayrollPeriodStatus.DRAFT, PayrollPeriodStatus.PROCESSING],
+          },
+        },
+        { $inc: { __v: 1 } },
+        { session: mockSession },
+      );
+    });
+
+    it('touchActiveRunLock guards on DRAFT/PROCESSING and increments __v inside session', async () => {
+      (mockModel.updateOne as jest.Mock).mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ matchedCount: 0 }),
+      });
+      const mockSession = {} as unknown as ClientSession;
+      const now = new Date();
+
+      const ok = await repository.touchActiveRunLock(
+        { periodId: mockPeriodId, runId: 'run-1', now },
+        mockSession,
+      );
+
+      expect(ok).toBe(false);
+      expect(mockModel.updateOne).toHaveBeenCalledWith(
+        {
+          _id: mockPeriodId,
+          deletedAt: null,
+          status: {
+            $in: [PayrollPeriodStatus.DRAFT, PayrollPeriodStatus.PROCESSING],
+          },
+          'processing.activeRunId': 'run-1',
+        },
+        {
+          $set: { 'processing.heartbeatAt': now },
+          $inc: { __v: 1 },
+        },
+        { session: mockSession },
+      );
     });
   });
 });

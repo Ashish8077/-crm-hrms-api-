@@ -84,6 +84,9 @@ export class PayrollCalculationSnapshot {
   @Prop({ type: String, required: true })
   engineVersion!: string;
 
+  @Prop({ type: String, default: null })
+  inputFingerprint?: string | null;
+
   @Prop({ type: Date, required: true })
   calculatedAt!: Date;
 
@@ -386,6 +389,15 @@ export class PayrollRecord {
 
   @Prop({ type: Number, required: true, default: 1, min: 1 })
   calculationVersion!: number;
+
+  @Prop({ type: Date, default: null })
+  invalidatedAt?: Date | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  invalidatedBy?: Types.ObjectId | null;
+
+  @Prop({ type: String, default: null, trim: true, maxlength: 500 })
+  invalidationReason?: string | null;
 
   @Prop({ type: Date, default: null, index: true })
   deletedAt?: Date | null;

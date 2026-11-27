@@ -5,6 +5,14 @@ export enum PayrollPeriodStatus {
   FINALIZED = 'FINALIZED',
 }
 
+export enum PayrollProcessingStatus {
+  NOT_STARTED = 'NOT_STARTED',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  COMPLETED_WITH_ERRORS = 'COMPLETED_WITH_ERRORS',
+  FAILED = 'FAILED',
+}
+
 export const PAYROLL_PERIOD_CONSTANTS = {
   NAME_MIN_LENGTH: 2,
   NAME_MAX_LENGTH: 100,

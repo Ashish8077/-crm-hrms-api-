@@ -8,6 +8,7 @@ import { PayrollPeriodsController } from './payroll-periods.controller';
 import { PayrollPeriodsService } from './services/payroll-periods.service';
 import { PayrollAttendanceSummaryService } from './services/payroll-attendance-summary.service';
 import { PayrollLeaveAttendanceResolverService } from './services/payroll-leave-attendance-resolver.service';
+import { PayrollProcessingService } from '../payroll-calculations/services/payroll-processing.service';
 import { EmployeeRepository } from '../employees/repositories/employee.repository';
 import {
   PayrollPeriodPaginationOptions,
@@ -384,6 +385,14 @@ describe('Payroll Periods Module - Complete Integration Test Suite', () => {
           provide: PayrollLeaveAttendanceResolverService,
           useValue: {
             resolveBatch: jest.fn().mockResolvedValue(new Map()),
+          },
+        },
+        {
+          provide: PayrollProcessingService,
+          useValue: {
+            verifyPeriodCompletionReadiness: jest
+              .fn()
+              .mockResolvedValue(undefined),
           },
         },
         Reflector,

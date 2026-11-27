@@ -7,6 +7,7 @@ import { PayrollPeriodStatus } from '../../payroll-periods/constants/payroll-per
 import {
   PayrollLeaveAttendanceResolution,
   PayrollLeaveAttendanceResolverService,
+  PreloadedPeriodCalendarContext,
 } from '../../payroll-periods/services/payroll-leave-attendance-resolver.service';
 import { roundPayrollDays } from '../../payroll-periods/utils/payroll-calendar.util';
 import {
@@ -69,8 +70,30 @@ export interface ResolvedPayrollInputs {
 export interface BatchPayrollInputFailure {
   employeeId: string;
   employeeCode: string;
+  employeeName: string;
   errorCode: string;
   message: string;
+}
+
+export interface EligiblePeriodTarget {
+  employee: EmployeeLean;
+  tenure: Extract<PayrollPeriodEligibilityResult, { eligible: true }>;
+}
+
+export interface PeriodBatchProcessingContext {
+  period: PayrollPeriodLean;
+  periodStartStr: string;
+  periodEndStr: string;
+  calendarDays: number;
+  configuration: ResolvedPayrollConfiguration;
+  isPayrollProcessingEnabled: boolean;
+  eligibleTargets: EligiblePeriodTarget[];
+  ineligibleEmployees: Array<{
+    employeeId: string;
+    employeeCode: string;
+    reason: string;
+  }>;
+  calendarContext: PreloadedPeriodCalendarContext;
 }
 
 export interface BatchPayrollInputResolutionResult {
@@ -177,22 +200,28 @@ export class PayrollInputResolver {
   }
 
   /**
-   * Batch-resolves authoritative payroll calculation inputs (including leave & attendance LOP)
-   * for up to 1,000+ employees in a constant number of bulk database queries (zero N+1).
+   * Prepares period validation, configuration, eligible employee targets, and preloaded branch/holiday/weekly-off
+   * calendar context ONCE per batch run or completion check so subsequent chunks avoid duplicate global queries.
    */
-  async resolveBatchForPeriod(
+  async preparePeriodBatchContext(
     payrollPeriodId: Types.ObjectId,
-    employeeIds?: Types.ObjectId[],
-  ): Promise<BatchPayrollInputResolutionResult> {
+    options?: {
+      employeeIds?: Types.ObjectId[];
+      allowCompletedStatus?: boolean;
+    },
+  ): Promise<PeriodBatchProcessingContext> {
     const employeeFilter: Record<string, unknown> = { deletedAt: null };
-    if (employeeIds && employeeIds.length > 0) {
-      employeeFilter._id = { $in: employeeIds };
+    if (options?.employeeIds && options.employeeIds.length > 0) {
+      employeeFilter._id = { $in: options.employeeIds };
     }
 
     const [period, employees, settingsDoc, ruleDoc] = await Promise.all([
       this.payrollPeriodRepository.findById(payrollPeriodId),
       this.employeeModel
         .find(employeeFilter)
+        .select(
+          '_id employeeCode firstName lastName employmentStatus dateOfJoining lastWorkingDate terminationDate branchId',
+        )
         .sort({ employeeCode: 1, _id: 1 })
         .lean<EmployeeLean[]>()
         .exec(),
@@ -205,63 +234,85 @@ export class PayrollInputResolver {
       calendarDays,
       periodStartStr,
       periodEndStr,
-    } = this.validatePeriod(payrollPeriodId, period);
+    } = this.validatePeriod(payrollPeriodId, period, {
+      allowCompletedStatus: options?.allowCompletedStatus,
+    });
     const configuration = this.buildConfigurationSnapshot(settingsDoc, ruleDoc);
+    const isPayrollProcessingEnabled =
+      settingsDoc?.isPayrollProcessingEnabled !== false;
 
-    if (employees.length === 0) {
-      return {
-        period: validPeriod,
-        calendarDays,
-        configuration,
-        resolved: [],
-        failures: [],
-      };
-    }
-
-    const failures: BatchPayrollInputFailure[] = [];
-    const eligibleTargets: Array<{
-      employee: EmployeeLean;
-      tenure: Extract<PayrollPeriodEligibilityResult, { eligible: true }>;
+    const eligibleTargets: EligiblePeriodTarget[] = [];
+    const ineligibleEmployees: Array<{
+      employeeId: string;
+      employeeCode: string;
+      reason: string;
     }> = [];
+    const branchIdMap = new Map<string, Types.ObjectId>();
 
     for (const emp of employees) {
-      try {
-        const decision = this.resolveEligibleTenureDecision(
-          emp,
-          validPeriod,
-          periodStartStr,
-          periodEndStr,
-        );
+      const decision = evaluateEmployeePayrollPeriodEligibility(
+        emp,
+        periodStartStr,
+        periodEndStr,
+      );
+      if (decision.eligible) {
         eligibleTargets.push({ employee: emp, tenure: decision });
-      } catch (error) {
-        failures.push({
+        if (emp.branchId) {
+          branchIdMap.set(emp.branchId.toHexString(), emp.branchId);
+        }
+      } else {
+        ineligibleEmployees.push({
           employeeId: emp._id.toHexString(),
           employeeCode: emp.employeeCode,
-          errorCode:
-            error instanceof AppError ? error.code : ErrorCode.VALIDATION_ERROR,
-          message:
-            error instanceof Error ? error.message : 'Employee is ineligible',
+          reason: decision.reason,
         });
       }
     }
 
-    if (eligibleTargets.length === 0) {
-      return {
-        period: validPeriod,
-        calendarDays,
-        configuration,
-        resolved: [],
-        failures,
-      };
-    }
-
-    const eligibleIds = eligibleTargets.map((t) => t.employee._id);
-    const [allAssignments, leaveAttendanceByEmp] = await Promise.all([
-      this.employeeSalaryRepository.findAllByEmployeeIds(eligibleIds),
-      this.payrollLeaveAttendanceResolver.resolveBatch({
+    const calendarContext =
+      await this.payrollLeaveAttendanceResolver.preloadCalendarContext({
         periodStartStr,
         periodEndStr,
-        targets: eligibleTargets,
+        branchIds: Array.from(branchIdMap.values()),
+      });
+
+    return {
+      period: validPeriod,
+      periodStartStr,
+      periodEndStr,
+      calendarDays,
+      configuration,
+      isPayrollProcessingEnabled,
+      eligibleTargets,
+      ineligibleEmployees,
+      calendarContext,
+    };
+  }
+
+  /**
+   * Resolves inputs for a bounded chunk of pre-validated eligible targets using preloaded calendar/config context
+   * and an optional shared salary structure cache across chunks.
+   */
+  async resolveChunkWithContext(
+    chunkTargets: EligiblePeriodTarget[],
+    context: PeriodBatchProcessingContext,
+    structureCache: Map<string, SalaryStructureLean> = new Map(),
+  ): Promise<{
+    resolved: ResolvedPayrollInputs[];
+    failures: BatchPayrollInputFailure[];
+  }> {
+    if (chunkTargets.length === 0) {
+      return { resolved: [], failures: [] };
+    }
+
+    const chunkIds = chunkTargets.map((t) => t.employee._id);
+    const [allAssignments, leaveAttendanceByEmp] = await Promise.all([
+      this.employeeSalaryRepository.findAllByEmployeeIds(chunkIds),
+      this.payrollLeaveAttendanceResolver.resolveBatch({
+        periodStartStr: context.periodStartStr,
+        periodEndStr: context.periodEndStr,
+        targets: chunkTargets,
+        preloadedCalendar: context.calendarContext,
       }),
     ]);
 
@@ -276,20 +327,24 @@ export class PayrollInputResolver {
       }
     }
 
+    const failures: BatchPayrollInputFailure[] = [];
     const matchedAssignments: Array<{
       employee: EmployeeLean;
       tenure: Extract<PayrollPeriodEligibilityResult, { eligible: true }>;
       assignment: EmployeeSalaryLean;
       leaveAndAttendance: PayrollLeaveAttendanceResolution;
     }> = [];
-    const structureIdMap = new Map<string, Types.ObjectId>();
+    const uncachedStructureIds = new Map<string, Types.ObjectId>();
 
-    for (const target of eligibleTargets) {
+    for (const target of chunkTargets) {
       const empKey = target.employee._id.toHexString();
+      const empName =
+        `${target.employee.firstName ?? ''} ${target.employee.lastName ?? ''}`.trim() ||
+        target.employee.employeeCode;
       try {
         const assignment = this.resolveEligibleSalaryAssignment(
           target.employee.employeeCode,
-          validPeriod,
+          context.period,
           target.tenure.effectiveTenureStart,
           target.tenure.effectiveTenureEnd,
           assignmentsByEmp.get(empKey) ?? [],
@@ -302,10 +357,10 @@ export class PayrollInputResolver {
             HttpStatus.INTERNAL_SERVER_ERROR,
           );
         }
-        structureIdMap.set(
-          assignment.salaryStructureId.toHexString(),
-          assignment.salaryStructureId,
-        );
+        const structKey = assignment.salaryStructureId.toHexString();
+        if (!structureCache.has(structKey)) {
+          uncachedStructureIds.set(structKey, assignment.salaryStructureId);
+        }
         matchedAssignments.push({
           employee: target.employee,
           tenure: target.tenure,
@@ -316,6 +371,7 @@ export class PayrollInputResolver {
         failures.push({
           employeeId: empKey,
           employeeCode: target.employee.employeeCode,
+          employeeName: empName,
           errorCode:
             error instanceof AppError ? error.code : ErrorCode.VALIDATION_ERROR,
           message:
@@ -326,40 +382,46 @@ export class PayrollInputResolver {
       }
     }
 
-    const uniqueStructureIds = Array.from(structureIdMap.values());
-    const structures =
-      await this.salaryStructureRepository.findByIds(uniqueStructureIds);
-    const structureMap = new Map<string, SalaryStructureLean>(
-      structures.map((s) => [s._id.toHexString(), s]),
-    );
+    if (uncachedStructureIds.size > 0) {
+      const fetchedStructures = await this.salaryStructureRepository.findByIds(
+        Array.from(uncachedStructureIds.values()),
+      );
+      for (const s of fetchedStructures) {
+        structureCache.set(s._id.toHexString(), s);
+      }
+    }
 
     const resolved: ResolvedPayrollInputs[] = [];
     for (const item of matchedAssignments) {
       const structure =
-        structureMap.get(item.assignment.salaryStructureId.toHexString()) ??
+        structureCache.get(item.assignment.salaryStructureId.toHexString()) ??
         null;
+      const empName =
+        `${item.employee.firstName ?? ''} ${item.employee.lastName ?? ''}`.trim() ||
+        item.employee.employeeCode;
       try {
         this.validateSalaryStructure(structure, item.assignment);
         const payableDays = this.computeAuthoritativePayableDays({
-          calendarDays,
+          calendarDays: context.calendarDays,
           tenureCalendarDays: item.tenure.eligibleDays,
           leaveAndAttendance: item.leaveAndAttendance,
-          configuration,
+          configuration: context.configuration,
         });
         resolved.push({
-          period: validPeriod,
+          period: context.period,
           employee: item.employee,
           salaryAssignment: item.assignment,
           salaryStructure: structure!,
-          configuration,
+          configuration: context.configuration,
           leaveAndAttendance: item.leaveAndAttendance,
-          calendarDays,
+          calendarDays: context.calendarDays,
           payableDays,
         });
       } catch (error) {
         failures.push({
           employeeId: item.employee._id.toHexString(),
           employeeCode: item.employee.employeeCode,
+          employeeName: empName,
           errorCode:
             error instanceof AppError ? error.code : ErrorCode.VALIDATION_ERROR,
           message:
@@ -370,18 +432,61 @@ export class PayrollInputResolver {
       }
     }
 
+    return { resolved, failures };
+  }
+
+  /**
+   * Batch-resolves authoritative payroll calculation inputs (including leave & attendance LOP)
+   * for up to 1,000+ employees in a constant number of bulk database queries (zero N+1).
+   */
+  async resolveBatchForPeriod(
+    payrollPeriodId: Types.ObjectId,
+    employeeIds?: Types.ObjectId[],
+  ): Promise<BatchPayrollInputResolutionResult> {
+    const context = await this.preparePeriodBatchContext(payrollPeriodId, {
+      employeeIds,
+    });
+
+    const failures: BatchPayrollInputFailure[] =
+      context.ineligibleEmployees.map((e) => ({
+        employeeId: e.employeeId,
+        employeeCode: e.employeeCode,
+        employeeName: e.employeeCode,
+        errorCode:
+          e.reason === 'SOFT_DELETED'
+            ? ErrorCode.RESOURCE_NOT_FOUND
+            : ErrorCode.VALIDATION_ERROR,
+        message: `Employee '${e.employeeCode}' is ineligible (${e.reason}).`,
+      }));
+
+    if (context.eligibleTargets.length === 0) {
+      return {
+        period: context.period,
+        calendarDays: context.calendarDays,
+        configuration: context.configuration,
+        resolved: [],
+        failures,
+      };
+    }
+
+    const chunkResult = await this.resolveChunkWithContext(
+      context.eligibleTargets,
+      context,
+    );
+
     return {
-      period: validPeriod,
-      calendarDays,
-      configuration,
-      resolved,
-      failures,
+      period: context.period,
+      calendarDays: context.calendarDays,
+      configuration: context.configuration,
+      resolved: chunkResult.resolved,
+      failures: [...failures, ...chunkResult.failures],
     };
   }
 
   private validatePeriod(
     payrollPeriodId: Types.ObjectId,
     period: PayrollPeriodLean | null,
+    options?: { allowCompletedStatus?: boolean },
   ): {
     period: PayrollPeriodLean;
     calendarDays: number;
@@ -404,7 +509,11 @@ export class PayrollInputResolver {
       );
     }
 
-    if (!ALLOWED_CALCULATION_PERIOD_STATUSES.includes(period.status)) {
+    const allowedStatuses = options?.allowCompletedStatus
+      ? [...ALLOWED_CALCULATION_PERIOD_STATUSES, PayrollPeriodStatus.COMPLETED]
+      : ALLOWED_CALCULATION_PERIOD_STATUSES;
+
+    if (!allowedStatuses.includes(period.status)) {
       throw new AppError(
         ErrorCode.CONCURRENT_MODIFICATION,
         `Payroll period '${period.periodCode}' is in '${period.status}' status. Allowed statuses for calculation: ${ALLOWED_CALCULATION_PERIOD_STATUSES.join(', ')}.`,

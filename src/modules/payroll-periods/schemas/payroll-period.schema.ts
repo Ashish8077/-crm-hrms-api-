@@ -4,7 +4,62 @@ import { PayrollFrequency } from '../../payroll-configuration/constants/payroll-
 import {
   PAYROLL_PERIOD_CONSTANTS,
   PayrollPeriodStatus,
+  PayrollProcessingStatus,
 } from '../constants/payroll-period.constant';
+
+@Schema({ _id: false })
+export class PayrollPeriodProcessingState {
+  @Prop({
+    type: String,
+    required: true,
+    enum: Object.values(PayrollProcessingStatus),
+    default: PayrollProcessingStatus.NOT_STARTED,
+  })
+  processingStatus!: PayrollProcessingStatus;
+
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  totalEligibleEmployees!: number;
+
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  processedEmployees!: number;
+
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  successfulEmployees!: number;
+
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  failedEmployees!: number;
+
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  skippedUpToDateEmployees!: number;
+
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  recalculatedEmployees!: number;
+
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  processingAttempts!: number;
+
+  @Prop({ type: Date, default: null })
+  startedAt?: Date | null;
+
+  @Prop({ type: Date, default: null })
+  completedAt?: Date | null;
+
+  @Prop({ type: Date, default: null })
+  lastAttemptAt?: Date | null;
+
+  @Prop({ type: Date, default: null })
+  heartbeatAt?: Date | null;
+
+  @Prop({ type: String, default: null })
+  activeRunId?: string | null;
+
+  @Prop({ type: String, default: null })
+  lastErrorSummary?: string | null;
+}
+
+export const PayrollPeriodProcessingStateSchema = SchemaFactory.createForClass(
+  PayrollPeriodProcessingState,
+);
 
 export type PayrollPeriodDocument = HydratedDocument<PayrollPeriod>;
 
@@ -99,6 +154,27 @@ export class PayrollPeriod {
     default: null,
   })
   notes?: string | null;
+
+  @Prop({
+    type: PayrollPeriodProcessingStateSchema,
+    default: () => ({
+      processingStatus: PayrollProcessingStatus.NOT_STARTED,
+      totalEligibleEmployees: 0,
+      processedEmployees: 0,
+      successfulEmployees: 0,
+      failedEmployees: 0,
+      skippedUpToDateEmployees: 0,
+      recalculatedEmployees: 0,
+      processingAttempts: 0,
+      startedAt: null,
+      completedAt: null,
+      lastAttemptAt: null,
+      heartbeatAt: null,
+      activeRunId: null,
+      lastErrorSummary: null,
+    }),
+  })
+  processing?: PayrollPeriodProcessingState;
 
   @Prop({
     type: Date,

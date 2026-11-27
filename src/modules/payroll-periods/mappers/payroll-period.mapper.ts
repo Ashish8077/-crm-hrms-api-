@@ -1,6 +1,24 @@
 import { PayrollFrequency } from '../../payroll-configuration/constants/payroll-configuration.constant';
-import { PayrollPeriodStatus } from '../constants/payroll-period.constant';
+import {
+  PayrollPeriodStatus,
+  PayrollProcessingStatus,
+} from '../constants/payroll-period.constant';
 import { PayrollPeriodLean } from '../schemas/payroll-period.schema';
+
+export interface PayrollPeriodProcessingSummaryResponse {
+  processingStatus: PayrollProcessingStatus;
+  totalEligibleEmployees: number;
+  processedEmployees: number;
+  successfulEmployees: number;
+  failedEmployees: number;
+  skippedUpToDateEmployees: number;
+  recalculatedEmployees: number;
+  processingAttempts: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  lastAttemptAt: string | null;
+  lastErrorSummary: string | null;
+}
 
 export interface PayrollPeriodResponse {
   id: string;
@@ -13,6 +31,7 @@ export interface PayrollPeriodResponse {
   month: number;
   year: number;
   status: PayrollPeriodStatus;
+  processing: PayrollPeriodProcessingSummaryResponse;
   notes: string | null;
   createdBy: string | null;
   updatedBy: string | null;
@@ -23,6 +42,7 @@ export interface PayrollPeriodResponse {
 
 export class PayrollPeriodMapper {
   static toResponse(doc: PayrollPeriodLean): PayrollPeriodResponse {
+    const proc = doc.processing;
     return {
       id: doc._id.toString(),
       periodName: doc.periodName,
@@ -43,6 +63,36 @@ export class PayrollPeriodMapper {
       month: doc.month,
       year: doc.year,
       status: doc.status,
+      processing: {
+        processingStatus:
+          proc?.processingStatus ?? PayrollProcessingStatus.NOT_STARTED,
+        totalEligibleEmployees: proc?.totalEligibleEmployees ?? 0,
+        processedEmployees: proc?.processedEmployees ?? 0,
+        successfulEmployees: proc?.successfulEmployees ?? 0,
+        failedEmployees: proc?.failedEmployees ?? 0,
+        skippedUpToDateEmployees: proc?.skippedUpToDateEmployees ?? 0,
+        recalculatedEmployees: proc?.recalculatedEmployees ?? 0,
+        processingAttempts: proc?.processingAttempts ?? 0,
+        startedAt:
+          proc?.startedAt instanceof Date
+            ? proc.startedAt.toISOString()
+            : proc?.startedAt
+              ? String(proc.startedAt)
+              : null,
+        completedAt:
+          proc?.completedAt instanceof Date
+            ? proc.completedAt.toISOString()
+            : proc?.completedAt
+              ? String(proc.completedAt)
+              : null,
+        lastAttemptAt:
+          proc?.lastAttemptAt instanceof Date
+            ? proc.lastAttemptAt.toISOString()
+            : proc?.lastAttemptAt
+              ? String(proc.lastAttemptAt)
+              : null,
+        lastErrorSummary: proc?.lastErrorSummary ?? null,
+      },
       notes: doc.notes ?? null,
       createdBy: doc.createdBy ? doc.createdBy.toString() : null,
       updatedBy: doc.updatedBy ? doc.updatedBy.toString() : null,

@@ -29,6 +29,7 @@ import { PayrollPeriodsController } from './payroll-periods.controller';
 import { PayrollPeriodRepository } from './repositories/payroll-period.repository';
 import { PayrollAttendanceSummaryService } from './services/payroll-attendance-summary.service';
 import { PayrollLeaveAttendanceResolverService } from './services/payroll-leave-attendance-resolver.service';
+import { PayrollProcessingService } from '../payroll-calculations/services/payroll-processing.service';
 import { PayrollPeriodsService } from './services/payroll-periods.service';
 
 describe('Payroll Attendance Summary Integration (Controller + RBAC + Validation + Service)', () => {
@@ -130,6 +131,14 @@ describe('Payroll Attendance Summary Integration (Controller + RBAC + Validation
         { provide: LeaveRequestRepository, useValue: mockLeaveRepo },
         { provide: HolidayRepository, useValue: mockHolidayRepo },
         { provide: WeeklyOffConfigRepository, useValue: mockWeeklyOffRepo },
+        {
+          provide: PayrollProcessingService,
+          useValue: {
+            verifyPeriodCompletionReadiness: jest
+              .fn()
+              .mockResolvedValue(undefined),
+          },
+        },
         { provide: AuthorizationService, useValue: mockAuthorizationService },
         Reflector,
         PermissionsGuard,

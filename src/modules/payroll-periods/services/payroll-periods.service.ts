@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, forwardRef } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { PayrollPeriodRepository } from '../repositories/payroll-period.repository';
 import { PayrollSettingsRepository } from '../../payroll-configuration/repositories/payroll-settings.repository';
@@ -13,6 +13,7 @@ import {
   PayrollLeaveAttendanceResolverService,
   PayrollLeaveAttendanceWarningCode,
 } from './payroll-leave-attendance-resolver.service';
+import { PayrollProcessingService } from '../../payroll-calculations/services/payroll-processing.service';
 import { CreatePayrollPeriodDto } from '../dto/create-payroll-period.dto';
 import { UpdatePayrollPeriodDto } from '../dto/update-payroll-period.dto';
 import { UpdatePayrollPeriodStatusDto } from '../dto/update-payroll-period-status.dto';
@@ -61,6 +62,8 @@ export class PayrollPeriodsService {
     private readonly authorizationService: AuthorizationService,
     private readonly employeeRepository: EmployeeRepository,
     private readonly payrollLeaveAttendanceResolver: PayrollLeaveAttendanceResolverService,
+    @Inject(forwardRef(() => PayrollProcessingService))
+    private readonly payrollProcessingService: PayrollProcessingService,
   ) {}
 
   async create(
@@ -481,6 +484,17 @@ export class PayrollPeriodsService {
       acknowledgedAnomalyEmployees: number;
       acknowledgedWarningCodes: string[];
     } | null = null;
+
+    // Enforce payroll processing completeness & zero stale/failed/ineligible records
+    // before marking a period COMPLETED or FINALIZED.
+    if (
+      toStatus === PayrollPeriodStatus.COMPLETED ||
+      toStatus === PayrollPeriodStatus.FINALIZED
+    ) {
+      await this.payrollProcessingService.verifyPeriodCompletionReadiness(
+        existing,
+      );
+    }
 
     // Special authorization & leave/attendance anomaly gate for finalization
     if (toStatus === PayrollPeriodStatus.FINALIZED) {

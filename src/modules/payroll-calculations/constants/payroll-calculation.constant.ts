@@ -6,8 +6,21 @@ import { normalizeEffectiveDate } from '../../employee-salaries/constants/employ
 
 export const PAYROLL_CALCULATION_ENGINE_VERSION = '1.0.0';
 
+export const PAYROLL_PROCESSING_CONSTANTS = {
+  DEFAULT_BATCH_SIZE: 50,
+  MIN_BATCH_SIZE: 10,
+  MAX_BATCH_SIZE: 200,
+  MAX_CONCURRENT_WRITES_PER_BATCH: 10,
+  LOCK_STALE_TIMEOUT_MS: 5 * 60 * 1000, // 5 minutes stale heartbeat recovery
+  MAX_ERROR_MESSAGE_LENGTH: 300,
+  MAX_LAST_ERROR_SUMMARY_LENGTH: 500,
+  MAX_FAILURE_SAMPLE_IN_CONFLICT: 20,
+} as const;
+
 export enum PayrollRecordStatus {
   CALCULATED = 'CALCULATED',
+  APPROVED = 'APPROVED',
+  INVALIDATED = 'INVALIDATED',
 }
 
 export const ALLOWED_CALCULATION_PERIOD_STATUSES: ReadonlyArray<PayrollPeriodStatus> =

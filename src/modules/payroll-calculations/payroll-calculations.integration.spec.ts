@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
-import { getModelToken } from '@nestjs/mongoose';
+import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 import { PayrollCalculationsController } from './payroll-calculations.controller';
 import { PayrollCalculationService } from './services/payroll-calculation.service';
@@ -318,6 +318,19 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
             findById: jest.fn((id: Types.ObjectId) =>
               Promise.resolve(periodsStore.get(id.toHexString()) ?? null),
             ),
+            verifyPeriodMutableAndBumpVersion: jest.fn(
+              (
+                id: Types.ObjectId,
+                allowed: ReadonlyArray<PayrollPeriodStatus>,
+              ) => {
+                const p = periodsStore.get(id.toHexString());
+                if (!p || p.deletedAt !== null || !allowed.includes(p.status)) {
+                  return Promise.resolve(false);
+                }
+                p.__v = (p.__v ?? 0) + 1;
+                return Promise.resolve(true);
+              },
+            ),
           },
         },
         {
@@ -379,6 +392,28 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
         {
           provide: AuditLogsService,
           useValue: mockAuditLogsService,
+        },
+        {
+          provide: getConnectionToken(),
+          useValue: {
+            startSession: jest.fn().mockResolvedValue({
+              withTransaction: jest.fn(async (cb: (s: unknown) => unknown) => {
+                const snapshot = new Map(
+                  Array.from(recordRepository.store.entries()).map(([k, v]) => [
+                    k,
+                    { ...v },
+                  ]),
+                );
+                try {
+                  return await cb({});
+                } catch (err) {
+                  recordRepository.store = snapshot;
+                  throw err;
+                }
+              }),
+              endSession: jest.fn().mockResolvedValue(undefined),
+            }),
+          },
         },
         {
           provide: AuthorizationService,
@@ -1061,5 +1096,62 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
     );
     expect(recalcRes.data.grossEarnings).toBe('40000.00');
     expect(recalcRes.data.netSalary).toBe('37600.00');
+    expect(recalcRes.data.calculationVersion).toBe(2);
+    expect(mockAuditLogsService.createAuditLog).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        action: 'PAYROLL_CALCULATION_RECALCULATED',
+      }),
+      expect.anything(),
+    );
+  });
+
+  it('rolls back PayrollRecord recalculation when PAYROLL_CALCULATION_RECALCULATED audit creation fails', async () => {
+    const dto = await validateBody(CalculateEmployeePayrollDto, {
+      payrollPeriodId: periodId.toString(),
+      employeeId: employeeId.toString(),
+    });
+
+    const initial = await controller.calculateEmployee(dto, createRequest());
+    expect(initial.data.calculationVersion).toBe(1);
+    const initialNet = initial.data.netSalary;
+
+    structuresStore.get(structureId.toHexString())!.components[0].amount =
+      40000;
+    mockAuditLogsService.createAuditLog.mockRejectedValueOnce(
+      new Error('Audit write failure during recalculation'),
+    );
+
+    const recalcDto = await validateBody(CalculateEmployeePayrollDto, {
+      payrollPeriodId: periodId.toString(),
+      employeeId: employeeId.toString(),
+      recalculate: true,
+    });
+
+    await expect(
+      controller.calculateEmployee(recalcDto, createRequest()),
+    ).rejects.toThrow('Audit write failure during recalculation');
+
+    const storedAfterFailure = await recordRepository.findByPeriodAndEmployee(
+      periodId,
+      employeeId,
+    );
+    expect(storedAfterFailure).not.toBeNull();
+    expect(storedAfterFailure!.calculationVersion).toBe(1);
+    expect(storedAfterFailure!.__v).toBe(0);
+    expect(storedAfterFailure!.netSalary.toString()).toBe(initialNet);
+
+    // Retry with audit restored persists both record recalculation and audit event
+    const retried = await controller.calculateEmployee(
+      recalcDto,
+      createRequest(),
+    );
+    expect(retried.data.calculationVersion).toBe(2);
+    expect(Number(retried.data.netSalary)).toBeGreaterThan(Number(initialNet));
+    expect(mockAuditLogsService.createAuditLog).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        action: 'PAYROLL_CALCULATION_RECALCULATED',
+      }),
+      expect.anything(),
+    );
   });
 });

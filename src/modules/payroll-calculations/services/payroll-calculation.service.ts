@@ -1,5 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { Types } from 'mongoose';
+import { InjectConnection } from '@nestjs/mongoose';
+import { ClientSession, Connection, Types } from 'mongoose';
 import {
   SalaryStructureBasis,
   SalaryStructureFrequency,
@@ -20,6 +21,7 @@ import { AppError } from '../../../common/errors/app-error';
 import { ErrorCode } from '../../../common/errors/error-codes';
 import { ClientMetadata } from '../../../common/types/client-metadata.type';
 import {
+  ALLOWED_CALCULATION_PERIOD_STATUSES,
   PayrollRecordStatus,
   toDecimal128,
 } from '../constants/payroll-calculation.constant';
@@ -33,6 +35,7 @@ import {
 } from '../dto/payroll-calculation-response.dto';
 import { PayrollCalculationMapper } from '../mappers/payroll-calculation.mapper';
 import { PayrollRecordRepository } from '../repositories/payroll-record.repository';
+import { PayrollPeriodRepository } from '../../payroll-periods/repositories/payroll-period.repository';
 import { PayrollCalculationSnapshot } from '../schemas/payroll-record.schema';
 import {
   PayrollInputResolver,
@@ -40,8 +43,10 @@ import {
 } from './payroll-input.resolver';
 import {
   ResolvedSalaryComponent,
+  ResolvedStructureComponents,
   SalaryComponentResolver,
 } from './salary-component.resolver';
+import { computePayrollInputFingerprint } from '../utils/payroll-input-fingerprint.util';
 import { ComponentDependencyResolver } from './component-dependency.resolver';
 import { ComponentCalculationEngine } from './component-calculation.engine';
 import { ProrationCalculator } from './proration.calculator';
@@ -55,6 +60,7 @@ import { PayrollSnapshotBuilder } from './payroll-snapshot.builder';
 export class PayrollCalculationService {
   constructor(
     private readonly payrollRecordRepository: PayrollRecordRepository,
+    private readonly payrollPeriodRepository: PayrollPeriodRepository,
     private readonly inputResolver: PayrollInputResolver,
     private readonly componentResolver: SalaryComponentResolver,
     private readonly dependencyResolver: ComponentDependencyResolver,
@@ -64,6 +70,7 @@ export class PayrollCalculationService {
     private readonly snapshotBuilder: PayrollSnapshotBuilder,
     private readonly auditLogsService: AuditLogsService,
     private readonly salaryStructureCalculationService: SalaryStructureCalculationService,
+    @InjectConnection() private readonly connection: Connection,
   ) {}
 
   async preview(
@@ -107,15 +114,10 @@ export class PayrollCalculationService {
       );
 
     if (existingRecord) {
-      if (!dto.recalculate) {
-        throw new AppError(
-          ErrorCode.RESOURCE_ALREADY_EXISTS,
-          `Payroll record already exists for employee '${inputs.employee.employeeCode}' in period '${inputs.period.periodCode}'. Pass recalculate=true to recalculate.`,
-          HttpStatus.CONFLICT,
-        );
-      }
-
-      if (existingRecord.status !== PayrollRecordStatus.CALCULATED) {
+      if (
+        existingRecord.status !== PayrollRecordStatus.CALCULATED &&
+        existingRecord.status !== PayrollRecordStatus.INVALIDATED
+      ) {
         throw new AppError(
           ErrorCode.CONCURRENT_MODIFICATION,
           `Payroll record for employee '${inputs.employee.employeeCode}' in period '${inputs.period.periodCode}' is in '${String(existingRecord.status)}' status and cannot be recalculated.`,
@@ -123,50 +125,99 @@ export class PayrollCalculationService {
         );
       }
 
-      const updated = await this.payrollRecordRepository.recalculateAtomically(
-        existingRecord._id,
-        existingRecord.__v,
-        {
-          salaryAssignmentId: inputs.salaryAssignment._id,
-          salaryStructureId: inputs.salaryStructure._id,
-          calculationSnapshot: snapshot,
-          grossEarnings,
-          totalDeductions,
-          employerContributions,
-          netSalary,
-          calculatedAt,
-          updatedBy: actorId,
-        },
-      );
-
-      if (!updated) {
+      if (
+        existingRecord.status === PayrollRecordStatus.CALCULATED &&
+        !dto.recalculate
+      ) {
         throw new AppError(
-          ErrorCode.CONCURRENT_MODIFICATION,
-          `Concurrent payroll recalculation detected for employee '${inputs.employee.employeeCode}' in period '${inputs.period.periodCode}'. Please refresh and try again.`,
+          ErrorCode.RESOURCE_ALREADY_EXISTS,
+          `Payroll record already exists for employee '${inputs.employee.employeeCode}' in period '${inputs.period.periodCode}'. Pass recalculate=true to recalculate.`,
           HttpStatus.CONFLICT,
         );
       }
 
-      await this.auditLogsService.createAuditLog({
-        actorId,
-        action: AuditAction.PAYROLL_CALCULATION_RECALCULATED,
-        targetId: updated._id,
-        targetModel: AuditTargetModel.PAYROLL_RECORD,
-        details: {
-          payrollPeriodId: payrollPeriodId.toString(),
-          periodCode: inputs.period.periodCode,
-          employeeId: employeeId.toString(),
-          employeeCode: inputs.employee.employeeCode,
-          calculationVersion: updated.calculationVersion,
-          payableDays: inputs.payableDays,
-          totalLopDays: inputs.leaveAndAttendance.totalLopDays,
-          paidLeaveDays: inputs.leaveAndAttendance.paidLeaveDays,
-          unpaidLeaveDays: inputs.leaveAndAttendance.unpaidLeaveDays,
-          calendarDays: inputs.calendarDays,
-          netSalary: updated.netSalary.toString(),
-        },
-        ipAddress: clientMetadata?.ipAddress ?? null,
-        userAgent: clientMetadata?.userAgent ?? null,
+      const updated = await this.runInTransaction(async (session) => {
+        await this.ensurePeriodMutableInSession(
+          payrollPeriodId,
+          inputs.period.periodCode,
+          session,
+        );
+
+        const recalc = await this.payrollRecordRepository.recalculateAtomically(
+          existingRecord._id,
+          existingRecord.__v,
+          {
+            salaryAssignmentId: inputs.salaryAssignment._id,
+            salaryStructureId: inputs.salaryStructure._id,
+            calculationSnapshot: snapshot,
+            grossEarnings,
+            totalDeductions,
+            employerContributions,
+            netSalary,
+            calculatedAt,
+            updatedBy: actorId,
+          },
+          session,
+        );
+
+        if (!recalc) {
+          throw new AppError(
+            ErrorCode.CONCURRENT_MODIFICATION,
+            `Concurrent payroll recalculation detected for employee '${inputs.employee.employeeCode}' in period '${inputs.period.periodCode}'. Please refresh and try again.`,
+            HttpStatus.CONFLICT,
+          );
+        }
+
+        await this.auditLogsService.createAuditLog(
+          {
+            actorId,
+            action: AuditAction.PAYROLL_CALCULATION_RECALCULATED,
+            targetId: recalc._id,
+            targetModel: AuditTargetModel.PAYROLL_RECORD,
+            details: {
+              reason:
+                existingRecord.status === PayrollRecordStatus.INVALIDATED
+                  ? (existingRecord.invalidationReason ??
+                    'REACTIVATED_FROM_INVALIDATED')
+                  : 'RECALCULATION_REQUESTED',
+              payrollPeriodId: payrollPeriodId.toString(),
+              periodCode: inputs.period.periodCode,
+              employeeId: employeeId.toString(),
+              employeeCode: inputs.employee.employeeCode,
+              calculationVersion: recalc.calculationVersion,
+              previousStatus: existingRecord.status,
+              previousCalculationVersion: existingRecord.calculationVersion,
+              previousInputFingerprint:
+                existingRecord.calculationSnapshot?.inputFingerprint ?? null,
+              previousGrossEarnings:
+                existingRecord.grossEarnings?.toString() ?? null,
+              previousTotalDeductions:
+                existingRecord.totalDeductions?.toString() ?? null,
+              previousEmployerContributions:
+                existingRecord.employerContributions?.toString() ?? null,
+              previousNetSalary: existingRecord.netSalary?.toString() ?? null,
+              previousInvalidatedAt:
+                existingRecord.invalidatedAt instanceof Date
+                  ? existingRecord.invalidatedAt.toISOString()
+                  : (existingRecord.invalidatedAt ?? null),
+              previousInvalidationReason:
+                existingRecord.invalidationReason ?? null,
+              previousCalculationSnapshot:
+                existingRecord.calculationSnapshot ?? null,
+              payableDays: inputs.payableDays,
+              totalLopDays: inputs.leaveAndAttendance.totalLopDays,
+              paidLeaveDays: inputs.leaveAndAttendance.paidLeaveDays,
+              unpaidLeaveDays: inputs.leaveAndAttendance.unpaidLeaveDays,
+              calendarDays: inputs.calendarDays,
+              netSalary: recalc.netSalary.toString(),
+            },
+            ipAddress: clientMetadata?.ipAddress ?? null,
+            userAgent: clientMetadata?.userAgent ?? null,
+          },
+          session,
+        );
+
+        return recalc;
       });
 
       return PayrollCalculationMapper.toRecordResponse(updated);
@@ -174,21 +225,59 @@ export class PayrollCalculationService {
 
     let created;
     try {
-      created = await this.payrollRecordRepository.create({
-        payrollPeriodId,
-        employeeId,
-        salaryAssignmentId: inputs.salaryAssignment._id,
-        salaryStructureId: inputs.salaryStructure._id,
-        calculationSnapshot: snapshot,
-        grossEarnings,
-        totalDeductions,
-        employerContributions,
-        netSalary,
-        status: PayrollRecordStatus.CALCULATED,
-        calculatedAt,
-        calculationVersion: 1,
-        createdBy: actorId,
-        updatedBy: actorId,
+      created = await this.runInTransaction(async (session) => {
+        await this.ensurePeriodMutableInSession(
+          payrollPeriodId,
+          inputs.period.periodCode,
+          session,
+        );
+
+        const record = await this.payrollRecordRepository.create(
+          {
+            payrollPeriodId,
+            employeeId,
+            salaryAssignmentId: inputs.salaryAssignment._id,
+            salaryStructureId: inputs.salaryStructure._id,
+            calculationSnapshot: snapshot,
+            grossEarnings,
+            totalDeductions,
+            employerContributions,
+            netSalary,
+            status: PayrollRecordStatus.CALCULATED,
+            calculatedAt,
+            calculationVersion: 1,
+            createdBy: actorId,
+            updatedBy: actorId,
+          },
+          session,
+        );
+
+        await this.auditLogsService.createAuditLog(
+          {
+            actorId,
+            action: AuditAction.PAYROLL_CALCULATION_EXECUTED,
+            targetId: record._id,
+            targetModel: AuditTargetModel.PAYROLL_RECORD,
+            details: {
+              payrollPeriodId: payrollPeriodId.toString(),
+              periodCode: inputs.period.periodCode,
+              employeeId: employeeId.toString(),
+              employeeCode: inputs.employee.employeeCode,
+              calculationVersion: record.calculationVersion,
+              payableDays: inputs.payableDays,
+              totalLopDays: inputs.leaveAndAttendance.totalLopDays,
+              paidLeaveDays: inputs.leaveAndAttendance.paidLeaveDays,
+              unpaidLeaveDays: inputs.leaveAndAttendance.unpaidLeaveDays,
+              calendarDays: inputs.calendarDays,
+              netSalary: record.netSalary.toString(),
+            },
+            ipAddress: clientMetadata?.ipAddress ?? null,
+            userAgent: clientMetadata?.userAgent ?? null,
+          },
+          session,
+        );
+
+        return record;
       });
     } catch (error: unknown) {
       if (this.payrollRecordRepository.isDuplicateKeyError(error)) {
@@ -201,29 +290,38 @@ export class PayrollCalculationService {
       throw error;
     }
 
-    await this.auditLogsService.createAuditLog({
-      actorId,
-      action: AuditAction.PAYROLL_CALCULATION_EXECUTED,
-      targetId: created._id,
-      targetModel: AuditTargetModel.PAYROLL_RECORD,
-      details: {
-        payrollPeriodId: payrollPeriodId.toString(),
-        periodCode: inputs.period.periodCode,
-        employeeId: employeeId.toString(),
-        employeeCode: inputs.employee.employeeCode,
-        calculationVersion: created.calculationVersion,
-        payableDays: inputs.payableDays,
-        totalLopDays: inputs.leaveAndAttendance.totalLopDays,
-        paidLeaveDays: inputs.leaveAndAttendance.paidLeaveDays,
-        unpaidLeaveDays: inputs.leaveAndAttendance.unpaidLeaveDays,
-        calendarDays: inputs.calendarDays,
-        netSalary: created.netSalary.toString(),
-      },
-      ipAddress: clientMetadata?.ipAddress ?? null,
-      userAgent: clientMetadata?.userAgent ?? null,
-    });
-
     return PayrollCalculationMapper.toRecordResponse(created);
+  }
+
+  private async runInTransaction<T>(
+    work: (session: ClientSession) => Promise<T>,
+  ): Promise<T> {
+    const session = await this.connection.startSession();
+    try {
+      return await session.withTransaction(work);
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  private async ensurePeriodMutableInSession(
+    payrollPeriodId: Types.ObjectId,
+    periodCode: string,
+    session: ClientSession,
+  ): Promise<void> {
+    const mutable =
+      await this.payrollPeriodRepository.verifyPeriodMutableAndBumpVersion(
+        payrollPeriodId,
+        ALLOWED_CALCULATION_PERIOD_STATUSES,
+        session,
+      );
+    if (!mutable) {
+      throw new AppError(
+        ErrorCode.CONCURRENT_MODIFICATION,
+        `Payroll period '${periodCode}' is no longer in an editable status (${ALLOWED_CALCULATION_PERIOD_STATUSES.join(', ')}) and cannot be modified.`,
+        HttpStatus.CONFLICT,
+      );
+    }
   }
 
   private async executeCalculation(
@@ -240,8 +338,39 @@ export class PayrollCalculationService {
       employeeId,
     );
 
+    const calculatedAt = new Date();
+    const { snapshot, totals } = await this.computeFromResolvedInputs(
+      inputs,
+      undefined,
+      calculatedAt,
+    );
+
+    return {
+      inputs,
+      snapshot,
+      totals,
+      calculatedAt,
+    };
+  }
+
+  async computeFromResolvedInputs(
+    inputs: ResolvedPayrollInputs,
+    preResolvedComponents?: ResolvedStructureComponents,
+    calculatedAt: Date = new Date(),
+  ): Promise<{
+    resolvedComponents: ResolvedStructureComponents;
+    inputFingerprint: string;
+    snapshot: PayrollCalculationSnapshot;
+    totals: PayrollTotalsResult;
+    calculatedAt: Date;
+  }> {
+    const resolvedComponentsBundle =
+      preResolvedComponents ??
+      (await this.componentResolver.resolveForStructure(
+        inputs.salaryStructure,
+      ));
     const { components: resolvedComponents, masterMap } =
-      await this.componentResolver.resolveForStructure(inputs.salaryStructure);
+      resolvedComponentsBundle;
 
     const targetMonthlyGross = this.resolveTargetMonthlyGross(
       inputs,
@@ -272,17 +401,23 @@ export class PayrollCalculationService {
       inputs.configuration,
     );
 
-    const calculatedAt = new Date();
+    const inputFingerprint = computePayrollInputFingerprint(
+      inputs,
+      resolvedComponentsBundle,
+    );
+
     const snapshot = this.snapshotBuilder.build({
       inputs,
       executionOrder: orderedComponents.map((c) => c.code),
       proration,
       totals,
       calculatedAt,
+      inputFingerprint,
     });
 
     return {
-      inputs,
+      resolvedComponents: resolvedComponentsBundle,
+      inputFingerprint,
       snapshot,
       totals,
       calculatedAt,

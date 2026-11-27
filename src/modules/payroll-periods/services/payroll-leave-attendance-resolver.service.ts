@@ -88,6 +88,13 @@ interface DailyLeaveCoverage {
   hasHalfDayLeave: boolean;
 }
 
+export interface PreloadedPeriodCalendarContext {
+  periodDates: string[];
+  branchTimezoneMap: Map<string, string>;
+  calendarLookup: BranchCalendarLookup;
+  branchDayCache: Map<string, { isWeeklyOff: boolean; isHoliday: boolean }>;
+}
+
 /**
  * Shared read-only batch resolver reconciling branch schedules, holidays, weekly offs,
  * approved/cancellation-requested leaves, and verified attendance for payroll calculations.
@@ -103,6 +110,46 @@ export class PayrollLeaveAttendanceResolverService {
     private readonly holidayRepository: HolidayRepository,
     private readonly weeklyOffConfigRepository: WeeklyOffConfigRepository,
   ) {}
+
+  async preloadCalendarContext(params: {
+    periodStartStr: string;
+    periodEndStr: string;
+    branchIds: Types.ObjectId[];
+  }): Promise<PreloadedPeriodCalendarContext> {
+    const { periodStartStr, periodEndStr, branchIds } = params;
+    const periodDates = LeaveCalculationUtil.enumerateDateStrings(
+      periodStartStr,
+      periodEndStr,
+    );
+
+    const [branches, activeHolidays, activeWeeklyOffConfigs] =
+      await Promise.all([
+        this.branchRepository.findByIds(branchIds),
+        this.holidayRepository.findActiveInRange(periodStartStr, periodEndStr),
+        this.weeklyOffConfigRepository.findActiveEffectiveInRange(
+          periodStartStr,
+          periodEndStr,
+        ),
+      ]);
+
+    const branchTimezoneMap = new Map<string, string>();
+    for (const branch of branches) {
+      branchTimezoneMap.set(
+        branch._id.toHexString(),
+        branch.timezone?.trim() || ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE,
+      );
+    }
+
+    return {
+      periodDates,
+      branchTimezoneMap,
+      calendarLookup: buildBranchCalendarLookup(
+        activeHolidays,
+        activeWeeklyOffConfigs,
+      ),
+      branchDayCache: new Map(),
+    };
+  }
 
   async resolveForEmployee(params: {
     periodStartStr: string;
@@ -135,6 +182,7 @@ export class PayrollLeaveAttendanceResolverService {
     periodEndStr: string;
     targets: PayrollEmployeeReconciliationTarget[];
     now?: Date;
+    preloadedCalendar?: PreloadedPeriodCalendarContext;
   }): Promise<Map<string, PayrollLeaveAttendanceResolution>> {
     const resultMap = new Map<string, PayrollLeaveAttendanceResolution>();
     if (params.targets.length === 0) {
@@ -142,73 +190,55 @@ export class PayrollLeaveAttendanceResolverService {
     }
 
     const now = params.now ?? new Date();
-    const { periodStartStr, periodEndStr, targets } = params;
-    const periodDates = LeaveCalculationUtil.enumerateDateStrings(
-      periodStartStr,
-      periodEndStr,
-    );
+    const { periodStartStr, periodEndStr, targets, preloadedCalendar } = params;
+    const periodDates =
+      preloadedCalendar?.periodDates ??
+      LeaveCalculationUtil.enumerateDateStrings(periodStartStr, periodEndStr);
 
     const employeeIds = targets.map((t) => t.employee._id);
-    const branchIdMap = new Map<string, Types.ObjectId>();
-    for (const target of targets) {
-      if (target.employee.branchId) {
-        branchIdMap.set(
-          target.employee.branchId.toHexString(),
-          target.employee.branchId,
-        );
-      }
-    }
-    const uniqueBranchIds = Array.from(branchIdMap.values());
 
-    // Execute all independent collection lookups concurrently (5 bulk queries total)
-    const [
-      branches,
-      activeHolidays,
-      activeWeeklyOffConfigs,
-      attendanceBuckets,
-      leaveRequests,
-    ] = await Promise.all([
-      this.branchRepository.findByIds(uniqueBranchIds),
-      this.holidayRepository.findActiveInRange(periodStartStr, periodEndStr),
-      this.weeklyOffConfigRepository.findActiveEffectiveInRange(
-        periodStartStr,
-        periodEndStr,
-      ),
-      this.attendanceRepository.aggregateForPayrollPeriod(
-        employeeIds,
-        periodStartStr,
-        periodEndStr,
-      ),
-      this.leaveRequestRepository.findOverlappingForEmployees(
-        employeeIds,
-        periodStartStr,
-        periodEndStr,
-        PAYROLL_INCLUDED_LEAVE_STATUSES,
-      ),
-    ]);
+    const [attendanceBuckets, leaveRequests, loadedCalendar] =
+      await Promise.all([
+        this.attendanceRepository.aggregateForPayrollPeriod(
+          employeeIds,
+          periodStartStr,
+          periodEndStr,
+        ),
+        this.leaveRequestRepository.findOverlappingForEmployees(
+          employeeIds,
+          periodStartStr,
+          periodEndStr,
+          PAYROLL_INCLUDED_LEAVE_STATUSES,
+        ),
+        preloadedCalendar
+          ? Promise.resolve(preloadedCalendar)
+          : (() => {
+              const branchIdMap = new Map<string, Types.ObjectId>();
+              for (const target of targets) {
+                if (target.employee.branchId) {
+                  branchIdMap.set(
+                    target.employee.branchId.toHexString(),
+                    target.employee.branchId,
+                  );
+                }
+              }
+              return this.preloadCalendarContext({
+                periodStartStr,
+                periodEndStr,
+                branchIds: Array.from(branchIdMap.values()),
+              });
+            })(),
+      ]);
 
     const regIds = this.extractRegularizationIds(attendanceBuckets);
     const regularizationMap = await this.loadRegularizationMap(regIds);
 
-    const branchTimezoneMap = new Map<string, string>();
-    for (const branch of branches) {
-      branchTimezoneMap.set(
-        branch._id.toHexString(),
-        branch.timezone?.trim() || ATTENDANCE_CONSTANTS.DEFAULT_TIMEZONE,
-      );
-    }
+    const { branchTimezoneMap, calendarLookup, branchDayCache } =
+      loadedCalendar;
 
     const attendanceByEmployee =
       this.groupAttendanceByEmployee(attendanceBuckets);
     const leavesByEmployee = this.groupLeavesByEmployee(leaveRequests);
-    const calendarLookup = buildBranchCalendarLookup(
-      activeHolidays,
-      activeWeeklyOffConfigs,
-    );
-    const branchDayCache = new Map<
-      string,
-      { isWeeklyOff: boolean; isHoliday: boolean }
-    >();
 
     for (const target of targets) {
       const empIdStr = target.employee._id.toHexString();

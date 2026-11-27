@@ -20,6 +20,14 @@ export class AuditLogRepository {
     return auditLog.save({ session });
   }
 
+  async createMany(
+    items: CreateAuditLogParams[],
+    session?: ClientSession,
+  ): Promise<void> {
+    if (items.length === 0) return;
+    await this.auditLogModel.insertMany(items, { session });
+  }
+
   async findByTarget(
     targetModel: AuditTargetModel,
     targetId: Types.ObjectId,

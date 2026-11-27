@@ -70,6 +70,55 @@ export class SalaryComponentResolver {
       masterMap.set(doc._id.toString(), doc);
     }
 
+    return this.resolveWithMasterMap(structure, masterMap);
+  }
+
+  /**
+   * Batch-fetches unique master salary components across multiple salary structures in 1 query.
+   */
+  async fetchMasterMapForStructures(
+    structures: SalaryStructureLean[],
+  ): Promise<Map<string, SalaryComponentLean>> {
+    const idMap = new Map<string, Types.ObjectId>();
+    for (const structure of structures) {
+      for (const item of structure.components) {
+        const idStr = item.componentId.toString();
+        if (!idMap.has(idStr)) {
+          idMap.set(idStr, new Types.ObjectId(idStr));
+        }
+      }
+    }
+    const masterMap = new Map<string, SalaryComponentLean>();
+    if (idMap.size === 0) return masterMap;
+
+    const docs = await this.salaryComponentModel
+      .find({ _id: { $in: Array.from(idMap.values()) } })
+      .lean<SalaryComponentLean[]>()
+      .exec();
+
+    for (const doc of docs) {
+      masterMap.set(doc._id.toString(), doc);
+    }
+    return masterMap;
+  }
+
+  resolveWithMasterMap(
+    structure: SalaryStructureLean,
+    masterMap: Map<string, SalaryComponentLean>,
+  ): ResolvedStructureComponents {
+    const seenIds = new Set<string>();
+    for (const item of structure.components) {
+      const idStr = item.componentId.toString();
+      if (seenIds.has(idStr)) {
+        throw new AppError(
+          ErrorCode.VALIDATION_ERROR,
+          `Duplicate componentId '${idStr}' in salary structure '${structure.code}'.`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      seenIds.add(idStr);
+    }
+
     const isAnnualStructure =
       structure.salaryFrequency === SalaryStructureFrequency.ANNUAL;
     const resolved: ResolvedSalaryComponent[] = [];
@@ -230,8 +279,14 @@ export class SalaryComponentResolver {
       }
     }
 
-    const calculationMasterMap: CalculationMasterMap =
-      Object.fromEntries(masterMap);
+    const calculationMasterMap: CalculationMasterMap = {};
+    for (const item of structure.components) {
+      const idStr = item.componentId.toString();
+      const master = masterMap.get(idStr);
+      if (master) {
+        calculationMasterMap[idStr] = master;
+      }
+    }
 
     return {
       components: resolved,
