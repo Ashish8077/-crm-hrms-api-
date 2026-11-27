@@ -29,6 +29,7 @@ import { PayrollConfigurationModule } from './modules/payroll-configuration/payr
 import { PayrollPeriodsModule } from './modules/payroll-periods/payroll-periods.module';
 import { PayrollCalculationsModule } from './modules/payroll-calculations/payroll-calculations.module';
 import { PayslipsModule } from './modules/payslips/payslips.module';
+import { PayrollReportingModule } from './modules/payroll-reporting/payroll-reporting.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
@@ -99,6 +100,7 @@ import { PermissionsGuard } from './modules/authorization/guards/permissions.gua
     PayrollPeriodsModule,
     PayrollCalculationsModule,
     PayslipsModule,
+    PayrollReportingModule,
   ],
   controllers: [AppController],
   providers: [

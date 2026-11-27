@@ -101,6 +101,8 @@ const PERMISSION_CATALOG: Record<PermissionModule, PermissionAction[]> = {
   [M.PAYROLL_SETTINGS]: [VIEW, EDIT],
   [M.PAYROLL_CALCULATIONS]: [VIEW, CREATE],
   [M.PAYSLIPS]: [VIEW, VIEW_OWN, CREATE, EXPORT],
+  [M.PAYROLL_HISTORY]: [VIEW, VIEW_OWN],
+  [M.PAYROLL_REPORTS]: [VIEW, EXPORT],
   [M.TAX]: [VIEW, CREATE, EDIT, APPROVE, EXPORT],
 
   // ── Recruitment / HR Operations ──────────────────────────────────

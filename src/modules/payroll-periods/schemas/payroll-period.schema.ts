@@ -313,3 +313,9 @@ PayrollPeriodSchema.index(
   { status: 1, year: -1, month: -1, deletedAt: 1 },
   { name: 'idx_payroll_periods_status_cycle' },
 );
+
+// Fast chronological finalized history listing and date range queries
+PayrollPeriodSchema.index(
+  { status: 1, startDate: -1, deletedAt: 1 },
+  { name: 'idx_payroll_periods_status_dates' },
+);

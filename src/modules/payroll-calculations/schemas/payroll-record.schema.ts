@@ -442,3 +442,9 @@ PayrollRecordSchema.index(
   { employeeId: 1, calculatedAt: -1, deletedAt: 1 },
   { name: 'idx_payroll_records_employee_history' },
 );
+
+// 4. Employee finalized & approved payroll lookup index
+PayrollRecordSchema.index(
+  { employeeId: 1, status: 1, payrollPeriodId: 1, deletedAt: 1 },
+  { name: 'idx_payroll_records_emp_status_period' },
+);
