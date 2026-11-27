@@ -391,6 +391,12 @@ export class PayrollRecord {
   calculationVersion!: number;
 
   @Prop({ type: Date, default: null })
+  approvedAt?: Date | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  approvedBy?: Types.ObjectId | null;
+
+  @Prop({ type: Date, default: null })
   invalidatedAt?: Date | null;
 
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })

@@ -224,6 +224,28 @@ class InMemoryPayrollRecordRepo {
     return { ...doc };
   }
 
+  approveAllCalculatedForPeriod(
+    payrollPeriodId: Types.ObjectId,
+    actorId: Types.ObjectId,
+  ): void {
+    const now = new Date();
+    for (const [key, rec] of this.store.entries()) {
+      if (
+        rec.deletedAt === null &&
+        rec.payrollPeriodId.equals(payrollPeriodId) &&
+        rec.status === PayrollRecordStatus.CALCULATED
+      ) {
+        this.store.set(key, {
+          ...rec,
+          status: PayrollRecordStatus.APPROVED,
+          approvedAt: now,
+          approvedBy: actorId,
+          __v: rec.__v + 1,
+        } as unknown as PayrollRecordLean);
+      }
+    }
+  }
+
   async createMany(
     inputs: CreatePayrollRecordInput[],
   ): Promise<PayrollRecordLean[]> {
@@ -437,10 +459,27 @@ class InMemoryPeriodRepo {
     newStatus: PayrollPeriodStatus,
     actorId: Types.ObjectId,
     expectedVersion?: number,
+    _session?: unknown,
+    options?: {
+      expectedFromStatus?: PayrollPeriodStatus;
+      requireApprovalMetadata?: boolean;
+    },
   ): Promise<PayrollPeriodLean | null> {
     const doc = this.store.get(id.toHexString());
     if (!doc || doc.deletedAt !== null) return null;
     if (typeof expectedVersion === 'number' && doc.__v !== expectedVersion) {
+      return null;
+    }
+    if (
+      options?.expectedFromStatus !== undefined &&
+      doc.status !== options.expectedFromStatus
+    ) {
+      return null;
+    }
+    if (
+      options?.requireApprovalMetadata &&
+      (!doc.approval?.approvedBy || !doc.approval?.approvedAt)
+    ) {
       return null;
     }
     const updated: PayrollPeriodLean = {
@@ -452,6 +491,31 @@ class InMemoryPeriodRepo {
     };
     this.store.set(id.toHexString(), updated);
     return this.cloneDoc(updated);
+  }
+
+  approveForTest(id: Types.ObjectId, actorId: Types.ObjectId): void {
+    const doc = this.store.get(id.toHexString());
+    if (!doc) return;
+    this.store.set(id.toHexString(), {
+      ...this.cloneDoc(doc),
+      status: PayrollPeriodStatus.APPROVED,
+      approval: {
+        approvedBy: actorId,
+        approvedAt: new Date(),
+        approvedRecordsCount: 4,
+        alreadyApprovedRecordsCount: 0,
+        totalGrossEarnings: '125000.00',
+        totalDeductions: '0.00',
+        totalEmployerContributions: '0.00',
+        totalNetSalary: '125000.00',
+        totalEmployerCost: '125000.00',
+        reason: 'Approved for Step 5->6->7 workflow',
+        acknowledgeAnomalies: true,
+        acknowledgedAnomalyEmployees: 0,
+        acknowledgedWarningCodes: [],
+      },
+      __v: (doc.__v ?? 0) + 1,
+    });
   }
 
   async acquireProcessingLock(params: {
@@ -1317,7 +1381,7 @@ describe('Step 5 — Payroll Run / Processing Integration Suite', () => {
         .calculationVersion,
     ).toBe(1);
 
-    // Now transition PROCESSING -> COMPLETED -> FINALIZED succeeds cleanly
+    // Now transition PROCESSING -> COMPLETED succeeds cleanly
     const completed = await periodsService.updateStatus(
       periodId,
       { status: PayrollPeriodStatus.COMPLETED },
@@ -1325,6 +1389,23 @@ describe('Step 5 — Payroll Run / Processing Integration Suite', () => {
       [roleId],
     );
     expect(completed.status).toBe(PayrollPeriodStatus.COMPLETED);
+
+    // Direct COMPLETED -> FINALIZED bypass is rejected with 409 Conflict
+    await expect(
+      periodsService.updateStatus(
+        periodId,
+        { status: PayrollPeriodStatus.FINALIZED },
+        actorId,
+        [roleId],
+      ),
+    ).rejects.toMatchObject({
+      code: ErrorCode.CONCURRENT_MODIFICATION,
+      statusCode: HttpStatus.CONFLICT,
+    });
+
+    // Transition COMPLETED -> APPROVED (all active records approved + approval metadata)
+    recordRepo.approveAllCalculatedForPeriod(periodId, actorId);
+    periodRepo.approveForTest(periodId, actorId);
 
     // Step 4.2 anomaly gate still protects FINALIZED (UNFINALIZED_MISSING_DAYS when no attendance buckets exist)
     await expect(

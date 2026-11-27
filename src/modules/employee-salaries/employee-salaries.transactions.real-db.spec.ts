@@ -1051,5 +1051,176 @@ describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency
         )
         .expect(HttpStatus.NOT_FOUND);
     });
+
+    it('creates non-overlapping ACTIVE assignment when only closed SUPERSEDED history exists, preserves history, enforces partial unique index under concurrency, and rolls back on audit failure', async () => {
+      if (!isConnected) return;
+
+      const employeeId = await createTestEmployee('2026-01-01');
+      const { structure1Id, structure2Id } =
+        await createTestStructuresAndComponents();
+      const basePath = `/api/v1/employees/${employeeId.toString()}/salary-assignments`;
+
+      // Seed closed SUPERSEDED assignment [2026-10-27, 2027-01-01) with __v: 0 (no active assignment)
+      const histDoc = await repository.create({
+        employeeId,
+        salaryStructureId: structure1Id,
+        effectiveFrom: new Date('2026-10-27T00:00:00.000Z'),
+        effectiveTo: new Date('2027-01-01T00:00:00.000Z'),
+        salaryBasis: SalaryStructureBasis.CTC,
+        salaryFrequency: SalaryStructureFrequency.MONTHLY,
+        salaryAmount: 50000,
+        salaryStructureVersion: 1,
+        salarySnapshot: {
+          salaryBasis: SalaryStructureBasis.CTC,
+          salaryFrequency: SalaryStructureFrequency.MONTHLY,
+          inputSalaryAmount: 50000,
+          grossSalaryMonthly: 50000,
+          grossSalaryAnnual: 600000,
+          totalEmployerContributionsMonthly: 0,
+          totalEmployerContributionsAnnual: 0,
+          totalCtcMonthly: 50000,
+          totalCtcAnnual: 600000,
+          totalEmployeeDeductionsMonthly: 0,
+          totalEmployeeDeductionsAnnual: 0,
+          estimatedNetSalaryMonthly: 50000,
+          estimatedNetSalaryAnnual: 600000,
+          summary: {
+            monthly: {
+              grossSalary: 50000,
+              employerContributions: 0,
+              totalCtc: 50000,
+              employeeDeductions: 0,
+              estimatedNetSalary: 50000,
+            },
+            annual: {
+              grossSalary: 600000,
+              employerContributions: 0,
+              totalCtc: 600000,
+              employeeDeductions: 0,
+              estimatedNetSalary: 600000,
+            },
+          },
+          earnings: [],
+          employeeDeductions: [],
+          employerContributions: [],
+        },
+        status: EmployeeSalaryStatus.SUPERSEDED,
+        createdBy: actorId,
+        updatedBy: actorId,
+      });
+
+      // 1. Overlapping date against historical SUPERSEDED record -> 409 Conflict
+      await request(app.getHttpServer())
+        .post(basePath)
+        .send({
+          salaryStructureId: structure2Id.toString(),
+          effectiveFrom: '2026-12-01',
+        })
+        .expect(HttpStatus.CONFLICT);
+
+      // 2. Transaction rollback on audit failure -> historical record stays untouched, no orphan created
+      jest
+        .spyOn(auditLogsService, 'createAuditLog')
+        .mockRejectedValueOnce(
+          new Error('Simulated MongoDB audit crash after superseded history'),
+        );
+      await request(app.getHttpServer())
+        .post(basePath)
+        .send({
+          salaryStructureId: structure2Id.toString(),
+          effectiveFrom: '2027-06-01',
+        })
+        .expect(HttpStatus.INTERNAL_SERVER_ERROR);
+
+      expect(await employeeSalaryModel.countDocuments({ employeeId })).toBe(1);
+
+      // 3. Concurrent POST creation when only SUPERSEDED history exists -> exactly 1 succeeds, 1 rejected
+      const [c1, c2] = await Promise.allSettled([
+        service.assignSalary(
+          employeeId,
+          {
+            salaryStructureId: structure2Id.toString(),
+            effectiveFrom: '2027-06-01',
+          },
+          actorId,
+        ),
+        service.assignSalary(
+          employeeId,
+          {
+            salaryStructureId: structure2Id.toString(),
+            effectiveFrom: '2027-06-01',
+          },
+          actorId,
+        ),
+      ]);
+      const fulfilled = [c1, c2].filter((r) => r.status === 'fulfilled');
+      const rejected = [c1, c2].filter((r) => r.status === 'rejected');
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect([HttpStatus.CONFLICT, HttpStatus.BAD_REQUEST]).toContain(
+        (rejected[0].reason as AppError).statusCode,
+      );
+
+      // Historical doc preserved untouched, and unique partial index ensures exactly 1 open ACTIVE record
+      const histAfter = await employeeSalaryModel.findById(histDoc._id).exec();
+      expect(histAfter?.status).toBe(EmployeeSalaryStatus.SUPERSEDED);
+      expect(histAfter?.effectiveTo?.toISOString().slice(0, 10)).toBe(
+        '2027-01-01',
+      );
+      expect(histAfter?.__v).toBe(0);
+
+      const activeDocs = await employeeSalaryModel
+        .find({
+          employeeId,
+          effectiveTo: null,
+          status: EmployeeSalaryStatus.ACTIVE,
+        })
+        .exec();
+      expect(activeDocs).toHaveLength(1);
+      expect(activeDocs[0].effectiveFrom.toISOString().slice(0, 10)).toBe(
+        '2027-06-01',
+      );
+
+      const assignAudit = await auditLogModel
+        .findOne({
+          targetId: activeDocs[0]._id,
+          action: AuditAction.EMPLOYEE_SALARY_ASSIGNED,
+        })
+        .exec();
+      expect(assignAudit).not.toBeNull();
+
+      // 4. Subsequent revision on activeDocs[0] -> 2028-01-01 closes 2027-06-01 cleanly and logs REVISED
+      const revRes = await request(app.getHttpServer())
+        .post(basePath)
+        .send({
+          salaryStructureId: structure1Id.toString(),
+          effectiveFrom: '2028-01-01',
+        })
+        .expect(HttpStatus.CREATED);
+      const revId = (revRes.body as { data: { id: string } }).data.id;
+
+      const closedActive = await employeeSalaryModel
+        .findById(activeDocs[0]._id)
+        .exec();
+      expect(closedActive?.status).toBe(EmployeeSalaryStatus.SUPERSEDED);
+      expect(closedActive?.effectiveTo?.toISOString().slice(0, 10)).toBe(
+        '2028-01-01',
+      );
+
+      const reviseAudit = await auditLogModel
+        .findOne({
+          targetId: new Types.ObjectId(revId),
+          action: AuditAction.EMPLOYEE_SALARY_REVISED,
+        })
+        .exec();
+      expect(reviseAudit).not.toBeNull();
+      expect(
+        await employeeSalaryModel.countDocuments({
+          employeeId,
+          effectiveTo: null,
+          status: EmployeeSalaryStatus.ACTIVE,
+        }),
+      ).toBe(1);
+    });
   });
 });

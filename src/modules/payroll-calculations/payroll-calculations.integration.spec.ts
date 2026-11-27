@@ -69,6 +69,7 @@ import {
   PayrollRoundingMode,
 } from '../payroll-configuration/constants/payroll-configuration.constant';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { PayrollProcessingFailureRepository } from './repositories/payroll-processing-failure.repository';
 import { AuthorizationService } from '../authorization/authorization.service';
 import { PermissionsGuard } from '../authorization/guards/permissions.guard';
 import { PermissionKeys } from '../permissions/constants/permission.constant';
@@ -311,6 +312,12 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
         {
           provide: PayrollRecordRepository,
           useValue: recordRepository,
+        },
+        {
+          provide: PayrollProcessingFailureRepository,
+          useValue: {
+            deleteByPeriodAndEmployees: jest.fn().mockResolvedValue(undefined),
+          },
         },
         {
           provide: PayrollPeriodRepository,

@@ -470,11 +470,30 @@ export class PayrollPeriodsService {
       );
     }
 
+    if (
+      fromStatus === PayrollPeriodStatus.COMPLETED &&
+      toStatus === PayrollPeriodStatus.FINALIZED
+    ) {
+      throw new AppError(
+        ErrorCode.CONCURRENT_MODIFICATION,
+        `Payroll period '${existing.periodCode}' is in 'COMPLETED' status and cannot be finalized directly. Complete review and approve the period via POST /payroll/periods/:periodId/approve before finalization.`,
+        HttpStatus.CONFLICT,
+      );
+    }
+
     const allowed = ALLOWED_STATUS_TRANSITIONS[fromStatus] ?? [];
     if (!allowed.includes(toStatus)) {
       throw new AppError(
         ErrorCode.VALIDATION_ERROR,
         `Invalid status transition from '${fromStatus}' to '${toStatus}'. Allowed transitions: ${allowed.join(', ') || 'None'}.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (toStatus === PayrollPeriodStatus.APPROVED) {
+      throw new AppError(
+        ErrorCode.VALIDATION_ERROR,
+        'Payroll period approval must be performed through POST /payroll/periods/:periodId/approve so record snapshots and totals are approved atomically.',
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -485,18 +504,13 @@ export class PayrollPeriodsService {
       acknowledgedWarningCodes: string[];
     } | null = null;
 
-    // Enforce payroll processing completeness & zero stale/failed/ineligible records
-    // before marking a period COMPLETED or FINALIZED.
-    if (
-      toStatus === PayrollPeriodStatus.COMPLETED ||
-      toStatus === PayrollPeriodStatus.FINALIZED
-    ) {
+    if (toStatus === PayrollPeriodStatus.COMPLETED) {
       await this.payrollProcessingService.verifyPeriodCompletionReadiness(
         existing,
       );
     }
 
-    // Special authorization & leave/attendance anomaly gate for finalization
+    // Special authorization, approval-metadata, all-records-approved, and anomaly gates for finalization
     if (toStatus === PayrollPeriodStatus.FINALIZED) {
       const isAuthorized = await this.authorizationService.hasPermissions(
         roleIds,
@@ -510,19 +524,48 @@ export class PayrollPeriodsService {
         );
       }
 
-      finalizationAuditMeta = await this.validateFinalizationReadiness(
+      if (!existing.approval?.approvedBy || !existing.approval?.approvedAt) {
+        throw new AppError(
+          ErrorCode.CONCURRENT_MODIFICATION,
+          `Payroll period '${existing.periodCode}' cannot be finalized without valid approval metadata. Approve the period via POST /payroll/periods/:periodId/approve first.`,
+          HttpStatus.CONFLICT,
+        );
+      }
+
+      await this.payrollProcessingService.verifyPeriodCompletionReadiness(
         existing,
-        dto,
+        { requireAllRecordsApproved: true },
       );
+
+      const anomalyReport = await this.evaluatePeriodAnomalies(existing, {
+        enforceGate: true,
+        acknowledgeAnomalies: dto.acknowledgeAnomalies,
+        reason: dto.reason,
+        gateLabel: 'finalize',
+      });
+      finalizationAuditMeta = anomalyReport.acknowledgmentMeta;
     }
 
     const expectedVersion = dto.version ?? existing.__v;
-    const updated = await this.payrollPeriodRepository.updateStatus(
-      id,
-      toStatus,
-      actorId,
-      expectedVersion,
-    );
+    const updated =
+      toStatus === PayrollPeriodStatus.FINALIZED
+        ? await this.payrollPeriodRepository.updateStatus(
+            id,
+            toStatus,
+            actorId,
+            expectedVersion,
+            undefined,
+            {
+              expectedFromStatus: PayrollPeriodStatus.APPROVED,
+              requireApprovalMetadata: true,
+            },
+          )
+        : await this.payrollPeriodRepository.updateStatus(
+            id,
+            toStatus,
+            actorId,
+            expectedVersion,
+          );
     if (!updated) {
       const stillExists = await this.payrollPeriodRepository.findById(id);
       if (stillExists) {
@@ -559,13 +602,32 @@ export class PayrollPeriodsService {
     return PayrollPeriodMapper.toResponse(updated);
   }
 
-  private async validateFinalizationReadiness(
+  async evaluatePeriodAnomalies(
     period: PayrollPeriod & { _id: Types.ObjectId },
-    dto: UpdatePayrollPeriodStatusDto,
+    options?: {
+      enforceGate?: boolean;
+      acknowledgeAnomalies?: boolean;
+      reason?: string;
+      gateLabel?: 'approve' | 'finalize';
+    },
   ): Promise<{
-    acknowledgeAnomalies: boolean;
-    acknowledgedAnomalyEmployees: number;
-    acknowledgedWarningCodes: string[];
+    blockingFindings: Array<{
+      employeeId: string;
+      employeeCode: string;
+      warnings: PayrollLeaveAttendanceWarningCode[];
+    }>;
+    reviewableFindings: Array<{
+      employeeId: string;
+      employeeCode: string;
+      warnings: PayrollLeaveAttendanceWarningCode[];
+    }>;
+    distinctBlockingCodes: PayrollLeaveAttendanceWarningCode[];
+    distinctReviewableCodes: PayrollLeaveAttendanceWarningCode[];
+    acknowledgmentMeta: {
+      acknowledgeAnomalies: boolean;
+      acknowledgedAnomalyEmployees: number;
+      acknowledgedWarningCodes: string[];
+    };
   }> {
     const periodStartStr = period.startDate.toISOString().slice(0, 10);
     const periodEndStr = period.endDate.toISOString().slice(0, 10);
@@ -582,9 +644,15 @@ export class PayrollPeriodsService {
 
     if (candidateEmployees.length === 0) {
       return {
-        acknowledgeAnomalies: Boolean(dto.acknowledgeAnomalies),
-        acknowledgedAnomalyEmployees: 0,
-        acknowledgedWarningCodes: [],
+        blockingFindings: [],
+        reviewableFindings: [],
+        distinctBlockingCodes: [],
+        distinctReviewableCodes: [],
+        acknowledgmentMeta: {
+          acknowledgeAnomalies: Boolean(options?.acknowledgeAnomalies),
+          acknowledgedAnomalyEmployees: 0,
+          acknowledgedWarningCodes: [],
+        },
       };
     }
 
@@ -606,9 +674,15 @@ export class PayrollPeriodsService {
 
     if (targets.length === 0) {
       return {
-        acknowledgeAnomalies: Boolean(dto.acknowledgeAnomalies),
-        acknowledgedAnomalyEmployees: 0,
-        acknowledgedWarningCodes: [],
+        blockingFindings: [],
+        reviewableFindings: [],
+        distinctBlockingCodes: [],
+        distinctReviewableCodes: [],
+        acknowledgmentMeta: {
+          acknowledgeAnomalies: Boolean(options?.acknowledgeAnomalies),
+          acknowledgedAnomalyEmployees: 0,
+          acknowledgedWarningCodes: [],
+        },
       };
     }
 
@@ -635,7 +709,8 @@ export class PayrollPeriodsService {
       employeeCode: string;
       warnings: PayrollLeaveAttendanceWarningCode[];
     }> = [];
-    const acknowledgedCodeSet = new Set<string>();
+    const blockingCodeSet = new Set<PayrollLeaveAttendanceWarningCode>();
+    const acknowledgedCodeSet = new Set<PayrollLeaveAttendanceWarningCode>();
 
     for (const [empIdStr, resolution] of resolutions.entries()) {
       if (resolution.warnings.length === 0) {
@@ -656,6 +731,9 @@ export class PayrollPeriodsService {
           employeeCode,
           warnings: hardWarnings,
         });
+        for (const w of hardWarnings) {
+          blockingCodeSet.add(w);
+        }
       }
 
       if (reviewWarnings.length > 0) {
@@ -670,50 +748,56 @@ export class PayrollPeriodsService {
       }
     }
 
-    if (blockingFindings.length > 0) {
-      const distinctCodes = Array.from(
-        new Set(blockingFindings.flatMap((f) => f.warnings)),
-      );
+    const distinctBlockingCodes = Array.from(blockingCodeSet);
+    const distinctReviewableCodes = Array.from(acknowledgedCodeSet);
+    const gateAction = options?.gateLabel ?? 'finalize';
+
+    if (options?.enforceGate && blockingFindings.length > 0) {
       throw new AppError(
         ErrorCode.CONCURRENT_MODIFICATION,
-        `Cannot finalize payroll period '${period.periodCode}': ${blockingFindings.length} employee(s) have unresolved blocking leave/attendance conflicts (${distinctCodes.join(', ')}). Resolve these requests before finalization.`,
+        `Cannot ${gateAction} payroll period '${period.periodCode}': ${blockingFindings.length} employee(s) have unresolved blocking leave/attendance conflicts (${distinctBlockingCodes.join(', ')}). Resolve these requests before finalization.`,
         HttpStatus.CONFLICT,
         {
-          blockingWarnings: distinctCodes,
+          blockingWarnings: distinctBlockingCodes,
           affectedEmployeeCount: blockingFindings.length,
           affectedEmployees: blockingFindings.slice(0, 20),
         },
       );
     }
 
-    if (reviewableFindings.length > 0) {
-      const distinctCodes = Array.from(acknowledgedCodeSet);
-      if (dto.acknowledgeAnomalies !== true) {
+    if (options?.enforceGate && reviewableFindings.length > 0) {
+      if (options.acknowledgeAnomalies !== true) {
         throw new AppError(
           ErrorCode.CONCURRENT_MODIFICATION,
-          `Payroll period '${period.periodCode}' has ${reviewableFindings.length} employee(s) with unreviewed attendance/leave anomalies (${distinctCodes.join(', ')}). Reconcile them or set acknowledgeAnomalies=true with a reason to finalize.`,
+          `Payroll period '${period.periodCode}' has ${reviewableFindings.length} employee(s) with unreviewed attendance/leave anomalies (${distinctReviewableCodes.join(', ')}). Reconcile them or set acknowledgeAnomalies=true with a reason to ${gateAction}.`,
           HttpStatus.CONFLICT,
           {
-            reviewableWarnings: distinctCodes,
+            reviewableWarnings: distinctReviewableCodes,
             affectedEmployeeCount: reviewableFindings.length,
             affectedEmployees: reviewableFindings.slice(0, 20),
           },
         );
       }
 
-      if (!dto.reason || dto.reason.trim().length < 5) {
+      if (!options.reason || options.reason.trim().length < 5) {
         throw new AppError(
           ErrorCode.VALIDATION_ERROR,
-          'A descriptive reason (at least 5 characters) is required when finalizing a payroll period with acknowledged anomalies.',
+          `A descriptive reason (at least 5 characters) is required when executing payroll ${gateAction} with acknowledged anomalies.`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
 
     return {
-      acknowledgeAnomalies: Boolean(dto.acknowledgeAnomalies),
-      acknowledgedAnomalyEmployees: reviewableFindings.length,
-      acknowledgedWarningCodes: Array.from(acknowledgedCodeSet),
+      blockingFindings,
+      reviewableFindings,
+      distinctBlockingCodes,
+      distinctReviewableCodes,
+      acknowledgmentMeta: {
+        acknowledgeAnomalies: Boolean(options?.acknowledgeAnomalies),
+        acknowledgedAnomalyEmployees: reviewableFindings.length,
+        acknowledgedWarningCodes: distinctReviewableCodes,
+      },
     };
   }
 }

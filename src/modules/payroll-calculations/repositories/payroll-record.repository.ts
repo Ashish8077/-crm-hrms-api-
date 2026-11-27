@@ -297,4 +297,431 @@ export class PayrollRecordRepository {
       inputFingerprint: d.calculationSnapshot?.inputFingerprint ?? null,
     }));
   }
+
+  async findByIdAndPeriod(
+    recordId: Types.ObjectId,
+    payrollPeriodId: Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<PayrollRecordLean | null> {
+    const query = this.payrollRecordModel.findOne({
+      _id: recordId,
+      payrollPeriodId,
+      deletedAt: null,
+    });
+    if (session) {
+      query.session(session);
+    }
+    return query.lean<PayrollRecordLean>().exec();
+  }
+
+  async approveCalculatedRecordsByIds(
+    params: {
+      payrollPeriodId: Types.ObjectId;
+      recordIds: Types.ObjectId[];
+      actorId: Types.ObjectId;
+      approvedAt: Date;
+    },
+    session?: ClientSession,
+  ): Promise<{ matchedCount: number; modifiedCount: number }> {
+    if (params.recordIds.length === 0) {
+      return { matchedCount: 0, modifiedCount: 0 };
+    }
+    const res = await this.payrollRecordModel
+      .updateMany(
+        {
+          _id: { $in: params.recordIds },
+          payrollPeriodId: params.payrollPeriodId,
+          deletedAt: null,
+          status: PayrollRecordStatus.CALCULATED,
+        },
+        {
+          $set: {
+            status: PayrollRecordStatus.APPROVED,
+            approvedAt: params.approvedAt,
+            approvedBy: params.actorId,
+            updatedBy: params.actorId,
+          },
+          $inc: { __v: 1 },
+        },
+        { session },
+      )
+      .exec();
+
+    return {
+      matchedCount: res.matchedCount,
+      modifiedCount: res.modifiedCount,
+    };
+  }
+
+  async aggregateReviewSummary(
+    payrollPeriodId: Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<{
+    calculatedCount: number;
+    approvedCount: number;
+    invalidatedCount: number;
+    totalGrossEarnings: string;
+    totalDeductions: string;
+    totalEmployerContributions: string;
+    totalNetSalary: string;
+    versionCounts: Record<string, number>;
+  }> {
+    const agg = this.payrollRecordModel.aggregate<{
+      statusCounts: Array<{ _id: PayrollRecordStatus; count: number }>;
+      activeTotals: Array<{
+        totalGrossEarnings?: { toString(): string } | number | null;
+        totalDeductions?: { toString(): string } | number | null;
+        totalEmployerContributions?: { toString(): string } | number | null;
+        totalNetSalary?: { toString(): string } | number | null;
+      }>;
+      versionCounts: Array<{ _id: number; count: number }>;
+    }>([
+      {
+        $match: {
+          payrollPeriodId,
+          deletedAt: null,
+        },
+      },
+      {
+        $facet: {
+          statusCounts: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
+          activeTotals: [
+            {
+              $match: {
+                status: {
+                  $in: [
+                    PayrollRecordStatus.CALCULATED,
+                    PayrollRecordStatus.APPROVED,
+                  ],
+                },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalGrossEarnings: { $sum: '$grossEarnings' },
+                totalDeductions: { $sum: '$totalDeductions' },
+                totalEmployerContributions: { $sum: '$employerContributions' },
+                totalNetSalary: { $sum: '$netSalary' },
+              },
+            },
+          ],
+          versionCounts: [
+            {
+              $match: {
+                status: {
+                  $in: [
+                    PayrollRecordStatus.CALCULATED,
+                    PayrollRecordStatus.APPROVED,
+                  ],
+                },
+              },
+            },
+            { $group: { _id: '$calculationVersion', count: { $sum: 1 } } },
+          ],
+        },
+      },
+    ]);
+
+    if (session) {
+      agg.session(session);
+    }
+
+    const [result] = await agg.exec();
+    const byStatus = new Map<PayrollRecordStatus, number>(
+      (result?.statusCounts ?? []).map((s) => [s._id, s.count]),
+    );
+    const totals = result?.activeTotals?.[0];
+    const versionCounts: Record<string, number> = {};
+    for (const v of result?.versionCounts ?? []) {
+      versionCounts[String(v._id)] = v.count;
+    }
+
+    return {
+      calculatedCount: byStatus.get(PayrollRecordStatus.CALCULATED) ?? 0,
+      approvedCount: byStatus.get(PayrollRecordStatus.APPROVED) ?? 0,
+      invalidatedCount: byStatus.get(PayrollRecordStatus.INVALIDATED) ?? 0,
+      totalGrossEarnings: totals?.totalGrossEarnings?.toString() ?? '0',
+      totalDeductions: totals?.totalDeductions?.toString() ?? '0',
+      totalEmployerContributions:
+        totals?.totalEmployerContributions?.toString() ?? '0',
+      totalNetSalary: totals?.totalNetSalary?.toString() ?? '0',
+      versionCounts,
+    };
+  }
+
+  async findPaginatedForReview(
+    payrollPeriodId: Types.ObjectId,
+    query: {
+      page: number;
+      limit: number;
+      search?: string;
+      departmentId?: Types.ObjectId;
+      branchId?: Types.ObjectId;
+      status?: PayrollRecordStatus;
+      hasAnomalies?: boolean;
+    },
+  ): Promise<{
+    data: Array<{
+      id: Types.ObjectId;
+      employeeId: Types.ObjectId;
+      employeeCode: string;
+      employeeName: string;
+      employmentStatus: string;
+      departmentId: Types.ObjectId | null;
+      branchId: Types.ObjectId | null;
+      status: PayrollRecordStatus;
+      grossEarnings: Types.Decimal128;
+      totalDeductions: Types.Decimal128;
+      employerContributions: Types.Decimal128;
+      netSalary: Types.Decimal128;
+      payableDays: number;
+      totalLopDays: number;
+      calculationVersion: number;
+      calculatedAt: Date;
+      approvedAt: Date | null;
+      approvedBy: Types.ObjectId | null;
+      invalidatedAt: Date | null;
+      invalidationReason: string | null;
+      warnings: string[];
+      leaveAttendanceMismatchDates: string[];
+    }>;
+    total: number;
+  }> {
+    const safePage = Math.max(1, query.page);
+    const safeLimit = Math.max(1, query.limit);
+    const skip = (safePage - 1) * safeLimit;
+
+    const matchStage: Record<string, unknown> = {
+      payrollPeriodId,
+      deletedAt: null,
+    };
+    if (query.status) {
+      matchStage.status = query.status;
+    }
+    if (query.hasAnomalies === true) {
+      matchStage.$expr = {
+        $or: [
+          {
+            $gt: [
+              {
+                $size: {
+                  $ifNull: ['$calculationSnapshot.attendanceLeaveWarnings', []],
+                },
+              },
+              0,
+            ],
+          },
+          {
+            $gt: [
+              {
+                $size: {
+                  $ifNull: [
+                    '$calculationSnapshot.leaveAttendanceMismatchDates',
+                    [],
+                  ],
+                },
+              },
+              0,
+            ],
+          },
+        ],
+      };
+    } else if (query.hasAnomalies === false) {
+      matchStage.$expr = {
+        $and: [
+          {
+            $eq: [
+              {
+                $size: {
+                  $ifNull: ['$calculationSnapshot.attendanceLeaveWarnings', []],
+                },
+              },
+              0,
+            ],
+          },
+          {
+            $eq: [
+              {
+                $size: {
+                  $ifNull: [
+                    '$calculationSnapshot.leaveAttendanceMismatchDates',
+                    [],
+                  ],
+                },
+              },
+              0,
+            ],
+          },
+        ],
+      };
+    }
+
+    const pipeline: Record<string, unknown>[] = [
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: 'employees',
+          localField: 'employeeId',
+          foreignField: '_id',
+          pipeline: [
+            {
+              $project: {
+                _id: 1,
+                employeeCode: 1,
+                firstName: 1,
+                lastName: 1,
+                departmentId: 1,
+                branchId: 1,
+                employmentStatus: 1,
+              },
+            },
+          ],
+          as: 'emp',
+        },
+      },
+      {
+        $unwind: {
+          path: '$emp',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+    ];
+
+    const postLookupMatch: Record<string, unknown> = {};
+    if (query.departmentId) {
+      postLookupMatch['emp.departmentId'] = query.departmentId;
+    }
+    if (query.branchId) {
+      postLookupMatch['emp.branchId'] = query.branchId;
+    }
+    if (query.search && query.search.trim().length > 0) {
+      const escaped = query.search
+        .trim()
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escaped, 'i');
+      postLookupMatch.$or = [
+        { 'calculationSnapshot.employeeCode': regex },
+        { 'calculationSnapshot.employeeName': regex },
+        { 'emp.employeeCode': regex },
+        { 'emp.firstName': regex },
+        { 'emp.lastName': regex },
+      ];
+    }
+    if (Object.keys(postLookupMatch).length > 0) {
+      pipeline.push({ $match: postLookupMatch });
+    }
+
+    pipeline.push(
+      {
+        $sort: {
+          'calculationSnapshot.employeeCode': 1,
+          _id: 1,
+        },
+      },
+      {
+        $facet: {
+          total: [{ $count: 'count' }],
+          data: [
+            { $skip: skip },
+            { $limit: safeLimit },
+            {
+              $project: {
+                _id: 0,
+                id: '$_id',
+                employeeId: '$employeeId',
+                employeeCode: {
+                  $ifNull: [
+                    '$emp.employeeCode',
+                    '$calculationSnapshot.employeeCode',
+                  ],
+                },
+                employeeName: {
+                  $ifNull: [
+                    '$calculationSnapshot.employeeName',
+                    {
+                      $trim: {
+                        input: {
+                          $concat: [
+                            { $ifNull: ['$emp.firstName', ''] },
+                            ' ',
+                            { $ifNull: ['$emp.lastName', ''] },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+                employmentStatus: {
+                  $ifNull: [
+                    '$emp.employmentStatus',
+                    '$calculationSnapshot.employmentStatus',
+                  ],
+                },
+                departmentId: { $ifNull: ['$emp.departmentId', null] },
+                branchId: { $ifNull: ['$emp.branchId', null] },
+                status: '$status',
+                grossEarnings: '$grossEarnings',
+                totalDeductions: '$totalDeductions',
+                employerContributions: '$employerContributions',
+                netSalary: '$netSalary',
+                payableDays: '$calculationSnapshot.payableDays',
+                totalLopDays: '$calculationSnapshot.totalLopDays',
+                calculationVersion: '$calculationVersion',
+                calculatedAt: '$calculatedAt',
+                approvedAt: { $ifNull: ['$approvedAt', null] },
+                approvedBy: { $ifNull: ['$approvedBy', null] },
+                invalidatedAt: { $ifNull: ['$invalidatedAt', null] },
+                invalidationReason: { $ifNull: ['$invalidationReason', null] },
+                warnings: {
+                  $ifNull: ['$calculationSnapshot.attendanceLeaveWarnings', []],
+                },
+                leaveAttendanceMismatchDates: {
+                  $ifNull: [
+                    '$calculationSnapshot.leaveAttendanceMismatchDates',
+                    [],
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      },
+    );
+
+    const [aggResult] = await this.payrollRecordModel
+      .aggregate<{
+        total: Array<{ count: number }>;
+        data: Array<{
+          id: Types.ObjectId;
+          employeeId: Types.ObjectId;
+          employeeCode: string;
+          employeeName: string;
+          employmentStatus: string;
+          departmentId: Types.ObjectId | null;
+          branchId: Types.ObjectId | null;
+          status: PayrollRecordStatus;
+          grossEarnings: Types.Decimal128;
+          totalDeductions: Types.Decimal128;
+          employerContributions: Types.Decimal128;
+          netSalary: Types.Decimal128;
+          payableDays: number;
+          totalLopDays: number;
+          calculationVersion: number;
+          calculatedAt: Date;
+          approvedAt: Date | null;
+          approvedBy: Types.ObjectId | null;
+          invalidatedAt: Date | null;
+          invalidationReason: string | null;
+          warnings: string[];
+          leaveAttendanceMismatchDates: string[];
+        }>;
+      }>(pipeline as unknown as never[])
+      .exec();
+
+    return {
+      data: aggResult?.data ?? [],
+      total: aggResult?.total?.[0]?.count ?? 0,
+    };
+  }
 }

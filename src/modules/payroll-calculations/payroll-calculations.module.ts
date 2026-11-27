@@ -30,8 +30,10 @@ import { PayrollTotalsCalculator } from './services/payroll-totals.calculator';
 import { PayrollSnapshotBuilder } from './services/payroll-snapshot.builder';
 import { PayrollCalculationService } from './services/payroll-calculation.service';
 import { PayrollProcessingService } from './services/payroll-processing.service';
+import { PayrollReviewService } from './services/payroll-review.service';
 import { PayrollCalculationsController } from './payroll-calculations.controller';
 import { PayrollPeriodProcessingController } from './controllers/payroll-period-processing.controller';
+import { PayrollPeriodReviewController } from './controllers/payroll-period-review.controller';
 
 @Module({
   imports: [
@@ -54,6 +56,7 @@ import { PayrollPeriodProcessingController } from './controllers/payroll-period-
   controllers: [
     PayrollCalculationsController,
     PayrollPeriodProcessingController,
+    PayrollPeriodReviewController,
   ],
   providers: [
     PayrollRecordRepository,
@@ -67,12 +70,14 @@ import { PayrollPeriodProcessingController } from './controllers/payroll-period-
     PayrollSnapshotBuilder,
     PayrollCalculationService,
     PayrollProcessingService,
+    PayrollReviewService,
   ],
   exports: [
     PayrollRecordRepository,
     PayrollProcessingFailureRepository,
     PayrollCalculationService,
     PayrollProcessingService,
+    PayrollReviewService,
   ],
 })
 export class PayrollCalculationsModule {}

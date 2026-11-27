@@ -11,6 +11,7 @@ import { ProrationCalculator } from './proration.calculator';
 import { PayrollTotalsCalculator } from './payroll-totals.calculator';
 import { PayrollSnapshotBuilder } from './payroll-snapshot.builder';
 import { PayrollRecordRepository } from '../repositories/payroll-record.repository';
+import { PayrollProcessingFailureRepository } from '../repositories/payroll-processing-failure.repository';
 import { PayrollPeriodRepository } from '../../payroll-periods/repositories/payroll-period.repository';
 import { EmployeeSalaryRepository } from '../../employee-salaries/repositories/employee-salary.repository';
 import { SalaryStructureRepository } from '../../salary-structures/repositories/salary-structure.repository';
@@ -67,6 +68,9 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
     create: jest.Mock;
     recalculateAtomically: jest.Mock;
     isDuplicateKeyError: jest.Mock;
+  };
+  let payrollProcessingFailureRepo: {
+    deleteByPeriodAndEmployees: jest.Mock;
   };
   let auditLogsService: { createAuditLog: jest.Mock };
   let connectionMock: { startSession: jest.Mock };
@@ -307,6 +311,9 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
       recalculateAtomically: jest.fn(),
       isDuplicateKeyError: jest.fn().mockReturnValue(false),
     };
+    payrollProcessingFailureRepo = {
+      deleteByPeriodAndEmployees: jest.fn().mockResolvedValue(undefined),
+    };
     auditLogsService = {
       createAuditLog: jest.fn().mockResolvedValue(undefined),
     };
@@ -332,6 +339,10 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
         PayrollSnapshotBuilder,
         SalaryStructureCalculationService,
         { provide: PayrollRecordRepository, useValue: payrollRecordRepo },
+        {
+          provide: PayrollProcessingFailureRepository,
+          useValue: payrollProcessingFailureRepo,
+        },
         { provide: PayrollPeriodRepository, useValue: periodRepo },
         { provide: getModelToken(Employee.name), useValue: employeeModel },
         { provide: EmployeeSalaryRepository, useValue: employeeSalaryRepo },
@@ -2121,6 +2132,71 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
         expect.any(Object),
         sessionMock,
       );
+    });
+
+    it('removes only the matching PayrollProcessingFailure inside the transaction after successful creation/recalculation and skips cleanup on failure', async () => {
+      const existingId = new Types.ObjectId();
+      payrollRecordRepo.findByPeriodAndEmployee.mockResolvedValue({
+        _id: existingId,
+        payrollPeriodId: periodId,
+        employeeId,
+        status: PayrollRecordStatus.CALCULATED,
+        calculationVersion: 1,
+        __v: 1,
+      });
+      payrollRecordRepo.recalculateAtomically.mockImplementation(
+        (_id: unknown, _ver: unknown, input: Record<string, unknown>) =>
+          Promise.resolve({
+            _id: existingId,
+            payrollPeriodId: periodId,
+            employeeId,
+            ...input,
+            status: PayrollRecordStatus.CALCULATED,
+            calculationVersion: 2,
+            createdBy: actorId,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            __v: 2,
+          }),
+      );
+
+      await service.calculateAndPersistEmployeePayroll(
+        {
+          payrollPeriodId: periodId.toString(),
+          employeeId: employeeId.toString(),
+          recalculate: true,
+        },
+        actorId,
+      );
+
+      expect(
+        payrollProcessingFailureRepo.deleteByPeriodAndEmployees,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        payrollProcessingFailureRepo.deleteByPeriodAndEmployees,
+      ).toHaveBeenCalledWith(periodId, [employeeId], sessionMock);
+
+      // Failed calculation (e.g., COMPLETED period or missing salary) must NOT call deleteByPeriodAndEmployees
+      payrollProcessingFailureRepo.deleteByPeriodAndEmployees.mockClear();
+      periodRepo.findById.mockResolvedValue(
+        makePeriod({ status: PayrollPeriodStatus.COMPLETED }),
+      );
+      await expect(
+        service.calculateAndPersistEmployeePayroll(
+          {
+            payrollPeriodId: periodId.toString(),
+            employeeId: employeeId.toString(),
+            recalculate: true,
+          },
+          actorId,
+        ),
+      ).rejects.toMatchObject({
+        code: ErrorCode.CONCURRENT_MODIFICATION,
+        statusCode: HttpStatus.CONFLICT,
+      });
+      expect(
+        payrollProcessingFailureRepo.deleteByPeriodAndEmployees,
+      ).not.toHaveBeenCalled();
     });
   });
 });

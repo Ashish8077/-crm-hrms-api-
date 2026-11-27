@@ -35,6 +35,7 @@ import {
 } from '../dto/payroll-calculation-response.dto';
 import { PayrollCalculationMapper } from '../mappers/payroll-calculation.mapper';
 import { PayrollRecordRepository } from '../repositories/payroll-record.repository';
+import { PayrollProcessingFailureRepository } from '../repositories/payroll-processing-failure.repository';
 import { PayrollPeriodRepository } from '../../payroll-periods/repositories/payroll-period.repository';
 import { PayrollCalculationSnapshot } from '../schemas/payroll-record.schema';
 import {
@@ -60,6 +61,7 @@ import { PayrollSnapshotBuilder } from './payroll-snapshot.builder';
 export class PayrollCalculationService {
   constructor(
     private readonly payrollRecordRepository: PayrollRecordRepository,
+    private readonly payrollProcessingFailureRepository: PayrollProcessingFailureRepository,
     private readonly payrollPeriodRepository: PayrollPeriodRepository,
     private readonly inputResolver: PayrollInputResolver,
     private readonly componentResolver: SalaryComponentResolver,
@@ -168,6 +170,12 @@ export class PayrollCalculationService {
           );
         }
 
+        await this.payrollProcessingFailureRepository.deleteByPeriodAndEmployees(
+          payrollPeriodId,
+          [employeeId],
+          session,
+        );
+
         await this.auditLogsService.createAuditLog(
           {
             actorId,
@@ -249,6 +257,12 @@ export class PayrollCalculationService {
             createdBy: actorId,
             updatedBy: actorId,
           },
+          session,
+        );
+
+        await this.payrollProcessingFailureRepository.deleteByPeriodAndEmployees(
+          payrollPeriodId,
+          [employeeId],
           session,
         );
 

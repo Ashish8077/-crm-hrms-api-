@@ -20,6 +20,22 @@ export interface PayrollPeriodProcessingSummaryResponse {
   lastErrorSummary: string | null;
 }
 
+export interface PayrollPeriodApprovalSummaryResponse {
+  approvedBy: string | null;
+  approvedAt: string | null;
+  approvedRecordsCount: number;
+  alreadyApprovedRecordsCount: number;
+  totalGrossEarnings: string | null;
+  totalDeductions: string | null;
+  totalEmployerContributions: string | null;
+  totalNetSalary: string | null;
+  totalEmployerCost: string | null;
+  reason: string | null;
+  acknowledgeAnomalies: boolean;
+  acknowledgedAnomalyEmployees: number;
+  acknowledgedWarningCodes: string[];
+}
+
 export interface PayrollPeriodResponse {
   id: string;
   periodName: string;
@@ -32,6 +48,7 @@ export interface PayrollPeriodResponse {
   year: number;
   status: PayrollPeriodStatus;
   processing: PayrollPeriodProcessingSummaryResponse;
+  approval?: PayrollPeriodApprovalSummaryResponse | null;
   notes: string | null;
   createdBy: string | null;
   updatedBy: string | null;
@@ -43,6 +60,7 @@ export interface PayrollPeriodResponse {
 export class PayrollPeriodMapper {
   static toResponse(doc: PayrollPeriodLean): PayrollPeriodResponse {
     const proc = doc.processing;
+    const approval = doc.approval;
     return {
       id: doc._id.toString(),
       periodName: doc.periodName,
@@ -93,6 +111,33 @@ export class PayrollPeriodMapper {
               : null,
         lastErrorSummary: proc?.lastErrorSummary ?? null,
       },
+      approval: approval
+        ? {
+            approvedBy: approval.approvedBy
+              ? approval.approvedBy.toString()
+              : null,
+            approvedAt:
+              approval.approvedAt instanceof Date
+                ? approval.approvedAt.toISOString()
+                : approval.approvedAt
+                  ? String(approval.approvedAt)
+                  : null,
+            approvedRecordsCount: approval.approvedRecordsCount ?? 0,
+            alreadyApprovedRecordsCount:
+              approval.alreadyApprovedRecordsCount ?? 0,
+            totalGrossEarnings: approval.totalGrossEarnings ?? null,
+            totalDeductions: approval.totalDeductions ?? null,
+            totalEmployerContributions:
+              approval.totalEmployerContributions ?? null,
+            totalNetSalary: approval.totalNetSalary ?? null,
+            totalEmployerCost: approval.totalEmployerCost ?? null,
+            reason: approval.reason ?? null,
+            acknowledgeAnomalies: Boolean(approval.acknowledgeAnomalies),
+            acknowledgedAnomalyEmployees:
+              approval.acknowledgedAnomalyEmployees ?? 0,
+            acknowledgedWarningCodes: approval.acknowledgedWarningCodes ?? [],
+          }
+        : null,
       notes: doc.notes ?? null,
       createdBy: doc.createdBy ? doc.createdBy.toString() : null,
       updatedBy: doc.updatedBy ? doc.updatedBy.toString() : null,

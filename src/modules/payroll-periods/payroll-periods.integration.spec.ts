@@ -190,10 +190,27 @@ class InMemoryPayrollPeriodRepository {
     status: PayrollPeriodStatus,
     actorId: Types.ObjectId,
     expectedVersion?: number,
+    _session?: unknown,
+    options?: {
+      expectedFromStatus?: PayrollPeriodStatus;
+      requireApprovalMetadata?: boolean;
+    },
   ): Promise<PayrollPeriodLean | null> {
     const item = this.store.get(id.toHexString());
     if (!item || item.deletedAt !== null) return null;
     if (typeof expectedVersion === 'number' && item.__v !== expectedVersion) {
+      return null;
+    }
+    if (
+      options?.expectedFromStatus !== undefined &&
+      item.status !== options.expectedFromStatus
+    ) {
+      return null;
+    }
+    if (
+      options?.requireApprovalMetadata &&
+      (!item.approval?.approvedBy || !item.approval?.approvedAt)
+    ) {
       return null;
     }
 
@@ -206,6 +223,31 @@ class InMemoryPayrollPeriodRepository {
     };
     this.store.set(id.toHexString(), updated);
     return { ...updated };
+  }
+
+  approveForTest(id: Types.ObjectId, actorId: Types.ObjectId): void {
+    const item = this.store.get(id.toHexString());
+    if (!item) return;
+    this.store.set(id.toHexString(), {
+      ...item,
+      status: PayrollPeriodStatus.APPROVED,
+      approval: {
+        approvedBy: actorId,
+        approvedAt: new Date(),
+        approvedRecordsCount: 1,
+        alreadyApprovedRecordsCount: 0,
+        totalGrossEarnings: '10000.00',
+        totalDeductions: '0.00',
+        totalEmployerContributions: '0.00',
+        totalNetSalary: '10000.00',
+        totalEmployerCost: '10000.00',
+        reason: 'Test approval',
+        acknowledgeAnomalies: false,
+        acknowledgedAnomalyEmployees: 0,
+        acknowledgedWarningCodes: [],
+      },
+      __v: item.__v + 1,
+    });
   }
 
   async findList(
@@ -1142,7 +1184,7 @@ describe('Payroll Periods Module - Complete Integration Test Suite', () => {
       periodId = new Types.ObjectId(res.data.id);
     });
 
-    it('should execute full valid forward lifecycle: DRAFT -> PROCESSING -> COMPLETED -> FINALIZED', async () => {
+    it('should execute full valid forward lifecycle: DRAFT -> PROCESSING -> COMPLETED -> APPROVED -> FINALIZED, and reject direct COMPLETED -> FINALIZED (409)', async () => {
       // 1. DRAFT -> PROCESSING
       let res = await controller.updateStatus(
         periodId,
@@ -1163,7 +1205,24 @@ describe('Payroll Periods Module - Complete Integration Test Suite', () => {
       );
       expect(res.data.status).toBe(PayrollPeriodStatus.COMPLETED);
 
-      // 3. COMPLETED -> FINALIZED (User has PAYROLL_PERIODS_APPROVE)
+      // Direct COMPLETED -> FINALIZED must fail with 409 Conflict
+      await expect(
+        controller.updateStatus(
+          periodId,
+          await validateBody(UpdatePayrollPeriodStatusDto, {
+            status: PayrollPeriodStatus.FINALIZED,
+            reason: 'Trying to bypass approval',
+          }),
+          createRequest([cfoRoleId]),
+        ),
+      ).rejects.toMatchObject({
+        code: ErrorCode.CONCURRENT_MODIFICATION,
+        statusCode: HttpStatus.CONFLICT,
+      });
+
+      // 3. Approve via Step 6 approval state transition, then APPROVED -> FINALIZED
+      repository.approveForTest(periodId, actorId);
+
       res = await controller.updateStatus(
         periodId,
         await validateBody(UpdatePayrollPeriodStatusDto, {
@@ -1178,7 +1237,7 @@ describe('Payroll Periods Module - Complete Integration Test Suite', () => {
         expect.objectContaining({
           action: AuditAction.PAYROLL_PERIOD_STATUS_CHANGED,
           details: expect.objectContaining({
-            fromStatus: PayrollPeriodStatus.COMPLETED,
+            fromStatus: PayrollPeriodStatus.APPROVED,
             toStatus: PayrollPeriodStatus.FINALIZED,
             reason: 'Month-end payroll signed off by HR Director',
           }),
@@ -1187,7 +1246,7 @@ describe('Payroll Periods Module - Complete Integration Test Suite', () => {
     });
 
     it('should reject transition to FINALIZED when user lacks PAYROLL_PERIODS_APPROVE permission', async () => {
-      // Advance to COMPLETED first
+      // Advance to COMPLETED then APPROVED first
       await controller.updateStatus(
         periodId,
         { status: PayrollPeriodStatus.PROCESSING },
@@ -1198,6 +1257,7 @@ describe('Payroll Periods Module - Complete Integration Test Suite', () => {
         { status: PayrollPeriodStatus.COMPLETED },
         createRequest(),
       );
+      repository.approveForTest(periodId, actorId);
 
       // Revoke APPROVE permission
       activePermissions = [
@@ -1288,7 +1348,7 @@ describe('Payroll Periods Module - Complete Integration Test Suite', () => {
     });
 
     it('should lock FINALIZED period: reject any transition away from FINALIZED', async () => {
-      // Advance to FINALIZED
+      // Advance to FINALIZED via APPROVED
       await controller.updateStatus(
         periodId,
         { status: PayrollPeriodStatus.PROCESSING },
@@ -1299,6 +1359,7 @@ describe('Payroll Periods Module - Complete Integration Test Suite', () => {
         { status: PayrollPeriodStatus.COMPLETED },
         createRequest(),
       );
+      repository.approveForTest(periodId, actorId);
       await controller.updateStatus(
         periodId,
         { status: PayrollPeriodStatus.FINALIZED },

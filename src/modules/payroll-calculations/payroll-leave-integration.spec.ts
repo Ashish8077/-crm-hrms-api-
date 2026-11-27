@@ -73,6 +73,7 @@ import {
 } from './dto/calculate-employee-payroll.dto';
 import { PayrollCalculationsController } from './payroll-calculations.controller';
 import { PayrollRecordRepository } from './repositories/payroll-record.repository';
+import { PayrollProcessingFailureRepository } from './repositories/payroll-processing-failure.repository';
 import { PayrollRecordLean } from './schemas/payroll-record.schema';
 import { ComponentCalculationEngine } from './services/component-calculation.engine';
 import { ComponentDependencyResolver } from './services/component-dependency.resolver';
@@ -302,6 +303,12 @@ describe('Payroll Leave & Attendance LOP Integration (Step 4.2 Comprehensive Sui
         PayrollSnapshotBuilder,
         SalaryStructureCalculationService,
         { provide: PayrollRecordRepository, useValue: recordRepo },
+        {
+          provide: PayrollProcessingFailureRepository,
+          useValue: {
+            deleteByPeriodAndEmployees: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         {
           provide: PayrollPeriodRepository,
           useValue: {

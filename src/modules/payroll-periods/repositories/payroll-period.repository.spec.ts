@@ -255,6 +255,47 @@ describe('PayrollPeriodRepository', () => {
       );
       expect(result?.status).toBe(PayrollPeriodStatus.PROCESSING);
     });
+
+    it('enforces expectedFromStatus and approval metadata when finalizing', async () => {
+      const chain = createQueryChain({
+        ...mockLeanDoc,
+        status: PayrollPeriodStatus.FINALIZED,
+        __v: 2,
+      });
+      (mockModel.findOneAndUpdate as jest.Mock).mockReturnValue(chain);
+
+      const result = await repository.updateStatus(
+        mockPeriodId,
+        PayrollPeriodStatus.FINALIZED,
+        mockActorId,
+        1,
+        undefined,
+        {
+          expectedFromStatus: PayrollPeriodStatus.APPROVED,
+          requireApprovalMetadata: true,
+        },
+      );
+
+      expect(mockModel.findOneAndUpdate).toHaveBeenCalledWith(
+        {
+          _id: mockPeriodId,
+          deletedAt: null,
+          __v: 1,
+          status: PayrollPeriodStatus.APPROVED,
+          'approval.approvedBy': { $exists: true, $ne: null },
+          'approval.approvedAt': { $exists: true, $ne: null },
+        },
+        {
+          $set: {
+            status: PayrollPeriodStatus.FINALIZED,
+            updatedBy: mockActorId,
+          },
+          $inc: { __v: 1 },
+        },
+        expect.objectContaining({ returnDocument: 'after' }),
+      );
+      expect(result?.status).toBe(PayrollPeriodStatus.FINALIZED);
+    });
   });
 
   describe('concurrency & mutability guards', () => {

@@ -65,6 +65,12 @@ export class PayrollProcessingFailureItemDto {
 
   @ApiProperty()
   lastAttemptAt!: string;
+
+  @ApiProperty({ example: true })
+  retryEligible!: boolean;
+
+  @ApiProperty({ example: 'UNRESOLVED' })
+  resolutionStatus!: 'UNRESOLVED';
 }
 
 export class PayrollPeriodProcessingStatusResponseDto {

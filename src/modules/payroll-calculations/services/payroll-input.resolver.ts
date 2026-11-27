@@ -208,6 +208,8 @@ export class PayrollInputResolver {
     options?: {
       employeeIds?: Types.ObjectId[];
       allowCompletedStatus?: boolean;
+      allowApprovedStatus?: boolean;
+      allowFinalizedStatus?: boolean;
     },
   ): Promise<PeriodBatchProcessingContext> {
     const employeeFilter: Record<string, unknown> = { deletedAt: null };
@@ -236,6 +238,8 @@ export class PayrollInputResolver {
       periodEndStr,
     } = this.validatePeriod(payrollPeriodId, period, {
       allowCompletedStatus: options?.allowCompletedStatus,
+      allowApprovedStatus: options?.allowApprovedStatus,
+      allowFinalizedStatus: options?.allowFinalizedStatus,
     });
     const configuration = this.buildConfigurationSnapshot(settingsDoc, ruleDoc);
     const isPayrollProcessingEnabled =
@@ -486,7 +490,11 @@ export class PayrollInputResolver {
   private validatePeriod(
     payrollPeriodId: Types.ObjectId,
     period: PayrollPeriodLean | null,
-    options?: { allowCompletedStatus?: boolean },
+    options?: {
+      allowCompletedStatus?: boolean;
+      allowApprovedStatus?: boolean;
+      allowFinalizedStatus?: boolean;
+    },
   ): {
     period: PayrollPeriodLean;
     calendarDays: number;
@@ -501,7 +509,10 @@ export class PayrollInputResolver {
       );
     }
 
-    if (period.status === PayrollPeriodStatus.FINALIZED) {
+    if (
+      period.status === PayrollPeriodStatus.FINALIZED &&
+      !options?.allowFinalizedStatus
+    ) {
       throw new AppError(
         ErrorCode.CONCURRENT_MODIFICATION,
         `Payroll period '${period.periodCode}' is FINALIZED and locked. Calculations are not permitted.`,
@@ -509,9 +520,18 @@ export class PayrollInputResolver {
       );
     }
 
-    const allowedStatuses = options?.allowCompletedStatus
-      ? [...ALLOWED_CALCULATION_PERIOD_STATUSES, PayrollPeriodStatus.COMPLETED]
-      : ALLOWED_CALCULATION_PERIOD_STATUSES;
+    const allowedStatuses: PayrollPeriodStatus[] = [
+      ...ALLOWED_CALCULATION_PERIOD_STATUSES,
+    ];
+    if (options?.allowCompletedStatus) {
+      allowedStatuses.push(PayrollPeriodStatus.COMPLETED);
+    }
+    if (options?.allowApprovedStatus) {
+      allowedStatuses.push(PayrollPeriodStatus.APPROVED);
+    }
+    if (options?.allowFinalizedStatus) {
+      allowedStatuses.push(PayrollPeriodStatus.FINALIZED);
+    }
 
     if (!allowedStatuses.includes(period.status)) {
       throw new AppError(

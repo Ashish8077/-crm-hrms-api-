@@ -963,12 +963,32 @@ describe('Step 5 — Payroll Run / Processing Real MongoDB Integration & 1,000-E
         }),
       ).toBe(leaveTxCountBefore);
 
-      // 5. If no external baseline failures exist in test DB, transition COMPLETED -> FINALIZED
+      // 5. If no external baseline failures exist in test DB, enforce COMPLETED -> APPROVED -> FINALIZED
       if (recalcRun.body.data.canComplete) {
         await request(httpServer)
           .patch(`/api/v1/payroll/periods/${period._id.toHexString()}/status`)
           .set('Cookie', authCookie)
           .send({ status: PayrollPeriodStatus.COMPLETED })
+          .expect(HttpStatus.OK);
+
+        // Direct COMPLETED -> FINALIZED bypass is rejected with 409 Conflict
+        await request(httpServer)
+          .patch(`/api/v1/payroll/periods/${period._id.toHexString()}/status`)
+          .set('Cookie', authCookie)
+          .send({
+            status: PayrollPeriodStatus.FINALIZED,
+            acknowledgeAnomalies: true,
+            reason: 'Direct finalization bypass should fail',
+          })
+          .expect(HttpStatus.CONFLICT);
+
+        await request(httpServer)
+          .post(`/api/v1/payroll/periods/${period._id.toHexString()}/approve`)
+          .set('Cookie', authCookie)
+          .send({
+            acknowledgeAnomalies: true,
+            reason: 'Approved before Step 5 E2E finalization',
+          })
           .expect(HttpStatus.OK);
 
         await request(httpServer)
@@ -977,7 +997,7 @@ describe('Step 5 — Payroll Run / Processing Real MongoDB Integration & 1,000-E
           .send({
             status: PayrollPeriodStatus.FINALIZED,
             acknowledgeAnomalies: true,
-            reason: 'Verified Step 5 E2E finalization',
+            reason: 'Verified Step 5->6->7 E2E finalization',
           })
           .expect(HttpStatus.OK);
 
@@ -1587,6 +1607,16 @@ describe('Step 5 — Payroll Run / Processing Real MongoDB Integration & 1,000-E
           .send({ status: PayrollPeriodStatus.COMPLETED })
           .expect(HttpStatus.OK);
         await request(httpServer)
+          .post(
+            `/api/v1/payroll/periods/${lifecyclePeriod._id.toHexString()}/approve`,
+          )
+          .set('Cookie', authCookie)
+          .send({
+            acknowledgeAnomalies: true,
+            reason: 'Concurrent approval before finalization race verification',
+          })
+          .expect(HttpStatus.OK);
+        await request(httpServer)
           .patch(
             `/api/v1/payroll/periods/${lifecyclePeriod._id.toHexString()}/status`,
           )
@@ -1793,6 +1823,566 @@ describe('Step 5 — Payroll Run / Processing Real MongoDB Integration & 1,000-E
       .lean()
       .exec();
     expect(finRaceDocAfter?.status).toBe(PayrollPeriodStatus.PROCESSING);
+  });
+
+  it('executes Step 6 payroll review & approval workflow with real MongoDB aggregation, RBAC, transaction rollback, and concurrency protection', async () => {
+    const httpServer = app!.getHttpServer();
+    const auditLogsService = moduleRef!.get(AuditLogsService);
+    const auditLogModel = moduleRef!.get<Model<AuditLogDocument>>(
+      getModelToken(AuditLog.name),
+    );
+    const s6Year = testYear + 1;
+
+    const s6Period = await factory.createPayrollPeriod({
+      year: s6Year,
+      month: 2,
+      startDate: new Date(`${s6Year}-02-01T00:00:00.000Z`),
+      endDate: new Date(`${s6Year}-02-28T00:00:00.000Z`),
+      paymentDate: new Date(`${s6Year}-03-01T00:00:00.000Z`),
+      status: PayrollPeriodStatus.DRAFT,
+    });
+    createdPayrollPeriodIdsForCleanup.push(s6Period._id);
+
+    const empRev1 = await factory.createEmployee({
+      employeeCode: `${runTag}_S6_01`,
+      branchId: branch._id,
+      shiftId: shift._id,
+      employmentStatus: EmploymentStatus.ACTIVE,
+      dateOfJoining: new Date(`${testYear}-01-01T00:00:00.000Z`),
+    });
+    const empRev2Inv = await factory.createEmployee({
+      employeeCode: `${runTag}_S6_02`,
+      branchId: branch._id,
+      shiftId: shift._id,
+      employmentStatus: EmploymentStatus.ACTIVE,
+      dateOfJoining: new Date(`${testYear}-01-01T00:00:00.000Z`),
+    });
+    await assignSalary(empRev1._id, 30000);
+    await assignSalary(empRev2Inv._id, 30000);
+
+    // Process initial run, then terminate empRev2Inv before period and re-process so an INVALIDATED record exists
+    await request(httpServer)
+      .post(`/api/v1/payroll/periods/${s6Period._id.toHexString()}/process`)
+      .set('Cookie', authCookie)
+      .send({})
+      .expect(HttpStatus.OK);
+
+    await models.employeeModel.updateOne(
+      { _id: empRev2Inv._id },
+      {
+        $set: {
+          employmentStatus: EmploymentStatus.TERMINATED,
+          terminationDate: new Date(`${testYear}-02-01T00:00:00.000Z`),
+          lastWorkingDate: new Date(`${testYear}-02-01T00:00:00.000Z`),
+        },
+      },
+    );
+
+    await request(httpServer)
+      .post(`/api/v1/payroll/periods/${s6Period._id.toHexString()}/process`)
+      .set('Cookie', authCookie)
+      .send({})
+      .expect(HttpStatus.OK);
+
+    await request(httpServer)
+      .patch(`/api/v1/payroll/periods/${s6Period._id.toHexString()}/status`)
+      .set('Cookie', authCookie)
+      .send({ status: PayrollPeriodStatus.COMPLETED })
+      .expect(HttpStatus.OK);
+
+    // 1. Review summary accurately aggregates persisted records and excludes INVALIDATED
+    const summaryRes = await request(httpServer)
+      .get(
+        `/api/v1/payroll/periods/${s6Period._id.toHexString()}/review-summary`,
+      )
+      .set('Cookie', limitedAuthCookie)
+      .expect(HttpStatus.OK);
+
+    expect(summaryRes.body.data.periodStatus).toBe(
+      PayrollPeriodStatus.COMPLETED,
+    );
+    expect(
+      summaryRes.body.data.totalInvalidatedEmployees,
+    ).toBeGreaterThanOrEqual(1);
+    expect(summaryRes.body.data.totalPendingApprovalEmployees).toBe(
+      summaryRes.body.data.totalCalculatedEmployees,
+    );
+    expect(summaryRes.body.data.totalApprovedEmployees).toBe(0);
+    expect(summaryRes.body.data.approvalEligibility.canApprove).toBe(true);
+
+    // Cross-verify totalNetSalary equals exact sum of non-INVALIDATED persisted PayrollRecords
+    const activeRecordsInDb = await payrollRecordModel
+      .find({
+        payrollPeriodId: s6Period._id,
+        deletedAt: null,
+        status: { $ne: PayrollRecordStatus.INVALIDATED },
+      })
+      .lean()
+      .exec();
+    const expectedNetSum = activeRecordsInDb.reduce(
+      (sum, r) => sum + Number(r.netSalary.toString()),
+      0,
+    );
+    expect(Number(summaryRes.body.data.totalNetSalary)).toBeCloseTo(
+      expectedNetSum,
+      2,
+    );
+
+    // 2. Employee-wise review list with search & status filters (and zero PII exposure)
+    const recordsListRes = await request(httpServer)
+      .get(
+        `/api/v1/payroll/periods/${s6Period._id.toHexString()}/records?search=${runTag}_S6_01&status=CALCULATED&page=1&limit=10`,
+      )
+      .set('Cookie', limitedAuthCookie)
+      .expect(HttpStatus.OK);
+    expect(recordsListRes.body.data).toHaveLength(1);
+    expect(recordsListRes.body.data[0].employeeId).toBe(
+      empRev1._id.toHexString(),
+    );
+    expect(recordsListRes.body.data[0].bankDetails).toBeUndefined();
+    expect(recordsListRes.body.data[0].phoneNumber).toBeUndefined();
+
+    // 3. Employee record detail endpoint + cross-period isolation (404)
+    const targetRecordId = recordsListRes.body.data[0].id as string;
+    const detailRes = await request(httpServer)
+      .get(
+        `/api/v1/payroll/periods/${s6Period._id.toHexString()}/records/${targetRecordId}`,
+      )
+      .set('Cookie', limitedAuthCookie)
+      .expect(HttpStatus.OK);
+    expect(detailRes.body.data.id).toBe(targetRecordId);
+    expect(detailRes.body.data.calculationSnapshot.employeeCode).toBe(
+      `${runTag}_S6_01`,
+    );
+
+    await request(httpServer)
+      .get(
+        `/api/v1/payroll/periods/${new Types.ObjectId().toHexString()}/records/${targetRecordId}`,
+      )
+      .set('Cookie', limitedAuthCookie)
+      .expect(HttpStatus.NOT_FOUND);
+
+    // 4. Unauthorized viewer (lacking PAYROLL_PERIODS_APPROVE) cannot approve
+    await request(httpServer)
+      .post(`/api/v1/payroll/periods/${s6Period._id.toHexString()}/approve`)
+      .set('Cookie', limitedAuthCookie)
+      .send({
+        acknowledgeAnomalies: true,
+        reason: 'Viewer should be blocked by RBAC',
+      })
+      .expect(HttpStatus.FORBIDDEN);
+
+    // 5. Audit failure during approvePeriod rolls back BOTH period status & PayrollRecords
+    const origCreateAuditLog =
+      auditLogsService.createAuditLog.bind(auditLogsService);
+    const auditFailSpy = jest
+      .spyOn(auditLogsService, 'createAuditLog')
+      .mockImplementationOnce(async (params, session) => {
+        if (params.action === AuditAction.PAYROLL_PERIOD_APPROVED) {
+          throw new Error('Simulated real-DB approval audit failure');
+        }
+        return origCreateAuditLog(params, session);
+      });
+
+    await request(httpServer)
+      .post(`/api/v1/payroll/periods/${s6Period._id.toHexString()}/approve`)
+      .set('Cookie', authCookie)
+      .send({
+        acknowledgeAnomalies: true,
+        reason: 'Approval attempt before audit failure',
+      })
+      .expect(HttpStatus.INTERNAL_SERVER_ERROR);
+    auditFailSpy.mockRestore();
+
+    const periodAfterAuditFail = await models.payrollPeriodModel
+      .findById(s6Period._id)
+      .lean()
+      .exec();
+    expect(periodAfterAuditFail?.status).toBe(PayrollPeriodStatus.COMPLETED);
+    expect(
+      await payrollRecordModel.countDocuments({
+        payrollPeriodId: s6Period._id,
+        status: PayrollRecordStatus.APPROVED,
+      }),
+    ).toBe(0);
+    expect(
+      await auditLogModel.countDocuments({
+        targetId: s6Period._id,
+        action: AuditAction.PAYROLL_PERIOD_APPROVED,
+      }),
+    ).toBe(0);
+
+    // 6. Concurrent approval requests -> exactly 1 succeeds (200), 1 rejected (409)
+    const [app1, app2] = await Promise.all([
+      request(httpServer)
+        .post(`/api/v1/payroll/periods/${s6Period._id.toHexString()}/approve`)
+        .set('Cookie', authCookie)
+        .send({
+          acknowledgeAnomalies: true,
+          reason: 'Authorized reviewer approved payroll for payout',
+        }),
+      request(httpServer)
+        .post(`/api/v1/payroll/periods/${s6Period._id.toHexString()}/approve`)
+        .set('Cookie', authCookie)
+        .send({
+          acknowledgeAnomalies: true,
+          reason: 'Concurrent reviewer attempt',
+        }),
+    ]);
+    const approvalStatuses = [app1.status, app2.status].sort();
+    expect(approvalStatuses).toEqual([HttpStatus.OK, HttpStatus.CONFLICT]);
+
+    const approvedPeriodDoc = await models.payrollPeriodModel
+      .findById(s6Period._id)
+      .lean()
+      .exec();
+    expect(approvedPeriodDoc?.status).toBe(PayrollPeriodStatus.APPROVED);
+    expect(approvedPeriodDoc?.approval?.approvedBy?.toString()).toBe(
+      actorUserId.toString(),
+    );
+
+    const empRev1RecAfter = await payrollRecordModel
+      .findById(targetRecordId)
+      .lean()
+      .exec();
+    expect(empRev1RecAfter?.status).toBe(PayrollRecordStatus.APPROVED);
+    expect(empRev1RecAfter?.approvedBy?.toString()).toBe(
+      actorUserId.toString(),
+    );
+    expect(
+      (
+        await payrollRecordModel
+          .findOne({
+            payrollPeriodId: s6Period._id,
+            employeeId: empRev2Inv._id,
+          })
+          .lean()
+          .exec()
+      )?.status,
+    ).toBe(PayrollRecordStatus.INVALIDATED);
+    expect(
+      await auditLogModel.countDocuments({
+        targetId: s6Period._id,
+        action: AuditAction.PAYROLL_PERIOD_APPROVED,
+      }),
+    ).toBe(1);
+
+    // 7. Duplicate approval, recalculation, and batch retry all rejected (409) after APPROVED
+    await request(httpServer)
+      .post(`/api/v1/payroll/periods/${s6Period._id.toHexString()}/approve`)
+      .set('Cookie', authCookie)
+      .send({
+        acknowledgeAnomalies: true,
+        reason: 'Duplicate approval check',
+      })
+      .expect(HttpStatus.CONFLICT);
+
+    await request(httpServer)
+      .post('/api/v1/payroll/calculations/employee')
+      .set('Cookie', authCookie)
+      .send({
+        payrollPeriodId: s6Period._id.toHexString(),
+        employeeId: empRev1._id.toHexString(),
+        recalculate: true,
+      })
+      .expect(HttpStatus.CONFLICT);
+
+    await request(httpServer)
+      .post(`/api/v1/payroll/periods/${s6Period._id.toHexString()}/process`)
+      .set('Cookie', authCookie)
+      .send({})
+      .expect(HttpStatus.CONFLICT);
+
+    // 8. Step 7 handoff: APPROVED -> FINALIZED succeeds cleanly
+    await request(httpServer)
+      .patch(`/api/v1/payroll/periods/${s6Period._id.toHexString()}/status`)
+      .set('Cookie', authCookie)
+      .send({
+        status: PayrollPeriodStatus.FINALIZED,
+        acknowledgeAnomalies: true,
+        reason: 'Step 7 finalization after Step 6 approval',
+      })
+      .expect(HttpStatus.OK);
+  });
+
+  it('enforces Finding 1 completed-period rollback + failure cleanup and Finding 2 mandatory approval before finalization on real MongoDB', async () => {
+    const httpServer = app!.getHttpServer();
+    const auditLogsService = moduleRef!.get(AuditLogsService);
+    const auditLogModel = moduleRef!.get<Model<AuditLogDocument>>(
+      getModelToken(AuditLog.name),
+    );
+    const fYear = testYear + 1;
+
+    // Seed dedicated failure employees inside this period window
+    const failEmp1 = await factory.createEmployee({
+      employeeCode: `${runTag}_F1_01`,
+      branchId: branch._id,
+      shiftId: shift._id,
+      employmentStatus: EmploymentStatus.ACTIVE,
+      employmentType: EmploymentType.FULL_TIME,
+      dateOfJoining: new Date(`${fYear}-03-01T00:00:00.000Z`),
+    });
+    const failEmp2 = await factory.createEmployee({
+      employeeCode: `${runTag}_F1_02`,
+      branchId: branch._id,
+      shiftId: shift._id,
+      employmentStatus: EmploymentStatus.ACTIVE,
+      employmentType: EmploymentType.FULL_TIME,
+      dateOfJoining: new Date(`${fYear}-03-01T00:00:00.000Z`),
+    });
+    const remPeriod = await factory.createPayrollPeriod({
+      year: fYear,
+      month: 3,
+      startDate: new Date(`${fYear}-03-01T00:00:00.000Z`),
+      endDate: new Date(`${fYear}-03-31T00:00:00.000Z`),
+      paymentDate: new Date(`${fYear}-04-01T00:00:00.000Z`),
+      status: PayrollPeriodStatus.DRAFT,
+    });
+    createdPayrollPeriodIdsForCleanup.push(remPeriod._id);
+
+    // Run batch processing -> failEmp1 & failEmp2 lack salary assignments and produce failure rows
+    const batchRes = await request(httpServer)
+      .post(`/api/v1/payroll/periods/${remPeriod._id.toHexString()}/process`)
+      .set('Cookie', authCookie)
+      .send({ batchSize: 50 })
+      .expect(HttpStatus.OK);
+    expect(batchRes.body.data.failedEmployees).toBeGreaterThanOrEqual(2);
+
+    const remFailCountBefore = await processingFailureModel.countDocuments({
+      payrollPeriodId: remPeriod._id,
+      employeeId: { $in: [failEmp1._id, failEmp2._id] },
+    });
+    expect(remFailCountBefore).toBe(2);
+
+    // Mark period COMPLETED directly to verify completed-period remediation gates
+    await models.payrollPeriodModel.updateOne(
+      { _id: remPeriod._id },
+      { $set: { status: PayrollPeriodStatus.COMPLETED } },
+    );
+
+    // 1. Direct single-employee recalculation & direct FINALIZED rejected with 409 on COMPLETED
+    await request(httpServer)
+      .post('/api/v1/payroll/calculations/employee')
+      .set('Cookie', authCookie)
+      .send({
+        payrollPeriodId: remPeriod._id.toHexString(),
+        employeeId: failEmp1._id.toHexString(),
+        recalculate: true,
+      })
+      .expect(HttpStatus.CONFLICT);
+
+    await request(httpServer)
+      .patch(`/api/v1/payroll/periods/${remPeriod._id.toHexString()}/status`)
+      .set('Cookie', authCookie)
+      .send({
+        status: PayrollPeriodStatus.FINALIZED,
+        acknowledgeAnomalies: true,
+        reason: 'Direct COMPLETED to FINALIZED must be rejected',
+      })
+      .expect(HttpStatus.CONFLICT);
+
+    // 2. Roll back COMPLETED -> PROCESSING
+    await request(httpServer)
+      .patch(`/api/v1/payroll/periods/${remPeriod._id.toHexString()}/status`)
+      .set('Cookie', authCookie)
+      .send({
+        status: PayrollPeriodStatus.PROCESSING,
+        reason: 'Reopen for single-employee failure remediation',
+      })
+      .expect(HttpStatus.OK);
+
+    // 3. Failed calculation (failEmp1 still missing salary) preserves its PayrollProcessingFailure doc
+    await request(httpServer)
+      .post('/api/v1/payroll/calculations/employee')
+      .set('Cookie', authCookie)
+      .send({
+        payrollPeriodId: remPeriod._id.toHexString(),
+        employeeId: failEmp1._id.toHexString(),
+        recalculate: true,
+      })
+      .expect(HttpStatus.NOT_FOUND);
+    expect(
+      await processingFailureModel.countDocuments({
+        payrollPeriodId: remPeriod._id,
+        employeeId: failEmp1._id,
+      }),
+    ).toBe(1);
+
+    // Fix failEmp1 & failEmp2 salary assignments
+    await assignSalary(failEmp1._id, 42000);
+    await assignSalary(failEmp2._id, 43000);
+
+    // 4. Audit failure during single-employee remediation rolls back BOTH PayrollRecord AND failure deletion
+    const origAuditFn = auditLogsService.createAuditLog.bind(auditLogsService);
+    const recalcAuditFailSpy = jest
+      .spyOn(auditLogsService, 'createAuditLog')
+      .mockImplementationOnce(async (params, session) => {
+        if (params.action === AuditAction.PAYROLL_CALCULATION_EXECUTED) {
+          throw new Error('Simulated recalc audit failure');
+        }
+        return origAuditFn(params, session);
+      });
+    await request(httpServer)
+      .post('/api/v1/payroll/calculations/employee')
+      .set('Cookie', authCookie)
+      .send({
+        payrollPeriodId: remPeriod._id.toHexString(),
+        employeeId: failEmp1._id.toHexString(),
+        recalculate: true,
+      })
+      .expect(HttpStatus.INTERNAL_SERVER_ERROR);
+    recalcAuditFailSpy.mockRestore();
+
+    expect(
+      await payrollRecordModel.countDocuments({
+        payrollPeriodId: remPeriod._id,
+        employeeId: failEmp1._id,
+      }),
+    ).toBe(0);
+    expect(
+      await processingFailureModel.countDocuments({
+        payrollPeriodId: remPeriod._id,
+        employeeId: failEmp1._id,
+      }),
+    ).toBe(1);
+
+    // 5. Successful single-employee calculation deletes failEmp1 failure doc while preserving failEmp2 failure
+    await request(httpServer)
+      .post('/api/v1/payroll/calculations/employee')
+      .set('Cookie', authCookie)
+      .send({
+        payrollPeriodId: remPeriod._id.toHexString(),
+        employeeId: failEmp1._id.toHexString(),
+        recalculate: true,
+      })
+      .expect(HttpStatus.CREATED);
+
+    expect(
+      await payrollRecordModel.countDocuments({
+        payrollPeriodId: remPeriod._id,
+        employeeId: failEmp1._id,
+        status: PayrollRecordStatus.CALCULATED,
+      }),
+    ).toBe(1);
+    expect(
+      await processingFailureModel.countDocuments({
+        payrollPeriodId: remPeriod._id,
+        employeeId: failEmp1._id,
+      }),
+    ).toBe(0);
+    expect(
+      await processingFailureModel.countDocuments({
+        payrollPeriodId: remPeriod._id,
+        employeeId: failEmp2._id,
+      }),
+    ).toBe(1);
+
+    // Remediate failEmp2 via batch retry (or single calc) so entire period is clean
+    const retryAfterSingle = await request(httpServer)
+      .post(`/api/v1/payroll/periods/${remPeriod._id.toHexString()}/process`)
+      .set('Cookie', authCookie)
+      .send({ batchSize: 50 })
+      .expect(HttpStatus.OK);
+    expect(retryAfterSingle.body.data.failedEmployees).toBe(0);
+
+    // 6. Test Finding 2 gates if period reaches COMPLETED -> APPROVED -> FINALIZED
+    if (retryAfterSingle.body.data.canComplete) {
+      await request(httpServer)
+        .patch(`/api/v1/payroll/periods/${remPeriod._id.toHexString()}/status`)
+        .set('Cookie', authCookie)
+        .send({ status: PayrollPeriodStatus.COMPLETED })
+        .expect(HttpStatus.OK);
+
+      // Direct COMPLETED -> FINALIZED returns 409
+      await request(httpServer)
+        .patch(`/api/v1/payroll/periods/${remPeriod._id.toHexString()}/status`)
+        .set('Cookie', authCookie)
+        .send({
+          status: PayrollPeriodStatus.FINALIZED,
+          acknowledgeAnomalies: true,
+          reason: 'Must not finalize from COMPLETED',
+        })
+        .expect(HttpStatus.CONFLICT);
+
+      // Tampering APPROVED without approval metadata must still be rejected 409
+      await models.payrollPeriodModel.updateOne(
+        { _id: remPeriod._id },
+        { $set: { status: PayrollPeriodStatus.APPROVED, approval: null } },
+      );
+      await request(httpServer)
+        .patch(`/api/v1/payroll/periods/${remPeriod._id.toHexString()}/status`)
+        .set('Cookie', authCookie)
+        .send({
+          status: PayrollPeriodStatus.FINALIZED,
+          acknowledgeAnomalies: true,
+          reason: 'Missing approval metadata must fail',
+        })
+        .expect(HttpStatus.CONFLICT);
+
+      // Restore COMPLETED and verify concurrent approval + finalization cannot corrupt state
+      await models.payrollPeriodModel.updateOne(
+        { _id: remPeriod._id },
+        { $set: { status: PayrollPeriodStatus.COMPLETED } },
+      );
+
+      const [concApprove, concFinalize] = await Promise.all([
+        request(httpServer)
+          .post(
+            `/api/v1/payroll/periods/${remPeriod._id.toHexString()}/approve`,
+          )
+          .set('Cookie', authCookie)
+          .send({
+            acknowledgeAnomalies: true,
+            reason: 'Concurrent approval attempt',
+          }),
+        request(httpServer)
+          .patch(
+            `/api/v1/payroll/periods/${remPeriod._id.toHexString()}/status`,
+          )
+          .set('Cookie', authCookie)
+          .send({
+            status: PayrollPeriodStatus.FINALIZED,
+            acknowledgeAnomalies: true,
+            reason: 'Concurrent finalize attempt before approval',
+          }),
+      ]);
+      // Concurrent finalize before approval settles cannot transition COMPLETED->FINALIZED directly
+      expect(concApprove.status).toBe(HttpStatus.OK);
+      expect([HttpStatus.CONFLICT, HttpStatus.OK]).toContain(
+        concFinalize.status,
+      );
+
+      const postConcPeriod = await models.payrollPeriodModel
+        .findById(remPeriod._id)
+        .lean()
+        .exec();
+      if (postConcPeriod?.status === PayrollPeriodStatus.APPROVED) {
+        // Now APPROVED -> FINALIZED succeeds cleanly
+        await request(httpServer)
+          .patch(
+            `/api/v1/payroll/periods/${remPeriod._id.toHexString()}/status`,
+          )
+          .set('Cookie', authCookie)
+          .send({
+            status: PayrollPeriodStatus.FINALIZED,
+            acknowledgeAnomalies: true,
+            reason: 'Clean finalization after approval',
+          })
+          .expect(HttpStatus.OK);
+      }
+      const finalizedRemPeriod = await models.payrollPeriodModel
+        .findById(remPeriod._id)
+        .lean()
+        .exec();
+      expect(finalizedRemPeriod?.status).toBe(PayrollPeriodStatus.FINALIZED);
+      expect(finalizedRemPeriod?.approval?.approvedBy).toBeTruthy();
+      expect(
+        await auditLogModel.countDocuments({
+          targetId: remPeriod._id,
+          action: AuditAction.PAYROLL_PERIOD_APPROVED,
+        }),
+      ).toBe(1);
+    }
   });
 
   it('benchmarks 1,000 employees + 31,000 attendance + 1,000 leaves batch payroll processing on real MongoDB', async () => {

@@ -2,6 +2,7 @@ export enum PayrollPeriodStatus {
   DRAFT = 'DRAFT',
   PROCESSING = 'PROCESSING',
   COMPLETED = 'COMPLETED',
+  APPROVED = 'APPROVED',
   FINALIZED = 'FINALIZED',
 }
 
@@ -49,8 +50,11 @@ export const ALLOWED_STATUS_TRANSITIONS: Record<
     PayrollPeriodStatus.DRAFT, // rollback/cancel processing
   ],
   [PayrollPeriodStatus.COMPLETED]: [
-    PayrollPeriodStatus.FINALIZED, // final approval and lock
-    PayrollPeriodStatus.PROCESSING, // recalculation rollback
+    PayrollPeriodStatus.APPROVED, // payroll review & bulk approval
+    PayrollPeriodStatus.PROCESSING, // recalculation rollback for retry/recalculation
+  ],
+  [PayrollPeriodStatus.APPROVED]: [
+    PayrollPeriodStatus.FINALIZED, // Step 7 finalization after approval
   ],
   [PayrollPeriodStatus.FINALIZED]: [], // terminal state: immutable
 };

@@ -245,6 +245,10 @@ export class PayrollPeriodRepository {
     actorId: Types.ObjectId,
     expectedVersion?: number,
     session?: ClientSession,
+    options?: {
+      expectedFromStatus?: PayrollPeriodStatus;
+      requireApprovalMetadata?: boolean;
+    },
   ): Promise<PayrollPeriodLean | null> {
     const queryFilter: Record<string, unknown> = {
       _id: id,
@@ -252,6 +256,13 @@ export class PayrollPeriodRepository {
     };
     if (typeof expectedVersion === 'number') {
       queryFilter.__v = expectedVersion;
+    }
+    if (options?.expectedFromStatus !== undefined) {
+      queryFilter.status = options.expectedFromStatus;
+    }
+    if (options?.requireApprovalMetadata) {
+      queryFilter['approval.approvedBy'] = { $exists: true, $ne: null };
+      queryFilter['approval.approvedAt'] = { $exists: true, $ne: null };
     }
 
     const query = this.periodModel.findOneAndUpdate(
@@ -361,6 +372,54 @@ export class PayrollPeriodRepository {
       })
       .exec();
     return count > 0;
+  }
+
+  async approvePeriodAtomically(
+    params: {
+      periodId: Types.ObjectId;
+      expectedPeriodVersion: number;
+      actorId: Types.ObjectId;
+      approvalState: {
+        approvedBy: Types.ObjectId;
+        approvedAt: Date;
+        approvedRecordsCount: number;
+        alreadyApprovedRecordsCount: number;
+        totalGrossEarnings: string;
+        totalDeductions: string;
+        totalEmployerContributions: string;
+        totalNetSalary: string;
+        totalEmployerCost: string;
+        reason: string | null;
+        acknowledgeAnomalies: boolean;
+        acknowledgedAnomalyEmployees: number;
+        acknowledgedWarningCodes: string[];
+      };
+    },
+    session?: ClientSession,
+  ): Promise<PayrollPeriodLean | null> {
+    const query = this.periodModel.findOneAndUpdate(
+      {
+        _id: params.periodId,
+        deletedAt: null,
+        status: PayrollPeriodStatus.COMPLETED,
+        __v: params.expectedPeriodVersion,
+        $or: [
+          { 'processing.activeRunId': null },
+          { 'processing.activeRunId': { $exists: false } },
+        ],
+      },
+      {
+        $set: {
+          status: PayrollPeriodStatus.APPROVED,
+          approval: params.approvalState,
+          updatedBy: params.actorId,
+        },
+        $inc: { __v: 1 },
+      },
+      { returnDocument: 'after', runValidators: true, session },
+    );
+
+    return query.lean<PayrollPeriodLean>().exec();
   }
 
   async verifyPeriodMutableAndBumpVersion(

@@ -1079,5 +1079,142 @@ describe('EmployeeSalariesController & Service (Integration Tests)', () => {
       expect(store[0].effectiveTo).toBeNull();
       expect(store[0].salaryAmount).toBe(50000);
     });
+
+    it('TC-SAL-13: Allows creating a new non-overlapping ACTIVE assignment when only closed SUPERSEDED history exists and preserves historical snapshots', async () => {
+      // Seed historical closed SUPERSEDED assignment [2026-10-27, 2027-01-01)
+      const hist = await inMemoryRepo.create({
+        employeeId,
+        salaryStructureId: structure1Id,
+        effectiveFrom: new Date('2026-10-27T00:00:00.000Z'),
+        effectiveTo: new Date('2027-01-01T00:00:00.000Z'),
+        salaryBasis: SalaryStructureBasis.CTC,
+        salaryFrequency: SalaryStructureFrequency.MONTHLY,
+        salaryAmount: 50000,
+        salaryStructureVersion: 0,
+        salarySnapshot: {
+          salaryBasis: SalaryStructureBasis.CTC,
+          salaryFrequency: SalaryStructureFrequency.MONTHLY,
+          inputSalaryAmount: 50000,
+          grossSalaryMonthly: 50000,
+          grossSalaryAnnual: 600000,
+          totalEmployerContributionsMonthly: 0,
+          totalEmployerContributionsAnnual: 0,
+          totalCtcMonthly: 50000,
+          totalCtcAnnual: 600000,
+          totalEmployeeDeductionsMonthly: 0,
+          totalEmployeeDeductionsAnnual: 0,
+          estimatedNetSalaryMonthly: 50000,
+          estimatedNetSalaryAnnual: 600000,
+          summary: {
+            monthly: {
+              grossSalary: 50000,
+              employerContributions: 0,
+              totalCtc: 50000,
+              employeeDeductions: 0,
+              estimatedNetSalary: 50000,
+            },
+            annual: {
+              grossSalary: 600000,
+              employerContributions: 0,
+              totalCtc: 600000,
+              employeeDeductions: 0,
+              estimatedNetSalary: 600000,
+            },
+          },
+          earnings: [],
+          employeeDeductions: [],
+          employerContributions: [],
+        },
+        status: EmployeeSalaryStatus.SUPERSEDED,
+        createdBy: actorId,
+        updatedBy: actorId,
+      });
+
+      // Overlapping date against closed SUPERSEDED interval must fail with 409 Conflict
+      await expect(
+        controller.assignSalary(
+          employeeId,
+          {
+            salaryStructureId: structure2Id.toString(),
+            effectiveFrom: '2026-12-01',
+          },
+          mockRequest,
+        ),
+      ).rejects.toMatchObject({
+        statusCode: HttpStatus.CONFLICT,
+        code: ErrorCode.RESOURCE_ALREADY_EXISTS,
+      });
+
+      // Audit failure during re-assignment rolls back cleanly without modifying historical record
+      auditLogsService.createAuditLog.mockRejectedValueOnce(
+        new Error('Simulated audit failure on reassignment'),
+      );
+      await expect(
+        controller.assignSalary(
+          employeeId,
+          {
+            salaryStructureId: structure2Id.toString(),
+            effectiveFrom: '2027-06-01',
+          },
+          mockRequest,
+        ),
+      ).rejects.toThrow('Simulated audit failure on reassignment');
+      expect(inMemoryRepo.getStore().size).toBe(1);
+
+      // Valid future non-overlapping date 2027-06-01 succeeds & leaves historical record untouched
+      const created = await controller.assignSalary(
+        employeeId,
+        {
+          salaryStructureId: structure2Id.toString(),
+          effectiveFrom: '2027-06-01',
+        },
+        mockRequest,
+      );
+      expect(created.data.status).toBe(EmployeeSalaryStatus.ACTIVE);
+      expect(created.data.effectiveFrom).toBe('2027-06-01');
+      expect(created.data.effectiveTo).toBeNull();
+      expect(auditLogsService.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.EMPLOYEE_SALARY_ASSIGNED,
+        }),
+        expect.anything(),
+      );
+
+      const histAfter = await inMemoryRepo.findById(hist._id);
+      expect(histAfter?.status).toBe(EmployeeSalaryStatus.SUPERSEDED);
+      expect(histAfter?.effectiveTo?.toISOString().slice(0, 10)).toBe(
+        '2027-01-01',
+      );
+      expect(histAfter?.salaryAmount).toBe(50000);
+
+      // Subsequent revision on the new ACTIVE assignment closes it cleanly and logs REVISED
+      const revised = await controller.assignSalary(
+        employeeId,
+        {
+          salaryStructureId: structure1Id.toString(),
+          effectiveFrom: '2028-01-01',
+        },
+        mockRequest,
+      );
+      expect(revised.data.status).toBe(EmployeeSalaryStatus.ACTIVE);
+      expect(revised.data.effectiveFrom).toBe('2028-01-01');
+      expect(
+        (await inMemoryRepo.findById(new Types.ObjectId(created.data.id)))
+          ?.status,
+      ).toBe(EmployeeSalaryStatus.SUPERSEDED);
+      expect(
+        (
+          await inMemoryRepo.findById(new Types.ObjectId(created.data.id))
+        )?.effectiveTo
+          ?.toISOString()
+          .slice(0, 10),
+      ).toBe('2028-01-01');
+      expect(auditLogsService.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.EMPLOYEE_SALARY_REVISED,
+        }),
+        expect.anything(),
+      );
+    });
   });
 });

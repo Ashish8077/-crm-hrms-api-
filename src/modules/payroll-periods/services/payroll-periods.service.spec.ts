@@ -866,11 +866,68 @@ describe('PayrollPeriodsService', () => {
       });
     });
 
-    it('should reject transition to FINALIZED if user lacks PAYROLL_PERIODS_APPROVE permission', async () => {
+    it('should reject direct COMPLETED -> FINALIZED transition with 409 Conflict', async () => {
       const completed = createMockPeriod({
         status: PayrollPeriodStatus.COMPLETED,
       });
       periodRepo.findById.mockResolvedValue(completed);
+
+      await expect(
+        service.updateStatus(
+          periodId,
+          { status: PayrollPeriodStatus.FINALIZED },
+          actorId,
+          [roleId],
+        ),
+      ).rejects.toMatchObject({
+        code: ErrorCode.CONCURRENT_MODIFICATION,
+        statusCode: HttpStatus.CONFLICT,
+      });
+      expect(periodRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('should reject APPROVED -> FINALIZED transition when approval metadata is missing (409)', async () => {
+      const approvedWithoutMeta = createMockPeriod({
+        status: PayrollPeriodStatus.APPROVED,
+        approval: null,
+      });
+      periodRepo.findById.mockResolvedValue(approvedWithoutMeta);
+      authorizationService.hasPermissions.mockResolvedValue(true);
+
+      await expect(
+        service.updateStatus(
+          periodId,
+          { status: PayrollPeriodStatus.FINALIZED },
+          actorId,
+          [roleId],
+        ),
+      ).rejects.toMatchObject({
+        code: ErrorCode.CONCURRENT_MODIFICATION,
+        statusCode: HttpStatus.CONFLICT,
+      });
+      expect(periodRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('should reject transition to FINALIZED if user lacks PAYROLL_PERIODS_APPROVE permission', async () => {
+      const approved = createMockPeriod({
+        status: PayrollPeriodStatus.APPROVED,
+        approval: {
+          approvedBy: actorId,
+          approvedAt: new Date('2026-04-30T12:00:00.000Z'),
+          approvedRecordsCount: 1,
+          alreadyApprovedRecordsCount: 0,
+          totalGrossEarnings: '10000.00',
+          totalDeductions: '0.00',
+          totalEmployerContributions: '0.00',
+          totalNetSalary: '10000.00',
+          totalEmployerCost: '10000.00',
+          reason: null,
+          acknowledgeAnomalies: false,
+          acknowledgedAnomalyEmployees: 0,
+          acknowledgedWarningCodes: [],
+        },
+      });
+      periodRepo.findById.mockResolvedValue(approved);
       authorizationService.hasPermissions.mockResolvedValue(false);
 
       await expect(
@@ -890,15 +947,30 @@ describe('PayrollPeriodsService', () => {
       );
     });
 
-    it('should allow transition to FINALIZED when user has PAYROLL_PERIODS_APPROVE permission', async () => {
-      const completed = createMockPeriod({
-        status: PayrollPeriodStatus.COMPLETED,
+    it('should allow APPROVED -> FINALIZED when user has PAYROLL_PERIODS_APPROVE permission and valid approval metadata', async () => {
+      const approved = createMockPeriod({
+        status: PayrollPeriodStatus.APPROVED,
+        approval: {
+          approvedBy: actorId,
+          approvedAt: new Date('2026-04-30T12:00:00.000Z'),
+          approvedRecordsCount: 1,
+          alreadyApprovedRecordsCount: 0,
+          totalGrossEarnings: '10000.00',
+          totalDeductions: '0.00',
+          totalEmployerContributions: '0.00',
+          totalNetSalary: '10000.00',
+          totalEmployerCost: '10000.00',
+          reason: 'Approved',
+          acknowledgeAnomalies: false,
+          acknowledgedAnomalyEmployees: 0,
+          acknowledgedWarningCodes: [],
+        },
       });
       const finalized = createMockPeriod({
         status: PayrollPeriodStatus.FINALIZED,
       });
 
-      periodRepo.findById.mockResolvedValue(completed);
+      periodRepo.findById.mockResolvedValue(approved);
       authorizationService.hasPermissions.mockResolvedValue(true);
       periodRepo.updateStatus.mockResolvedValue(finalized);
 
@@ -911,11 +983,25 @@ describe('PayrollPeriodsService', () => {
       );
 
       expect(result.status).toBe(PayrollPeriodStatus.FINALIZED);
+      expect(
+        processingService.verifyPeriodCompletionReadiness,
+      ).toHaveBeenCalledWith(approved, { requireAllRecordsApproved: true });
+      expect(periodRepo.updateStatus).toHaveBeenCalledWith(
+        periodId,
+        PayrollPeriodStatus.FINALIZED,
+        actorId,
+        0,
+        undefined,
+        {
+          expectedFromStatus: PayrollPeriodStatus.APPROVED,
+          requireApprovalMetadata: true,
+        },
+      );
       expect(auditLogsService.createAuditLog).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.PAYROLL_PERIOD_STATUS_CHANGED,
           details: expect.objectContaining({
-            fromStatus: PayrollPeriodStatus.COMPLETED,
+            fromStatus: PayrollPeriodStatus.APPROVED,
             toStatus: PayrollPeriodStatus.FINALIZED,
             reason: 'Approved by CFO',
           }),
@@ -924,11 +1010,26 @@ describe('PayrollPeriodsService', () => {
     });
 
     it('blocks FINALIZED transition unconditionally when hard-blocking conflicts exist (e.g. OVERLAPPING_LEAVE_REQUESTS, UNAPPROVED_REGULARIZED_ATTENDANCE)', async () => {
-      const completed = createMockPeriod({
-        status: PayrollPeriodStatus.COMPLETED,
+      const approved = createMockPeriod({
+        status: PayrollPeriodStatus.APPROVED,
+        approval: {
+          approvedBy: actorId,
+          approvedAt: new Date('2026-04-30T12:00:00.000Z'),
+          approvedRecordsCount: 1,
+          alreadyApprovedRecordsCount: 0,
+          totalGrossEarnings: '10000.00',
+          totalDeductions: '0.00',
+          totalEmployerContributions: '0.00',
+          totalNetSalary: '10000.00',
+          totalEmployerCost: '10000.00',
+          reason: null,
+          acknowledgeAnomalies: false,
+          acknowledgedAnomalyEmployees: 0,
+          acknowledgedWarningCodes: [],
+        },
       });
       const empId = new Types.ObjectId();
-      periodRepo.findById.mockResolvedValue(completed);
+      periodRepo.findById.mockResolvedValue(approved);
       authorizationService.hasPermissions.mockResolvedValue(true);
       employeeRepo.findForPayrollAttendanceSummary.mockResolvedValue([
         {
@@ -977,15 +1078,30 @@ describe('PayrollPeriodsService', () => {
     });
 
     it('blocks reviewable anomalies by default, requires descriptive reason, and permits finalization when authorized reviewer explicitly acknowledges', async () => {
-      const completed = createMockPeriod({
-        status: PayrollPeriodStatus.COMPLETED,
+      const approved = createMockPeriod({
+        status: PayrollPeriodStatus.APPROVED,
+        approval: {
+          approvedBy: actorId,
+          approvedAt: new Date('2026-04-30T12:00:00.000Z'),
+          approvedRecordsCount: 1,
+          alreadyApprovedRecordsCount: 0,
+          totalGrossEarnings: '10000.00',
+          totalDeductions: '0.00',
+          totalEmployerContributions: '0.00',
+          totalNetSalary: '10000.00',
+          totalEmployerCost: '10000.00',
+          reason: null,
+          acknowledgeAnomalies: false,
+          acknowledgedAnomalyEmployees: 0,
+          acknowledgedWarningCodes: [],
+        },
       });
       const finalized = createMockPeriod({
         status: PayrollPeriodStatus.FINALIZED,
       });
       const empId = new Types.ObjectId();
 
-      periodRepo.findById.mockResolvedValue(completed);
+      periodRepo.findById.mockResolvedValue(approved);
       authorizationService.hasPermissions.mockResolvedValue(true);
       employeeRepo.findForPayrollAttendanceSummary.mockResolvedValue([
         {

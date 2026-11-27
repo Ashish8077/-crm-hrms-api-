@@ -61,6 +61,52 @@ export const PayrollPeriodProcessingStateSchema = SchemaFactory.createForClass(
   PayrollPeriodProcessingState,
 );
 
+@Schema({ _id: false })
+export class PayrollPeriodApprovalState {
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  approvedBy?: Types.ObjectId | null;
+
+  @Prop({ type: Date, default: null })
+  approvedAt?: Date | null;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  approvedRecordsCount!: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  alreadyApprovedRecordsCount!: number;
+
+  @Prop({ type: String, default: null })
+  totalGrossEarnings?: string | null;
+
+  @Prop({ type: String, default: null })
+  totalDeductions?: string | null;
+
+  @Prop({ type: String, default: null })
+  totalEmployerContributions?: string | null;
+
+  @Prop({ type: String, default: null })
+  totalNetSalary?: string | null;
+
+  @Prop({ type: String, default: null })
+  totalEmployerCost?: string | null;
+
+  @Prop({ type: String, default: null })
+  reason?: string | null;
+
+  @Prop({ type: Boolean, default: false })
+  acknowledgeAnomalies!: boolean;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  acknowledgedAnomalyEmployees!: number;
+
+  @Prop({ type: [String], default: [] })
+  acknowledgedWarningCodes!: string[];
+}
+
+export const PayrollPeriodApprovalStateSchema = SchemaFactory.createForClass(
+  PayrollPeriodApprovalState,
+);
+
 export type PayrollPeriodDocument = HydratedDocument<PayrollPeriod>;
 
 export type PayrollPeriodLean = PayrollPeriod & {
@@ -175,6 +221,12 @@ export class PayrollPeriod {
     }),
   })
   processing?: PayrollPeriodProcessingState;
+
+  @Prop({
+    type: PayrollPeriodApprovalStateSchema,
+    default: null,
+  })
+  approval?: PayrollPeriodApprovalState | null;
 
   @Prop({
     type: Date,

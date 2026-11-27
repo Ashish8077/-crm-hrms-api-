@@ -257,28 +257,48 @@ export class EmployeeSalariesService {
             session,
           );
 
-        const latestAssignment =
-          existingAssignments.length > 0 ? existingAssignments[0] : null;
+        const activeAssignment =
+          existingAssignments.find(
+            (a) =>
+              a.status === EmployeeSalaryStatus.ACTIVE &&
+              a.effectiveTo === null,
+          ) ?? null;
 
-        if (!latestAssignment) {
-          // --- Initial Assignment Flow ---
-          // Validate no overlapping period exists (should be empty, but defensive check)
-          const requestedInterval = {
-            effectiveFrom: normalizedEffectiveFrom,
-            effectiveTo: null,
-          };
-          for (const existing of existingAssignments) {
-            if (
-              areEffectiveDateIntervalsOverlapping(existing, requestedInterval)
-            ) {
-              throw new AppError(
-                ErrorCode.RESOURCE_ALREADY_EXISTS,
-                `Conflicting salary assignment already exists for period [${existing.effectiveFrom.toISOString().slice(0, 10)} to ${existing.effectiveTo ? existing.effectiveTo.toISOString().slice(0, 10) : 'ongoing'}]`,
-                HttpStatus.CONFLICT,
-              );
-            }
+        const requestedInterval = {
+          effectiveFrom: normalizedEffectiveFrom,
+          effectiveTo: null,
+        };
+
+        if (
+          activeAssignment &&
+          normalizedEffectiveFrom.getTime() <=
+            activeAssignment.effectiveFrom.getTime()
+        ) {
+          throw new AppError(
+            ErrorCode.VALIDATION_ERROR,
+            `Revision effectiveFrom (${normalizedEffectiveFrom.toISOString().slice(0, 10)}) must be strictly later than the active assignment's effectiveFrom (${activeAssignment.effectiveFrom.toISOString().slice(0, 10)}). Backdated revisions are not permitted.`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        // Prevent overlap against all other existing intervals (closed SUPERSEDED history or future records)
+        for (const existing of existingAssignments) {
+          if (activeAssignment && existing._id.equals(activeAssignment._id)) {
+            continue;
           }
+          if (
+            areEffectiveDateIntervalsOverlapping(existing, requestedInterval)
+          ) {
+            throw new AppError(
+              ErrorCode.RESOURCE_ALREADY_EXISTS,
+              `Conflicting salary assignment already exists for period [${existing.effectiveFrom.toISOString().slice(0, 10)} to ${existing.effectiveTo ? existing.effectiveTo.toISOString().slice(0, 10) : 'ongoing'}] (Assignment ID: ${existing._id.toString()}).`,
+              HttpStatus.CONFLICT,
+            );
+          }
+        }
 
+        if (!activeAssignment) {
+          // --- Initial Assignment (or Re-assignment with only historical closed assignments) ---
           const createInput: CreateEmployeeSalaryInput = {
             employeeId,
             salaryStructureId: structure._id,
@@ -327,36 +347,11 @@ export class EmployeeSalariesService {
             session,
           );
         } else {
-          // --- Salary Revision Flow ---
-          // Rule 5: Reject backdated or same-day revisions (must be strictly forward in time)
-          if (
-            normalizedEffectiveFrom.getTime() <=
-            latestAssignment.effectiveFrom.getTime()
-          ) {
-            throw new AppError(
-              ErrorCode.VALIDATION_ERROR,
-              `Revision effectiveFrom (${normalizedEffectiveFrom.toISOString().slice(0, 10)}) must be strictly later than the latest assignment's effectiveFrom (${latestAssignment.effectiveFrom.toISOString().slice(0, 10)}). Backdated revisions are not permitted.`,
-              HttpStatus.BAD_REQUEST,
-            );
-          }
-
-          // Rule 3: Reject conflicting future assignments
-          const futureConflict = existingAssignments.find(
-            (a) =>
-              a.effectiveFrom.getTime() >= normalizedEffectiveFrom.getTime(),
-          );
-          if (futureConflict) {
-            throw new AppError(
-              ErrorCode.RESOURCE_ALREADY_EXISTS,
-              `A conflicting salary assignment already exists effective on or after ${normalizedEffectiveFrom.toISOString().slice(0, 10)} (Assignment ID: ${futureConflict._id.toString()}).`,
-              HttpStatus.CONFLICT,
-            );
-          }
-
-          // Atomic close of previous assignment: set effectiveTo = new effectiveFrom and status = SUPERSEDED
+          // --- Salary Revision Flow (Active open-ended assignment exists) ---
+          // Atomic close of active assignment: set effectiveTo = new effectiveFrom and status = SUPERSEDED
           const closedPrevious =
             await this.employeeSalaryRepository.closePreviousAssignment(
-              latestAssignment._id,
+              activeAssignment._id,
               normalizedEffectiveFrom,
               actorId,
               session,
@@ -398,20 +393,20 @@ export class EmployeeSalariesService {
               targetModel: AuditTargetModel.EMPLOYEE_SALARY,
               details: {
                 employeeId: employeeId.toString(),
-                previousAssignmentId: latestAssignment._id.toString(),
+                previousAssignmentId: activeAssignment._id.toString(),
                 previousSalaryStructureId:
-                  latestAssignment.salaryStructureId.toString(),
+                  activeAssignment.salaryStructureId.toString(),
                 newSalaryStructureId: structure._id.toString(),
                 effectiveFrom: normalizedEffectiveFrom
                   .toISOString()
                   .slice(0, 10),
-                previousSalaryAmount: latestAssignment.salaryAmount,
+                previousSalaryAmount: activeAssignment.salaryAmount,
                 newSalaryAmount: structure.salaryAmount,
                 previousGrossMonthly:
-                  latestAssignment.salarySnapshot.grossSalaryMonthly,
+                  activeAssignment.salarySnapshot.grossSalaryMonthly,
                 newGrossMonthly: salarySnapshot.grossSalaryMonthly,
                 previousTotalCtcMonthly:
-                  latestAssignment.salarySnapshot.totalCtcMonthly,
+                  activeAssignment.salarySnapshot.totalCtcMonthly,
                 newTotalCtcMonthly: salarySnapshot.totalCtcMonthly,
               },
               ipAddress: metadata?.ipAddress ?? null,

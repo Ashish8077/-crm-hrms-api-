@@ -53,9 +53,11 @@ import {
   SalaryComponentResolver,
 } from './salary-component.resolver';
 
-interface VerificationReadinessSummary {
+export interface VerificationReadinessSummary {
   totalEligibleEmployees: number;
   calculatedRecordsCount: number;
+  approvedRecordsCount: number;
+  pendingApprovalRecordsCount: number;
   staleEmployeeCodes: string[];
   unprocessedEmployeeCodes: string[];
   unresolvedFailuresCount: number;
@@ -1154,6 +1156,10 @@ export class PayrollProcessingService {
       );
     }
 
+    const retryEligible =
+      period.status === PayrollPeriodStatus.DRAFT ||
+      period.status === PayrollPeriodStatus.PROCESSING;
+
     const result =
       await this.payrollProcessingFailureRepository.findPaginatedByPeriod(
         periodId,
@@ -1173,9 +1179,17 @@ export class PayrollProcessingService {
           item.lastAttemptAt instanceof Date
             ? item.lastAttemptAt.toISOString()
             : String(item.lastAttemptAt),
+        retryEligible,
+        resolutionStatus: 'UNRESOLVED',
       })),
       meta: result.meta,
     };
+  }
+
+  async getPeriodReadinessReport(
+    period: PayrollPeriodLean,
+  ): Promise<VerificationReadinessSummary> {
+    return this.inspectPeriodReadiness(period, { allowFinalizedStatus: true });
   }
 
   /**
@@ -1185,6 +1199,7 @@ export class PayrollProcessingService {
    */
   async verifyPeriodCompletionReadiness(
     period: PayrollPeriodLean,
+    options?: { requireAllRecordsApproved?: boolean },
   ): Promise<void> {
     const readiness = await this.inspectPeriodReadiness(period);
 
@@ -1220,10 +1235,27 @@ export class PayrollProcessingService {
         },
       );
     }
+
+    if (
+      options?.requireAllRecordsApproved &&
+      readiness.pendingApprovalRecordsCount > 0
+    ) {
+      throw new AppError(
+        ErrorCode.CONCURRENT_MODIFICATION,
+        `Cannot finalize payroll period '${period.periodCode}' because ${readiness.pendingApprovalRecordsCount} active payroll record(s) are still in CALCULATED status and have not been approved.`,
+        HttpStatus.CONFLICT,
+        {
+          totalEligibleEmployees: readiness.totalEligibleEmployees,
+          approvedRecordsCount: readiness.approvedRecordsCount,
+          pendingApprovalRecordsCount: readiness.pendingApprovalRecordsCount,
+        },
+      );
+    }
   }
 
   private async inspectPeriodReadiness(
     period: PayrollPeriodLean,
+    options?: { allowFinalizedStatus?: boolean },
   ): Promise<VerificationReadinessSummary> {
     const now = new Date();
     const staleCutoff = new Date(
@@ -1243,6 +1275,8 @@ export class PayrollProcessingService {
       await Promise.all([
         this.inputResolver.preparePeriodBatchContext(period._id, {
           allowCompletedStatus: true,
+          allowApprovedStatus: true,
+          allowFinalizedStatus: options?.allowFinalizedStatus,
         }),
         this.payrollRecordRepository.findActiveSummariesByPeriod(period._id),
         this.payrollProcessingFailureRepository.countByPeriod(period._id),
@@ -1266,6 +1300,8 @@ export class PayrollProcessingService {
     const unprocessedEmployeeCodes: string[] = [];
     const staleEmployeeCodes: string[] = [];
     let calculatedRecordsCount = 0;
+    let approvedRecordsCount = 0;
+    let pendingApprovalRecordsCount = 0;
 
     if (context.eligibleTargets.length > 0) {
       const structureCache = new Map<string, SalaryStructureLean>();
@@ -1303,12 +1339,24 @@ export class PayrollProcessingService {
         for (const target of chunk) {
           const empIdStr = target.employee._id.toHexString();
           const rec = recordByEmpId.get(empIdStr);
-          if (!rec || rec.status !== PayrollRecordStatus.CALCULATED) {
+          if (
+            !rec ||
+            (rec.status !== PayrollRecordStatus.CALCULATED &&
+              rec.status !== PayrollRecordStatus.APPROVED)
+          ) {
             unprocessedEmployeeCodes.push(target.employee.employeeCode);
             continue;
           }
 
           calculatedRecordsCount++;
+          if (rec.status === PayrollRecordStatus.APPROVED) {
+            approvedRecordsCount++;
+            // Approved payroll records are financially immutable; source changes after approval
+            // must not silently mark them stale or require unapproved recalculation.
+            continue;
+          }
+
+          pendingApprovalRecordsCount++;
           const resolvedInputs = resolvedByEmpId.get(empIdStr);
           if (!resolvedInputs) {
             // Salary input resolution failed after record was calculated -> stale/invalid
@@ -1339,6 +1387,8 @@ export class PayrollProcessingService {
     return {
       totalEligibleEmployees: context.eligibleTargets.length,
       calculatedRecordsCount,
+      approvedRecordsCount,
+      pendingApprovalRecordsCount,
       staleEmployeeCodes,
       unprocessedEmployeeCodes,
       unresolvedFailuresCount,
