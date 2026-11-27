@@ -28,6 +28,7 @@ import { PayrollAttendanceSummaryQueryDto } from './dto/payroll-attendance-summa
 import { PayrollPeriodsController } from './payroll-periods.controller';
 import { PayrollPeriodRepository } from './repositories/payroll-period.repository';
 import { PayrollAttendanceSummaryService } from './services/payroll-attendance-summary.service';
+import { PayrollLeaveAttendanceResolverService } from './services/payroll-leave-attendance-resolver.service';
 import { PayrollPeriodsService } from './services/payroll-periods.service';
 
 describe('Payroll Attendance Summary Integration (Controller + RBAC + Validation + Service)', () => {
@@ -109,6 +110,7 @@ describe('Payroll Attendance Summary Integration (Controller + RBAC + Validation
       providers: [
         PayrollPeriodsService,
         PayrollAttendanceSummaryService,
+        PayrollLeaveAttendanceResolverService,
         { provide: PayrollPeriodRepository, useValue: mockPeriodRepo },
         {
           provide: PayrollSettingsRepository,

@@ -7,6 +7,12 @@ import { PayrollPeriodRepository } from '../repositories/payroll-period.reposito
 import { PayrollSettingsRepository } from '../../payroll-configuration/repositories/payroll-settings.repository';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
 import { AuthorizationService } from '../../authorization/authorization.service';
+import { EmployeeRepository } from '../../employees/repositories/employee.repository';
+import {
+  EmploymentStatus,
+  EmploymentType,
+} from '../../employees/constants/employee.constant';
+import { PayrollLeaveAttendanceResolverService } from './payroll-leave-attendance-resolver.service';
 import { PayrollPeriodStatus } from '../constants/payroll-period.constant';
 import { PayrollFrequency } from '../../payroll-configuration/constants/payroll-configuration.constant';
 import { AppError } from '../../../common/errors/app-error';
@@ -25,6 +31,8 @@ describe('PayrollPeriodsService', () => {
   let settingsRepo: jest.Mocked<PayrollSettingsRepository>;
   let auditLogsService: jest.Mocked<AuditLogsService>;
   let authorizationService: jest.Mocked<AuthorizationService>;
+  let employeeRepo: { findForPayrollAttendanceSummary: jest.Mock };
+  let leaveAttendanceResolver: { resolveBatch: jest.Mock };
 
   const actorId = new Types.ObjectId();
   const periodId = new Types.ObjectId();
@@ -95,6 +103,18 @@ describe('PayrollPeriodsService', () => {
             hasPermissions: jest.fn().mockResolvedValue(true),
           },
         },
+        {
+          provide: EmployeeRepository,
+          useValue: {
+            findForPayrollAttendanceSummary: jest.fn().mockResolvedValue([]),
+          },
+        },
+        {
+          provide: PayrollLeaveAttendanceResolverService,
+          useValue: {
+            resolveBatch: jest.fn().mockResolvedValue(new Map()),
+          },
+        },
       ],
     }).compile();
 
@@ -103,6 +123,8 @@ describe('PayrollPeriodsService', () => {
     settingsRepo = module.get(PayrollSettingsRepository);
     auditLogsService = module.get(AuditLogsService);
     authorizationService = module.get(AuthorizationService);
+    employeeRepo = module.get(EmployeeRepository);
+    leaveAttendanceResolver = module.get(PayrollLeaveAttendanceResolverService);
   });
 
   afterEach(() => {
@@ -885,6 +907,156 @@ describe('PayrollPeriodsService', () => {
             fromStatus: PayrollPeriodStatus.COMPLETED,
             toStatus: PayrollPeriodStatus.FINALIZED,
             reason: 'Approved by CFO',
+          }),
+        }),
+      );
+    });
+
+    it('blocks FINALIZED transition unconditionally when hard-blocking conflicts exist (e.g. OVERLAPPING_LEAVE_REQUESTS, UNAPPROVED_REGULARIZED_ATTENDANCE)', async () => {
+      const completed = createMockPeriod({
+        status: PayrollPeriodStatus.COMPLETED,
+      });
+      const empId = new Types.ObjectId();
+      periodRepo.findById.mockResolvedValue(completed);
+      authorizationService.hasPermissions.mockResolvedValue(true);
+      employeeRepo.findForPayrollAttendanceSummary.mockResolvedValue([
+        {
+          _id: empId,
+          employeeCode: 'EMP-BLK-1',
+          firstName: 'Sam',
+          lastName: 'Lee',
+          employmentStatus: EmploymentStatus.ACTIVE,
+          employmentType: EmploymentType.FULL_TIME,
+          dateOfJoining: new Date('2025-01-01T00:00:00.000Z'),
+          deletedAt: null,
+          branchId: null,
+        },
+      ]);
+      leaveAttendanceResolver.resolveBatch.mockResolvedValue(
+        new Map([
+          [
+            empId.toHexString(),
+            {
+              warnings: [
+                'OVERLAPPING_LEAVE_REQUESTS',
+                'CONFLICTING_LEAVE_CLASSIFICATION',
+              ],
+            },
+          ],
+        ]),
+      );
+
+      await expect(
+        service.updateStatus(
+          periodId,
+          {
+            status: PayrollPeriodStatus.FINALIZED,
+            acknowledgeAnomalies: true,
+            reason: 'Trying to override hard blocker',
+          },
+          actorId,
+          [roleId],
+          clientMetadata,
+        ),
+      ).rejects.toMatchObject({
+        code: ErrorCode.CONCURRENT_MODIFICATION,
+        statusCode: HttpStatus.CONFLICT,
+      });
+      expect(periodRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('blocks reviewable anomalies by default, requires descriptive reason, and permits finalization when authorized reviewer explicitly acknowledges', async () => {
+      const completed = createMockPeriod({
+        status: PayrollPeriodStatus.COMPLETED,
+      });
+      const finalized = createMockPeriod({
+        status: PayrollPeriodStatus.FINALIZED,
+      });
+      const empId = new Types.ObjectId();
+
+      periodRepo.findById.mockResolvedValue(completed);
+      authorizationService.hasPermissions.mockResolvedValue(true);
+      employeeRepo.findForPayrollAttendanceSummary.mockResolvedValue([
+        {
+          _id: empId,
+          employeeCode: 'EMP-REV-1',
+          firstName: 'Rita',
+          lastName: 'Das',
+          employmentStatus: EmploymentStatus.ACTIVE,
+          employmentType: EmploymentType.FULL_TIME,
+          dateOfJoining: new Date('2025-01-01T00:00:00.000Z'),
+          deletedAt: null,
+          branchId: null,
+        },
+      ]);
+      leaveAttendanceResolver.resolveBatch.mockResolvedValue(
+        new Map([
+          [
+            empId.toHexString(),
+            {
+              warnings: [
+                'UNFINALIZED_MISSING_DAYS',
+                'LEAVE_ATTENDANCE_MISMATCH',
+              ],
+            },
+          ],
+        ]),
+      );
+
+      // 1. Without acknowledgeAnomalies=true -> rejected (409)
+      await expect(
+        service.updateStatus(
+          periodId,
+          { status: PayrollPeriodStatus.FINALIZED },
+          actorId,
+          [roleId],
+          clientMetadata,
+        ),
+      ).rejects.toMatchObject({
+        code: ErrorCode.CONCURRENT_MODIFICATION,
+        statusCode: HttpStatus.CONFLICT,
+      });
+
+      // 2. acknowledgeAnomalies=true without reason -> rejected (400)
+      await expect(
+        service.updateStatus(
+          periodId,
+          { status: PayrollPeriodStatus.FINALIZED, acknowledgeAnomalies: true },
+          actorId,
+          [roleId],
+          clientMetadata,
+        ),
+      ).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION_ERROR,
+        statusCode: HttpStatus.BAD_REQUEST,
+      });
+
+      // 3. acknowledgeAnomalies=true + descriptive reason -> succeeds & audits acknowledgment
+      periodRepo.updateStatus.mockResolvedValue(finalized);
+      const res = await service.updateStatus(
+        periodId,
+        {
+          status: PayrollPeriodStatus.FINALIZED,
+          acknowledgeAnomalies: true,
+          reason: 'Verified field sales missing punches with branch head',
+        },
+        actorId,
+        [roleId],
+        clientMetadata,
+      );
+
+      expect(res.status).toBe(PayrollPeriodStatus.FINALIZED);
+      expect(auditLogsService.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.PAYROLL_PERIOD_STATUS_CHANGED,
+          details: expect.objectContaining({
+            toStatus: PayrollPeriodStatus.FINALIZED,
+            acknowledgeAnomalies: true,
+            acknowledgedAnomalyEmployees: 1,
+            acknowledgedWarningCodes: [
+              'UNFINALIZED_MISSING_DAYS',
+              'LEAVE_ATTENDANCE_MISMATCH',
+            ],
           }),
         }),
       );

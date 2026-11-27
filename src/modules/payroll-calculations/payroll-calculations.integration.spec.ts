@@ -23,6 +23,20 @@ import { PayrollRecordLean } from './schemas/payroll-record.schema';
 import { PayrollPeriodRepository } from '../payroll-periods/repositories/payroll-period.repository';
 import { PayrollPeriodLean } from '../payroll-periods/schemas/payroll-period.schema';
 import { PayrollPeriodStatus } from '../payroll-periods/constants/payroll-period.constant';
+import { PayrollLeaveAttendanceResolverService } from '../payroll-periods/services/payroll-leave-attendance-resolver.service';
+import { BranchRepository } from '../branches/repositories/branch.repository';
+import {
+  AttendanceRepository,
+  PayrollAttendanceBucket,
+} from '../attendance/repositories/attendance.repository';
+import { AttendanceRegularizationRepository } from '../attendance/repositories/attendance-regularization.repository';
+import {
+  LeaveRequestLean,
+  LeaveRequestRepository,
+} from '../leaves/repositories/leave-request.repository';
+import { HolidayRepository } from '../leaves/repositories/holiday.repository';
+import { WeeklyOffConfigRepository } from '../work-schedules/repositories/weekly-off-config.repository';
+import { LeaveRequestStatus } from '../leaves/constants/leaves.constant';
 import { Employee } from '../employees/schemas/employee.schema';
 import { EmployeeLean } from '../employees/repositories/employee.repository';
 import {
@@ -176,6 +190,8 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
   const assignmentsStore = new Map<string, EmployeeSalaryLean[]>();
   const structuresStore = new Map<string, SalaryStructureLean>();
   const componentsStore = new Map<string, SalaryComponentLean>();
+  const leavesStore: LeaveRequestLean[] = [];
+  const attendanceBucketsStore: PayrollAttendanceBucket[] = [];
 
   let currentSettings: Record<string, unknown> | null = null;
   let currentRules: Record<string, unknown> | null = null;
@@ -243,6 +259,55 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
         PayrollTotalsCalculator,
         PayrollSnapshotBuilder,
         SalaryStructureCalculationService,
+        PayrollLeaveAttendanceResolverService,
+        {
+          provide: BranchRepository,
+          useValue: { findByIds: jest.fn().mockResolvedValue([]) },
+        },
+        {
+          provide: HolidayRepository,
+          useValue: { findActiveInRange: jest.fn().mockResolvedValue([]) },
+        },
+        {
+          provide: WeeklyOffConfigRepository,
+          useValue: {
+            findActiveEffectiveInRange: jest.fn().mockResolvedValue([]),
+          },
+        },
+        {
+          provide: AttendanceRepository,
+          useValue: {
+            aggregateForPayrollPeriod: jest.fn(() =>
+              Promise.resolve([...attendanceBucketsStore]),
+            ),
+          },
+        },
+        {
+          provide: AttendanceRegularizationRepository,
+          useValue: { findByIds: jest.fn().mockResolvedValue([]) },
+        },
+        {
+          provide: LeaveRequestRepository,
+          useValue: {
+            findOverlappingForEmployees: jest.fn(
+              (
+                empIds: Types.ObjectId[],
+                startDate: string,
+                endDate: string,
+                statuses: LeaveRequestStatus[],
+              ) =>
+                Promise.resolve(
+                  leavesStore.filter(
+                    (l) =>
+                      empIds.some((id) => id.equals(l.employeeId)) &&
+                      statuses.includes(l.status) &&
+                      l.startDate <= endDate &&
+                      l.endDate >= startDate,
+                  ),
+                ),
+            ),
+          },
+        },
         {
           provide: PayrollRecordRepository,
           useValue: recordRepository,
@@ -357,6 +422,8 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
     assignmentsStore.clear();
     structuresStore.clear();
     componentsStore.clear();
+    leavesStore.length = 0;
+    attendanceBucketsStore.length = 0;
     jest.clearAllMocks();
 
     activePermissions = [
@@ -552,7 +619,30 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
     ]);
   });
 
-  it('rejects client-tampered salary amounts and malformed IDs/negative payableDays via ValidationPipe', async () => {
+  const seedUnpaidLeaveRange = (startDate: string, endDate: string) => {
+    leavesStore.push({
+      _id: new Types.ObjectId(),
+      employeeId,
+      leaveTypeId: new Types.ObjectId(),
+      leaveTypeSnapshot: {
+        name: 'Loss of Pay',
+        code: 'LWP',
+        isPaid: false,
+        allowHalfDay: true,
+        deductWeekends: true,
+        deductHolidays: true,
+      },
+      startDate,
+      endDate,
+      totalDays: 1,
+      isHalfDay: false,
+      halfDaySession: null,
+      excludedDates: [],
+      status: LeaveRequestStatus.APPROVED,
+    } as unknown as LeaveRequestLean);
+  };
+
+  it('rejects client-tampered salary amounts, payableDays overrides, and malformed IDs via ValidationPipe', async () => {
     await expect(
       validateBody(CalculateEmployeePayrollDto, {
         payrollPeriodId: periodId.toString(),
@@ -588,7 +678,18 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
       validateBody(CalculateEmployeePayrollDto, {
         payrollPeriodId: periodId.toString(),
         employeeId: employeeId.toString(),
-        payableDays: -1,
+        payableDays: 30,
+      }),
+    ).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION_ERROR,
+      statusCode: HttpStatus.BAD_REQUEST,
+    });
+
+    await expect(
+      validateBody(CalculatePayrollPreviewInputDto, {
+        payrollPeriodId: periodId.toString(),
+        employeeId: employeeId.toString(),
+        totalLopDays: 0,
       }),
     ).rejects.toMatchObject({
       code: ErrorCode.VALIDATION_ERROR,
@@ -597,16 +698,18 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
   });
 
   it('preview computes breakdown without persisting any PayrollRecord', async () => {
+    seedUnpaidLeaveRange('2026-04-16', '2026-04-30');
     const dto = await validateBody(CalculatePayrollPreviewInputDto, {
       payrollPeriodId: periodId.toString(),
       employeeId: employeeId.toString(),
-      payableDays: 15,
     });
 
     const res = await controller.preview(dto);
 
     expect(res.success).toBe(true);
     expect(res.data.persisted).toBe(false);
+    expect(res.data.snapshot.totalLopDays).toBe(15);
+    expect(res.data.snapshot.payableDays).toBe(15);
     expect(res.data.snapshot.grossEarnings).toBe('22500.00');
     expect(res.data.snapshot.totalDeductions).toBe('3600.00');
     expect(res.data.snapshot.employerContributionsTotal).toBe('3600.00');
@@ -615,10 +718,10 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
   });
 
   it('persists PayrollRecord and keeps snapshot immutable even if structure or rules change later', async () => {
+    seedUnpaidLeaveRange('2026-04-16', '2026-04-30');
     const dto = await validateBody(CalculateEmployeePayrollDto, {
       payrollPeriodId: periodId.toString(),
       employeeId: employeeId.toString(),
-      payableDays: 15,
     });
 
     const res = await controller.calculateEmployee(dto, createRequest());
@@ -662,6 +765,7 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
   });
 
   it('produces identical preview and persisted employer contribution totals when prorateEmployerContributions=true and stores flag in snapshot', async () => {
+    seedUnpaidLeaveRange('2026-04-16', '2026-04-30');
     currentRules = {
       ...currentRules,
       prorateEmployerContributions: true,
@@ -670,14 +774,12 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
     const previewDto = await validateBody(CalculatePayrollPreviewInputDto, {
       payrollPeriodId: periodId.toString(),
       employeeId: employeeId.toString(),
-      payableDays: 15,
     });
     const previewRes = await controller.preview(previewDto);
 
     const persistDto = await validateBody(CalculateEmployeePayrollDto, {
       payrollPeriodId: periodId.toString(),
       employeeId: employeeId.toString(),
-      payableDays: 15,
     });
     const persistRes = await controller.calculateEmployee(
       persistDto,
@@ -697,10 +799,10 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
   });
 
   it('prevents duplicate record creation, updates same record on recalculate=true, and leaves existing valid record intact on failed recalculation', async () => {
+    seedUnpaidLeaveRange('2026-04-16', '2026-04-30');
     const dto1 = await validateBody(CalculateEmployeePayrollDto, {
       payrollPeriodId: periodId.toString(),
       employeeId: employeeId.toString(),
-      payableDays: 15,
     });
     const firstRes = await controller.calculateEmployee(dto1, createRequest());
 
@@ -713,10 +815,11 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
     });
 
     // Failed recalculation (0 payable days with NegativeNetPayPolicy=REJECT) must NOT overwrite existing valid record
+    leavesStore.length = 0;
+    seedUnpaidLeaveRange('2026-04-01', '2026-04-30');
     const failedRecalcDto = await validateBody(CalculateEmployeePayrollDto, {
       payrollPeriodId: periodId.toString(),
       employeeId: employeeId.toString(),
-      payableDays: 0,
       recalculate: true,
     });
     await expect(
@@ -734,11 +837,11 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
     expect(afterFailed!.__v).toBe(0);
     expect(afterFailed!.netSalary.toString()).toBe('18900.00');
 
-    // Recalculate with recalculate=true and full 30 days -> updates same record atomically
+    // Recalculate with recalculate=true and cancelled LWP (full 30 days) -> updates same record atomically
+    leavesStore.length = 0;
     const dtoRecalc = await validateBody(CalculateEmployeePayrollDto, {
       payrollPeriodId: periodId.toString(),
       employeeId: employeeId.toString(),
-      payableDays: 30,
       recalculate: true,
     });
     const recalcRes = await controller.calculateEmployee(
@@ -760,7 +863,6 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
     const dto = await validateBody(CalculateEmployeePayrollDto, {
       payrollPeriodId: periodId.toString(),
       employeeId: employeeId.toString(),
-      payableDays: 30,
     });
     await controller.calculateEmployee(dto, createRequest());
 
@@ -771,7 +873,6 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
     const recalcDto = await validateBody(CalculateEmployeePayrollDto, {
       payrollPeriodId: periodId.toString(),
       employeeId: employeeId.toString(),
-      payableDays: 15,
       recalculate: true,
     });
 
@@ -912,10 +1013,10 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
       },
     ]);
 
+    seedUnpaidLeaveRange('2026-04-16', '2026-04-30');
     const previewDto = await validateBody(CalculatePayrollPreviewInputDto, {
       payrollPeriodId: periodId.toString(),
       employeeId: employeeId.toString(),
-      payableDays: 15,
     });
     const previewRes = await controller.preview(previewDto);
     expect(previewRes.data.snapshot.grossEarnings).toBe('20000.00');
@@ -925,7 +1026,6 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
     const calcDto = await validateBody(CalculateEmployeePayrollDto, {
       payrollPeriodId: periodId.toString(),
       employeeId: employeeId.toString(),
-      payableDays: 15,
     });
     const persistRes = await controller.calculateEmployee(
       calcDto,
@@ -949,10 +1049,10 @@ describe('Payroll Calculations Module - Full Integration Test Suite', () => {
     expect(specialSnap?.monthlyCalculatedAmount.toString()).toBe('10000.00');
     expect(specialSnap?.finalAmount.toString()).toBe('5000.00');
 
+    leavesStore.length = 0;
     const recalcDto = await validateBody(CalculateEmployeePayrollDto, {
       payrollPeriodId: periodId.toString(),
       employeeId: employeeId.toString(),
-      payableDays: 30,
       recalculate: true,
     });
     const recalcRes = await controller.calculateEmployee(

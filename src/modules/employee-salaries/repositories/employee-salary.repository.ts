@@ -208,6 +208,20 @@ export class EmployeeSalaryRepository {
   }
 
   /**
+   * Batch fetches salary assignments for multiple employees using the employeeId index.
+   */
+  async findAllByEmployeeIds(
+    employeeIds: Types.ObjectId[],
+  ): Promise<EmployeeSalaryLean[]> {
+    if (employeeIds.length === 0) return [];
+    return this.employeeSalaryModel
+      .find({ employeeId: { $in: employeeIds } })
+      .sort({ employeeId: 1, effectiveFrom: -1 })
+      .lean<EmployeeSalaryLean[]>()
+      .exec();
+  }
+
+  /**
    * Retrieves paginated salary history for an employee, supporting dynamic sorting.
    */
   async findPaginatedByEmployeeId(

@@ -7,6 +7,8 @@ import { ParseObjectIdPipe } from '@nestjs/mongoose';
 import { PayrollPeriodsController } from './payroll-periods.controller';
 import { PayrollPeriodsService } from './services/payroll-periods.service';
 import { PayrollAttendanceSummaryService } from './services/payroll-attendance-summary.service';
+import { PayrollLeaveAttendanceResolverService } from './services/payroll-leave-attendance-resolver.service';
+import { EmployeeRepository } from '../employees/repositories/employee.repository';
 import {
   PayrollPeriodPaginationOptions,
   PayrollPeriodQueryFilter,
@@ -371,6 +373,18 @@ describe('Payroll Periods Module - Complete Integration Test Suite', () => {
         {
           provide: AuthorizationService,
           useValue: mockAuthorizationService,
+        },
+        {
+          provide: EmployeeRepository,
+          useValue: {
+            findForPayrollAttendanceSummary: jest.fn().mockResolvedValue([]),
+          },
+        },
+        {
+          provide: PayrollLeaveAttendanceResolverService,
+          useValue: {
+            resolveBatch: jest.fn().mockResolvedValue(new Map()),
+          },
         },
         Reflector,
         PermissionsGuard,

@@ -22,6 +22,10 @@ import { Employee } from '../../employees/schemas/employee.schema';
 import { SalaryComponent } from '../../salary-components/schemas/salary-component.schema';
 import { PayrollPeriodStatus } from '../../payroll-periods/constants/payroll-period.constant';
 import {
+  PayrollLeaveAttendanceResolution,
+  PayrollLeaveAttendanceResolverService,
+} from '../../payroll-periods/services/payroll-leave-attendance-resolver.service';
+import {
   NegativeNetPayPolicy,
   PayrollFrequency,
   PayrollProrationPolicy,
@@ -62,6 +66,7 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
     isDuplicateKeyError: jest.Mock;
   };
   let auditLogsService: { createAuditLog: jest.Mock };
+  let leaveAttendanceResolver: { resolveForEmployee: jest.Mock };
 
   const actorId = new Types.ObjectId();
   const periodId = new Types.ObjectId();
@@ -205,7 +210,56 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
     });
   };
 
+  const makeLeaveAttendanceResolution = (
+    tenureCalendarDays: number,
+    lopDays = 0,
+  ): PayrollLeaveAttendanceResolution => ({
+    employeeId: employeeId.toHexString(),
+    branchId: 'UNASSIGNED',
+    branchTimezone: 'UTC',
+    tenureCalendarDays,
+    eligibleWorkingDays: tenureCalendarDays,
+    weeklyOffDays: 0,
+    holidayDays: 0,
+    presentDays: Math.max(0, tenureCalendarDays - lopDays),
+    halfDays: 0,
+    paidLeaveDays: 0,
+    unpaidLeaveDays: lopDays,
+    unpaidLeaveLopDays: lopDays,
+    attendanceAbsenceDays: 0,
+    attendanceAbsenceLopDays: 0,
+    halfDayDeductions: 0,
+    totalLopDays: lopDays,
+    incompleteDays: 0,
+    pendingCancellationLeaveDays: 0,
+    leaveTypeBreakdown: [],
+    warnings: [],
+    missingDates: [],
+    openSessionDates: [],
+    incompleteDates: [],
+    duplicateAttendanceDates: [],
+    unapprovedRegularizedDates: [],
+    leaveAttendanceMismatchDates: [],
+    overlappingLeaveDates: [],
+    conflictingLeaveDates: [],
+    outsideTenureAttendanceDates: [],
+  });
+
+  const mockLopDaysOnce = (lopDays: number, tenureDays = 30) => {
+    leaveAttendanceResolver.resolveForEmployee.mockResolvedValueOnce(
+      makeLeaveAttendanceResolution(tenureDays, lopDays),
+    );
+  };
+
   beforeEach(async () => {
+    leaveAttendanceResolver = {
+      resolveForEmployee: jest.fn(
+        ({ target }: { target: { tenure: { eligibleDays: number } } }) =>
+          Promise.resolve(
+            makeLeaveAttendanceResolution(target.tenure.eligibleDays, 0),
+          ),
+      ),
+    };
     periodRepo = { findById: jest.fn().mockResolvedValue(makePeriod()) };
     employeeModel = { findById: jest.fn() };
     mockEmployeeLookup(makeEmployee());
@@ -268,6 +322,10 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
         },
         { provide: PayrollSettingsRepository, useValue: settingsRepo },
         { provide: PayrollCalculationRuleRepository, useValue: ruleRepo },
+        {
+          provide: PayrollLeaveAttendanceResolverService,
+          useValue: leaveAttendanceResolver,
+        },
         { provide: AuditLogsService, useValue: auditLogsService },
       ],
     }).compile();
@@ -347,7 +405,7 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
       expect(res.snapshot.grossEarnings).toBe('31500.00');
     });
 
-    it('rejects mid-month joiner when requested payableDays exceeds eligible tenure days', async () => {
+    it('computes mid-month joiner payableDays strictly from tenure minus LOP without client overrides', async () => {
       mockEmployeeLookup(
         makeEmployee({ dateOfJoining: new Date('2026-04-10T00:00:00.000Z') }),
       );
@@ -357,18 +415,17 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
           effectiveTo: null,
         }),
       ]);
+      // Eligible tenure = 21 days (Apr 10-30), minus 2 LOP days => 19 payable days
+      mockLopDaysOnce(2, 21);
 
-      // Eligible days = 21 (April 10-30); requesting 25 days must be rejected
-      await expect(
-        service.preview({
-          payrollPeriodId: periodId.toString(),
-          employeeId: employeeId.toString(),
-          payableDays: 25,
-        }),
-      ).rejects.toMatchObject({
-        code: ErrorCode.VALIDATION_ERROR,
-        statusCode: HttpStatus.BAD_REQUEST,
+      const res = await service.preview({
+        payrollPeriodId: periodId.toString(),
+        employeeId: employeeId.toString(),
       });
+
+      expect(res.snapshot.tenureCalendarDays).toBe(21);
+      expect(res.snapshot.totalLopDays).toBe(2);
+      expect(res.snapshot.payableDays).toBe(19);
     });
 
     it('rejects employee who joined after payroll period end', async () => {
@@ -605,7 +662,6 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
       const res = await service.preview({
         payrollPeriodId: periodId.toString(),
         employeeId: employeeId.toString(),
-        payableDays: 30,
       });
 
       expect(res.persisted).toBe(false);
@@ -735,28 +791,21 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
       });
     });
 
-    it('rejects invalid payableDays (< 0 or > calendarDays)', async () => {
-      await expect(
-        service.preview({
-          payrollPeriodId: periodId.toString(),
-          employeeId: employeeId.toString(),
-          payableDays: 31, // April has 30 days
-        }),
-      ).rejects.toMatchObject({
-        code: ErrorCode.VALIDATION_ERROR,
-        statusCode: HttpStatus.BAD_REQUEST,
+    it('clamps excessive LOP so payableDays is never negative', async () => {
+      leaveAttendanceResolver.resolveForEmployee.mockResolvedValueOnce({
+        ...makeLeaveAttendanceResolution(30, 35),
+        totalLopDays: 30,
       });
 
       await expect(
         service.preview({
           payrollPeriodId: periodId.toString(),
           employeeId: employeeId.toString(),
-          payableDays: -1,
         }),
       ).rejects.toMatchObject({
         code: ErrorCode.VALIDATION_ERROR,
         statusCode: HttpStatus.BAD_REQUEST,
-      });
+      }); // Rejected due to NegativeNetPayPolicy=REJECT when 0 payable days yields -3600 net
     });
   });
 
@@ -766,10 +815,10 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
       // PF_EE: 12% of 30,000 = 3,600 (prorateDeductions=false => 3,600)
       // PF_ER: 12% of 30,000 = 3,600 (not subtracted from net salary)
       // Net Salary = 22,500 - 3,600 = 18,900
+      mockLopDaysOnce(15, 30);
       const res = await service.preview({
         payrollPeriodId: periodId.toString(),
         employeeId: employeeId.toString(),
-        payableDays: 15,
       });
 
       expect(res.persisted).toBe(false);
@@ -898,7 +947,6 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
       const fullDisabled = await service.preview({
         payrollPeriodId: junePeriodId.toString(),
         employeeId: employeeId.toString(),
-        payableDays: 30,
       });
       expect(fullDisabled.snapshot.prorateEmployerContributions).toBe(false);
       expect(fullDisabled.snapshot.prorationApplied).toBe(false);
@@ -908,10 +956,10 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
       expect(fullDisabled.snapshot.netSalary).toBe('32840.00');
 
       // 1B. Flag absent (legacy = false) -> Partial month (15/30): Gross 17,500, Deductions 1,080, ER 2,810, Net 16,420
+      mockLopDaysOnce(15, 30);
       const partialDisabled = await service.preview({
         payrollPeriodId: junePeriodId.toString(),
         employeeId: employeeId.toString(),
-        payableDays: 15,
       });
       expect(partialDisabled.snapshot.prorateEmployerContributions).toBe(false);
       expect(partialDisabled.snapshot.prorationApplied).toBe(true);
@@ -958,16 +1006,15 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
       const fullEnabled = await service.preview({
         payrollPeriodId: junePeriodId.toString(),
         employeeId: employeeId.toString(),
-        payableDays: 30,
       });
       expect(fullEnabled.snapshot.prorateEmployerContributions).toBe(true);
       expect(fullEnabled.snapshot.employerContributionsTotal).toBe('2810.00');
 
       // 2B. Flag enabled -> Partial month (15/30): Gross 17,500, Deductions 1,080, ER 1,405 (1,080 + 325), Net 16,420
+      mockLopDaysOnce(15, 30);
       const partialEnabled = await service.preview({
         payrollPeriodId: junePeriodId.toString(),
         employeeId: employeeId.toString(),
-        payableDays: 15,
       });
       expect(partialEnabled.snapshot.prorateEmployerContributions).toBe(true);
       expect(partialEnabled.snapshot.prorationApplied).toBe(true);
@@ -1021,10 +1068,10 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
         }),
       );
 
+      mockLopDaysOnce(15, 30);
       const res = await service.preview({
         payrollPeriodId: periodId.toString(),
         employeeId: employeeId.toString(),
-        payableDays: 15,
       });
 
       expect(res.snapshot.grossEarnings).toBe('22500.00');
@@ -1420,10 +1467,10 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
         }),
       );
 
+      mockLopDaysOnce(15, 30);
       const res = await service.preview({
         payrollPeriodId: periodId.toString(),
         employeeId: employeeId.toString(),
-        payableDays: 15, // half of 30 days
       });
 
       const special = res.snapshot.earnings.find(
@@ -1593,11 +1640,11 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
 
     it('rejects negative net pay when NegativeNetPayPolicy is REJECT', async () => {
       // Payable days = 0 -> gross earnings = 0, deduction PF_EE = 3,600 (prorateDeductions=false) => net = -3,600
+      mockLopDaysOnce(30, 30);
       await expect(
         service.preview({
           payrollPeriodId: periodId.toString(),
           employeeId: employeeId.toString(),
-          payableDays: 0,
         }),
       ).rejects.toMatchObject({
         code: ErrorCode.VALIDATION_ERROR,
@@ -1618,10 +1665,10 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
         __v: 0,
       });
 
+      mockLopDaysOnce(30, 30);
       const res = await service.preview({
         payrollPeriodId: periodId.toString(),
         employeeId: employeeId.toString(),
-        payableDays: 0,
       });
 
       expect(res.snapshot.grossEarnings).toBe('0.00');
@@ -1671,10 +1718,10 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
         }),
       );
 
+      mockLopDaysOnce(15, 30);
       const res = await service.preview({
         payrollPeriodId: periodId.toString(),
         employeeId: employeeId.toString(),
-        payableDays: 15,
       });
 
       expect(res.snapshot.executionOrder).toEqual(['BASIC', 'HRA', 'SPECIAL']);
@@ -1695,11 +1742,11 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
           }),
       );
 
+      mockLopDaysOnce(15, 30);
       const res = await service.calculateAndPersistEmployeePayroll(
         {
           payrollPeriodId: periodId.toString(),
           employeeId: employeeId.toString(),
-          payableDays: 15,
         },
         actorId,
       );
@@ -1731,7 +1778,6 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
           {
             payrollPeriodId: periodId.toString(),
             employeeId: employeeId.toString(),
-            payableDays: 15,
           },
           actorId,
         ),
@@ -1806,7 +1852,6 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
         {
           payrollPeriodId: periodId.toString(),
           employeeId: employeeId.toString(),
-          payableDays: 30,
           recalculate: true,
         },
         actorId,
@@ -1838,7 +1883,6 @@ describe('PayrollCalculationService (Employee Payroll Calculation Engine)', () =
           {
             payrollPeriodId: periodId.toString(),
             employeeId: employeeId.toString(),
-            payableDays: 30,
             recalculate: true,
           },
           actorId,

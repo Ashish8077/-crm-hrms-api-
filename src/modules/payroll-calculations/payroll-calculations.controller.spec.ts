@@ -68,7 +68,6 @@ describe('PayrollCalculationsController', () => {
     const dto = {
       payrollPeriodId: new Types.ObjectId().toString(),
       employeeId: new Types.ObjectId().toString(),
-      payableDays: 15,
     };
     const res = await controller.preview(dto);
 
@@ -86,7 +85,6 @@ describe('PayrollCalculationsController', () => {
     const dto = {
       payrollPeriodId: new Types.ObjectId().toString(),
       employeeId: new Types.ObjectId().toString(),
-      payableDays: 30,
       recalculate: false,
     };
     const res = await controller.calculateEmployee(dto, mockRequest);

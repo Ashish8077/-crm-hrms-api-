@@ -34,6 +34,7 @@ export class PayrollSnapshotBuilder {
       salaryAssignment,
       salaryStructure,
       configuration,
+      leaveAndAttendance,
     } = inputs;
     const precision = configuration.roundingPrecision;
 
@@ -102,6 +103,24 @@ export class PayrollSnapshotBuilder {
       prorateEmployerContributions: configuration.prorateEmployerContributions,
       negativeNetPayPolicy: configuration.negativeNetPayPolicy,
       calendarDays: proration.calendarDays,
+      tenureCalendarDays: leaveAndAttendance.tenureCalendarDays,
+      eligibleWorkingDays: leaveAndAttendance.eligibleWorkingDays,
+      weeklyOffDays: leaveAndAttendance.weeklyOffDays,
+      holidayDays: leaveAndAttendance.holidayDays,
+      presentDays: leaveAndAttendance.presentDays,
+      halfDays: leaveAndAttendance.halfDays,
+      paidLeaveDays: leaveAndAttendance.paidLeaveDays,
+      unpaidLeaveDays: leaveAndAttendance.unpaidLeaveDays,
+      unpaidLeaveLopDays: leaveAndAttendance.unpaidLeaveLopDays,
+      attendanceAbsenceDays: leaveAndAttendance.attendanceAbsenceDays,
+      attendanceAbsenceLopDays: leaveAndAttendance.attendanceAbsenceLopDays,
+      halfDayDeductions: leaveAndAttendance.halfDayDeductions,
+      totalLopDays: leaveAndAttendance.totalLopDays,
+      pendingCancellationLeaveDays:
+        leaveAndAttendance.pendingCancellationLeaveDays,
+      attendanceLeaveWarnings: leaveAndAttendance.warnings,
+      leaveAttendanceMismatchDates:
+        leaveAndAttendance.leaveAttendanceMismatchDates,
       prorationDenominatorDays: proration.prorationDenominatorDays,
       payableDays: proration.payableDays,
       prorationApplied: proration.prorationApplied,

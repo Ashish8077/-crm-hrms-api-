@@ -7,6 +7,7 @@ import {
 import { PayrollPeriodRepository } from './repositories/payroll-period.repository';
 import { PayrollPeriodsService } from './services/payroll-periods.service';
 import { PayrollAttendanceSummaryService } from './services/payroll-attendance-summary.service';
+import { PayrollLeaveAttendanceResolverService } from './services/payroll-leave-attendance-resolver.service';
 import { PayrollPeriodsController } from './payroll-periods.controller';
 import { PayrollConfigurationModule } from '../payroll-configuration/payroll-configuration.module';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
@@ -36,11 +37,13 @@ import { WorkSchedulesModule } from '../work-schedules/work-schedules.module';
     PayrollPeriodRepository,
     PayrollPeriodsService,
     PayrollAttendanceSummaryService,
+    PayrollLeaveAttendanceResolverService,
   ],
   exports: [
     PayrollPeriodRepository,
     PayrollPeriodsService,
     PayrollAttendanceSummaryService,
+    PayrollLeaveAttendanceResolverService,
   ],
 })
 export class PayrollPeriodsModule {}

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -36,6 +37,16 @@ export class UpdatePayrollPeriodStatusDto {
   @IsString()
   @MaxLength(PAYROLL_PERIOD_CONSTANTS.NOTES_MAX_LENGTH)
   reason?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Explicitly acknowledge non-blocking reviewable attendance/leave anomalies when finalizing the payroll period (requires a descriptive reason). Cannot bypass hard-blocking conflicts such as overlapping leaves or unapproved regularizations.',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'acknowledgeAnomalies must be a boolean' })
+  acknowledgeAnomalies?: boolean;
 
   @ApiPropertyOptional({
     description:

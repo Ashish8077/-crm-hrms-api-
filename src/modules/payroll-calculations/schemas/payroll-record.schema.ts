@@ -229,6 +229,54 @@ export class PayrollCalculationSnapshot {
   @Prop({ type: Number, required: true })
   calendarDays!: number;
 
+  @Prop({ type: Number, required: true, default: 0 })
+  tenureCalendarDays!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  eligibleWorkingDays!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  weeklyOffDays!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  holidayDays!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  presentDays!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  halfDays!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  paidLeaveDays!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  unpaidLeaveDays!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  unpaidLeaveLopDays!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  attendanceAbsenceDays!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  attendanceAbsenceLopDays!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  halfDayDeductions!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  totalLopDays!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  pendingCancellationLeaveDays!: number;
+
+  @Prop({ type: [String], default: [] })
+  attendanceLeaveWarnings!: string[];
+
+  @Prop({ type: [String], default: [] })
+  leaveAttendanceMismatchDates!: string[];
+
   @Prop({ type: Number, required: true })
   prorationDenominatorDays!: number;
 

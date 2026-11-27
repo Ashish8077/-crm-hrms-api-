@@ -1,13 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import {
-  IsBoolean,
-  IsMongoId,
-  IsNotEmpty,
-  IsNumber,
-  IsOptional,
-  Min,
-} from 'class-validator';
+import { IsBoolean, IsMongoId, IsNotEmpty, IsOptional } from 'class-validator';
 
 export class CalculatePayrollPreviewInputDto {
   @ApiProperty({
@@ -25,23 +17,6 @@ export class CalculatePayrollPreviewInputDto {
   @IsNotEmpty({ message: 'employeeId is required' })
   @IsMongoId({ message: 'employeeId must be a valid MongoDB ObjectId' })
   employeeId!: string;
-
-  @ApiPropertyOptional({
-    description:
-      'Number of payable days in the payroll period (defaults to full calendarDays of the period). Must satisfy 0 <= payableDays <= calendarDays.',
-    example: 15,
-    minimum: 0,
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber(
-    { maxDecimalPlaces: 2 },
-    {
-      message: 'payableDays must be a valid number with up to 2 decimal places',
-    },
-  )
-  @Min(0, { message: 'payableDays cannot be negative' })
-  payableDays?: number;
 }
 
 export class CalculateEmployeePayrollDto extends CalculatePayrollPreviewInputDto {

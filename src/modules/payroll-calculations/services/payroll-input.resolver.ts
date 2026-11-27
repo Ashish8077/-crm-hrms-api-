@@ -5,11 +5,19 @@ import { PayrollPeriodRepository } from '../../payroll-periods/repositories/payr
 import { PayrollPeriodLean } from '../../payroll-periods/schemas/payroll-period.schema';
 import { PayrollPeriodStatus } from '../../payroll-periods/constants/payroll-period.constant';
 import {
+  PayrollLeaveAttendanceResolution,
+  PayrollLeaveAttendanceResolverService,
+} from '../../payroll-periods/services/payroll-leave-attendance-resolver.service';
+import { roundPayrollDays } from '../../payroll-periods/utils/payroll-calendar.util';
+import {
   Employee,
   EmployeeDocument,
 } from '../../employees/schemas/employee.schema';
 import { EmployeeLean } from '../../employees/repositories/employee.repository';
-import { evaluateEmployeePayrollPeriodEligibility } from '../../employees/utils/payroll-eligibility.util';
+import {
+  PayrollPeriodEligibilityResult,
+  evaluateEmployeePayrollPeriodEligibility,
+} from '../../employees/utils/payroll-eligibility.util';
 import { EmployeeSalaryRepository } from '../../employee-salaries/repositories/employee-salary.repository';
 import { EmployeeSalaryLean } from '../../employee-salaries/schemas/employee-salary.schema';
 import { normalizeEffectiveDate } from '../../employee-salaries/constants/employee-salary.constant';
@@ -53,8 +61,24 @@ export interface ResolvedPayrollInputs {
   salaryAssignment: EmployeeSalaryLean;
   salaryStructure: SalaryStructureLean;
   configuration: ResolvedPayrollConfiguration;
+  leaveAndAttendance: PayrollLeaveAttendanceResolution;
   calendarDays: number;
   payableDays: number;
+}
+
+export interface BatchPayrollInputFailure {
+  employeeId: string;
+  employeeCode: string;
+  errorCode: string;
+  message: string;
+}
+
+export interface BatchPayrollInputResolutionResult {
+  period: PayrollPeriodLean;
+  calendarDays: number;
+  configuration: ResolvedPayrollConfiguration;
+  resolved: ResolvedPayrollInputs[];
+  failures: BatchPayrollInputFailure[];
 }
 
 @Injectable()
@@ -67,12 +91,12 @@ export class PayrollInputResolver {
     private readonly salaryStructureRepository: SalaryStructureRepository,
     private readonly payrollSettingsRepository: PayrollSettingsRepository,
     private readonly payrollCalculationRuleRepository: PayrollCalculationRuleRepository,
+    private readonly payrollLeaveAttendanceResolver: PayrollLeaveAttendanceResolverService,
   ) {}
 
   async resolve(
     payrollPeriodId: Types.ObjectId,
     employeeId: Types.ObjectId,
-    requestedPayableDays?: number,
   ): Promise<ResolvedPayrollInputs> {
     const [period, employeeRaw, allAssignments, settingsDoc, ruleDoc] =
       await Promise.all([
@@ -86,7 +110,284 @@ export class PayrollInputResolver {
         this.payrollCalculationRuleRepository.findActive(),
       ]);
 
-    // 1. Validate Payroll Period
+    const {
+      period: validPeriod,
+      calendarDays,
+      periodStartStr,
+      periodEndStr,
+    } = this.validatePeriod(payrollPeriodId, period);
+
+    if (!employeeRaw) {
+      throw new AppError(
+        ErrorCode.RESOURCE_NOT_FOUND,
+        `Employee '${employeeId.toString()}' not found.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const decision = this.resolveEligibleTenureDecision(
+      employeeRaw,
+      validPeriod,
+      periodStartStr,
+      periodEndStr,
+    );
+
+    const salaryAssignment = this.resolveEligibleSalaryAssignment(
+      employeeRaw.employeeCode,
+      validPeriod,
+      decision.effectiveTenureStart,
+      decision.effectiveTenureEnd,
+      allAssignments,
+    );
+
+    const [salaryStructure, leaveAndAttendance] = await Promise.all([
+      this.salaryStructureRepository.findById(
+        salaryAssignment.salaryStructureId,
+      ),
+      this.payrollLeaveAttendanceResolver.resolveForEmployee({
+        periodStartStr,
+        periodEndStr,
+        target: {
+          employee: employeeRaw,
+          tenure: decision,
+        },
+      }),
+    ]);
+
+    this.validateSalaryStructure(salaryStructure, salaryAssignment);
+
+    const configuration = this.buildConfigurationSnapshot(settingsDoc, ruleDoc);
+    const payableDays = this.computeAuthoritativePayableDays({
+      calendarDays,
+      tenureCalendarDays: decision.eligibleDays,
+      leaveAndAttendance,
+      configuration,
+    });
+
+    return {
+      period: validPeriod,
+      employee: employeeRaw,
+      salaryAssignment,
+      salaryStructure: salaryStructure!,
+      configuration,
+      leaveAndAttendance,
+      calendarDays,
+      payableDays,
+    };
+  }
+
+  /**
+   * Batch-resolves authoritative payroll calculation inputs (including leave & attendance LOP)
+   * for up to 1,000+ employees in a constant number of bulk database queries (zero N+1).
+   */
+  async resolveBatchForPeriod(
+    payrollPeriodId: Types.ObjectId,
+    employeeIds?: Types.ObjectId[],
+  ): Promise<BatchPayrollInputResolutionResult> {
+    const employeeFilter: Record<string, unknown> = { deletedAt: null };
+    if (employeeIds && employeeIds.length > 0) {
+      employeeFilter._id = { $in: employeeIds };
+    }
+
+    const [period, employees, settingsDoc, ruleDoc] = await Promise.all([
+      this.payrollPeriodRepository.findById(payrollPeriodId),
+      this.employeeModel
+        .find(employeeFilter)
+        .sort({ employeeCode: 1, _id: 1 })
+        .lean<EmployeeLean[]>()
+        .exec(),
+      this.payrollSettingsRepository.findActive(),
+      this.payrollCalculationRuleRepository.findActive(),
+    ]);
+
+    const {
+      period: validPeriod,
+      calendarDays,
+      periodStartStr,
+      periodEndStr,
+    } = this.validatePeriod(payrollPeriodId, period);
+    const configuration = this.buildConfigurationSnapshot(settingsDoc, ruleDoc);
+
+    if (employees.length === 0) {
+      return {
+        period: validPeriod,
+        calendarDays,
+        configuration,
+        resolved: [],
+        failures: [],
+      };
+    }
+
+    const failures: BatchPayrollInputFailure[] = [];
+    const eligibleTargets: Array<{
+      employee: EmployeeLean;
+      tenure: Extract<PayrollPeriodEligibilityResult, { eligible: true }>;
+    }> = [];
+
+    for (const emp of employees) {
+      try {
+        const decision = this.resolveEligibleTenureDecision(
+          emp,
+          validPeriod,
+          periodStartStr,
+          periodEndStr,
+        );
+        eligibleTargets.push({ employee: emp, tenure: decision });
+      } catch (error) {
+        failures.push({
+          employeeId: emp._id.toHexString(),
+          employeeCode: emp.employeeCode,
+          errorCode:
+            error instanceof AppError ? error.code : ErrorCode.VALIDATION_ERROR,
+          message:
+            error instanceof Error ? error.message : 'Employee is ineligible',
+        });
+      }
+    }
+
+    if (eligibleTargets.length === 0) {
+      return {
+        period: validPeriod,
+        calendarDays,
+        configuration,
+        resolved: [],
+        failures,
+      };
+    }
+
+    const eligibleIds = eligibleTargets.map((t) => t.employee._id);
+    const [allAssignments, leaveAttendanceByEmp] = await Promise.all([
+      this.employeeSalaryRepository.findAllByEmployeeIds(eligibleIds),
+      this.payrollLeaveAttendanceResolver.resolveBatch({
+        periodStartStr,
+        periodEndStr,
+        targets: eligibleTargets,
+      }),
+    ]);
+
+    const assignmentsByEmp = new Map<string, EmployeeSalaryLean[]>();
+    for (const assignment of allAssignments) {
+      const empKey = assignment.employeeId.toHexString();
+      const list = assignmentsByEmp.get(empKey);
+      if (list) {
+        list.push(assignment);
+      } else {
+        assignmentsByEmp.set(empKey, [assignment]);
+      }
+    }
+
+    const matchedAssignments: Array<{
+      employee: EmployeeLean;
+      tenure: Extract<PayrollPeriodEligibilityResult, { eligible: true }>;
+      assignment: EmployeeSalaryLean;
+      leaveAndAttendance: PayrollLeaveAttendanceResolution;
+    }> = [];
+    const structureIdMap = new Map<string, Types.ObjectId>();
+
+    for (const target of eligibleTargets) {
+      const empKey = target.employee._id.toHexString();
+      try {
+        const assignment = this.resolveEligibleSalaryAssignment(
+          target.employee.employeeCode,
+          validPeriod,
+          target.tenure.effectiveTenureStart,
+          target.tenure.effectiveTenureEnd,
+          assignmentsByEmp.get(empKey) ?? [],
+        );
+        const leaveAndAttendance = leaveAttendanceByEmp.get(empKey);
+        if (!leaveAndAttendance) {
+          throw new AppError(
+            ErrorCode.INTERNAL_SERVER_ERROR,
+            `Missing leave & attendance reconciliation for employee '${target.employee.employeeCode}'.`,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+          );
+        }
+        structureIdMap.set(
+          assignment.salaryStructureId.toHexString(),
+          assignment.salaryStructureId,
+        );
+        matchedAssignments.push({
+          employee: target.employee,
+          tenure: target.tenure,
+          assignment,
+          leaveAndAttendance,
+        });
+      } catch (error) {
+        failures.push({
+          employeeId: empKey,
+          employeeCode: target.employee.employeeCode,
+          errorCode:
+            error instanceof AppError ? error.code : ErrorCode.VALIDATION_ERROR,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Failed to resolve salary assignment',
+        });
+      }
+    }
+
+    const uniqueStructureIds = Array.from(structureIdMap.values());
+    const structures =
+      await this.salaryStructureRepository.findByIds(uniqueStructureIds);
+    const structureMap = new Map<string, SalaryStructureLean>(
+      structures.map((s) => [s._id.toHexString(), s]),
+    );
+
+    const resolved: ResolvedPayrollInputs[] = [];
+    for (const item of matchedAssignments) {
+      const structure =
+        structureMap.get(item.assignment.salaryStructureId.toHexString()) ??
+        null;
+      try {
+        this.validateSalaryStructure(structure, item.assignment);
+        const payableDays = this.computeAuthoritativePayableDays({
+          calendarDays,
+          tenureCalendarDays: item.tenure.eligibleDays,
+          leaveAndAttendance: item.leaveAndAttendance,
+          configuration,
+        });
+        resolved.push({
+          period: validPeriod,
+          employee: item.employee,
+          salaryAssignment: item.assignment,
+          salaryStructure: structure!,
+          configuration,
+          leaveAndAttendance: item.leaveAndAttendance,
+          calendarDays,
+          payableDays,
+        });
+      } catch (error) {
+        failures.push({
+          employeeId: item.employee._id.toHexString(),
+          employeeCode: item.employee.employeeCode,
+          errorCode:
+            error instanceof AppError ? error.code : ErrorCode.VALIDATION_ERROR,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Failed to validate salary structure',
+        });
+      }
+    }
+
+    return {
+      period: validPeriod,
+      calendarDays,
+      configuration,
+      resolved,
+      failures,
+    };
+  }
+
+  private validatePeriod(
+    payrollPeriodId: Types.ObjectId,
+    period: PayrollPeriodLean | null,
+  ): {
+    period: PayrollPeriodLean;
+    calendarDays: number;
+    periodStartStr: string;
+    periodEndStr: string;
+  } {
     if (!period || period.deletedAt !== null) {
       throw new AppError(
         ErrorCode.RESOURCE_NOT_FOUND,
@@ -123,43 +424,20 @@ export class PayrollInputResolver {
       );
     }
 
-    // 2 & 3. Validate Employee eligibility & active employment tenure using shared payroll eligibility policy
-    if (!employeeRaw) {
-      throw new AppError(
-        ErrorCode.RESOURCE_NOT_FOUND,
-        `Employee '${employeeId.toString()}' not found.`,
-        HttpStatus.NOT_FOUND,
-      );
-    }
+    const periodStartStr = normalizeEffectiveDate(period.startDate)
+      .toISOString()
+      .slice(0, 10);
+    const periodEndStr = normalizeEffectiveDate(period.endDate)
+      .toISOString()
+      .slice(0, 10);
 
-    const tenure = this.resolveEligibleTenure(employeeRaw, period);
+    return { period, calendarDays, periodStartStr, periodEndStr };
+  }
 
-    const payableDays = requestedPayableDays ?? tenure.eligibleDays;
-    if (
-      !Number.isFinite(payableDays) ||
-      payableDays < 0 ||
-      payableDays > tenure.eligibleDays
-    ) {
-      throw new AppError(
-        ErrorCode.VALIDATION_ERROR,
-        `payableDays (${payableDays}) must be between 0 and eligible tenure days (${tenure.eligibleDays}) for employee '${employeeRaw.employeeCode}' in period '${period.periodCode}' (calendar days: ${calendarDays}).`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    // 4. Resolve exact salary assignment covering employee's active tenure in this period
-    const salaryAssignment = this.resolveEligibleSalaryAssignment(
-      employeeRaw.employeeCode,
-      period,
-      tenure.effectiveTenureStart,
-      tenure.effectiveTenureEnd,
-      allAssignments,
-    );
-
-    // 5. Fetch & Validate Salary Structure
-    const salaryStructure = await this.salaryStructureRepository.findById(
-      salaryAssignment.salaryStructureId,
-    );
+  private validateSalaryStructure(
+    salaryStructure: SalaryStructureLean | null,
+    salaryAssignment: EmployeeSalaryLean,
+  ): void {
     if (!salaryStructure) {
       throw new AppError(
         ErrorCode.RESOURCE_NOT_FOUND,
@@ -178,9 +456,29 @@ export class PayrollInputResolver {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
 
-    // 5. Build authoritative Payroll Configuration snapshot
-    const configuration: ResolvedPayrollConfiguration = {
+  private buildConfigurationSnapshot(
+    settingsDoc: {
+      _id?: Types.ObjectId;
+      __v?: number;
+      currency?: string;
+      fixedWorkingDaysPerMonth?: number | null;
+    } | null,
+    ruleDoc: {
+      _id?: Types.ObjectId;
+      __v?: number;
+      roundingMode?: PayrollRoundingMode;
+      roundingPrecision?: number;
+      prorationPolicy?: PayrollProrationPolicy;
+      prorateFixedComponents?: boolean;
+      prorateDeductions?: boolean;
+      prorateEmployerContributions?: boolean;
+      negativeNetPayPolicy?: NegativeNetPayPolicy;
+      componentExecutionOrder?: string[];
+    } | null,
+  ): ResolvedPayrollConfiguration {
+    return {
       payrollSettingsId: settingsDoc?._id?.toString() ?? null,
       payrollSettingsVersion: settingsDoc?.__v ?? null,
       payrollCalculationRuleId: ruleDoc?._id?.toString() ?? null,
@@ -210,31 +508,72 @@ export class PayrollInputResolver {
       fixedWorkingDaysPerMonth: settingsDoc?.fixedWorkingDaysPerMonth ?? null,
       componentExecutionOrder: ruleDoc?.componentExecutionOrder ?? [],
     };
-
-    return {
-      period,
-      employee: employeeRaw,
-      salaryAssignment,
-      salaryStructure,
-      configuration,
-      calendarDays,
-      payableDays,
-    };
   }
 
-  private resolveEligibleTenure(
+  private computeAuthoritativePayableDays(params: {
+    calendarDays: number;
+    tenureCalendarDays: number;
+    leaveAndAttendance: PayrollLeaveAttendanceResolution;
+    configuration: ResolvedPayrollConfiguration;
+  }): number {
+    const {
+      calendarDays,
+      tenureCalendarDays,
+      leaveAndAttendance,
+      configuration,
+    } = params;
+    const {
+      eligibleWorkingDays,
+      presentDays,
+      halfDays,
+      paidLeaveDays,
+      totalLopDays,
+    } = leaveAndAttendance;
+
+    // Full-month LOP: zero worked days, zero paid leave, and every scheduled working day is LOP
+    const isFullPeriodLop =
+      eligibleWorkingDays > 0 &&
+      presentDays === 0 &&
+      halfDays === 0 &&
+      paidLeaveDays === 0 &&
+      totalLopDays >= eligibleWorkingDays;
+
+    if (isFullPeriodLop) {
+      return 0;
+    }
+
+    if (
+      configuration.prorationPolicy === PayrollProrationPolicy.WORKING_DAYS &&
+      configuration.fixedWorkingDaysPerMonth &&
+      configuration.fixedWorkingDaysPerMonth > 0
+    ) {
+      const fixedMonthlyWorkingDays = configuration.fixedWorkingDaysPerMonth;
+      const workingBase =
+        tenureCalendarDays === calendarDays
+          ? fixedMonthlyWorkingDays
+          : Math.min(eligibleWorkingDays, fixedMonthlyWorkingDays);
+      return roundPayrollDays(Math.max(0, workingBase - totalLopDays));
+    }
+
+    if (
+      configuration.prorationPolicy === PayrollProrationPolicy.FIXED_30_DAYS
+    ) {
+      if (tenureCalendarDays === calendarDays) {
+        return roundPayrollDays(Math.max(0, 30 - totalLopDays));
+      }
+      const fixedBase = Math.min(30, tenureCalendarDays);
+      return roundPayrollDays(Math.max(0, fixedBase - totalLopDays));
+    }
+
+    return roundPayrollDays(Math.max(0, tenureCalendarDays - totalLopDays));
+  }
+
+  private resolveEligibleTenureDecision(
     employee: EmployeeLean,
     period: PayrollPeriodLean,
-  ): {
-    effectiveTenureStart: Date;
-    effectiveTenureEnd: Date;
-    eligibleDays: number;
-  } {
-    const periodStart = normalizeEffectiveDate(period.startDate);
-    const periodEnd = normalizeEffectiveDate(period.endDate);
-    const periodStartStr = periodStart.toISOString().slice(0, 10);
-    const periodEndStr = periodEnd.toISOString().slice(0, 10);
-
+    periodStartStr: string,
+    periodEndStr: string,
+  ): Extract<PayrollPeriodEligibilityResult, { eligible: true }> {
     const decision = evaluateEmployeePayrollPeriodEligibility(
       employee,
       periodStartStr,
@@ -282,11 +621,7 @@ export class PayrollInputResolver {
       }
     }
 
-    return {
-      effectiveTenureStart: decision.effectiveTenureStart,
-      effectiveTenureEnd: decision.effectiveTenureEnd,
-      eligibleDays: decision.eligibleDays,
-    };
+    return decision;
   }
 
   private resolveEligibleSalaryAssignment(
@@ -318,16 +653,12 @@ export class PayrollInputResolver {
         ? normalizeEffectiveDate(assignment.effectiveTo).getTime()
         : Infinity;
 
-      // Half-open interval [effectiveFrom, effectiveTo):
-      // Must start on or before the employee's active tenure start in the period
-      // AND must extend past the employee's active tenure end in the period.
       const coversStart = assignStartMs <= tenureStartMs;
       const coversEnd = assignEndMs > tenureEndMs;
 
       if (coversStart && coversEnd) {
         coveringFullTenure.push(assignment);
       } else if (assignStartMs <= tenureEndMs && assignEndMs > tenureStartMs) {
-        // Overlaps at least one calendar day inside the employee's active tenure window
         overlappingPartial.push(assignment);
       }
     }

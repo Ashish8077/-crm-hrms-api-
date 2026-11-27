@@ -75,7 +75,6 @@ export class PayrollCalculationService {
     const { snapshot } = await this.executeCalculation(
       payrollPeriodId,
       employeeId,
-      dto.payableDays,
     );
 
     return PayrollCalculationMapper.toPreviewResponse(snapshot);
@@ -90,11 +89,7 @@ export class PayrollCalculationService {
     const employeeId = new Types.ObjectId(dto.employeeId);
 
     const { inputs, snapshot, totals, calculatedAt } =
-      await this.executeCalculation(
-        payrollPeriodId,
-        employeeId,
-        dto.payableDays,
-      );
+      await this.executeCalculation(payrollPeriodId, employeeId);
 
     const precision = inputs.configuration.roundingPrecision;
     const grossEarnings = toDecimal128(totals.grossEarningsDec, precision);
@@ -164,6 +159,9 @@ export class PayrollCalculationService {
           employeeCode: inputs.employee.employeeCode,
           calculationVersion: updated.calculationVersion,
           payableDays: inputs.payableDays,
+          totalLopDays: inputs.leaveAndAttendance.totalLopDays,
+          paidLeaveDays: inputs.leaveAndAttendance.paidLeaveDays,
+          unpaidLeaveDays: inputs.leaveAndAttendance.unpaidLeaveDays,
           calendarDays: inputs.calendarDays,
           netSalary: updated.netSalary.toString(),
         },
@@ -215,6 +213,9 @@ export class PayrollCalculationService {
         employeeCode: inputs.employee.employeeCode,
         calculationVersion: created.calculationVersion,
         payableDays: inputs.payableDays,
+        totalLopDays: inputs.leaveAndAttendance.totalLopDays,
+        paidLeaveDays: inputs.leaveAndAttendance.paidLeaveDays,
+        unpaidLeaveDays: inputs.leaveAndAttendance.unpaidLeaveDays,
         calendarDays: inputs.calendarDays,
         netSalary: created.netSalary.toString(),
       },
@@ -228,7 +229,6 @@ export class PayrollCalculationService {
   private async executeCalculation(
     payrollPeriodId: Types.ObjectId,
     employeeId: Types.ObjectId,
-    requestedPayableDays?: number,
   ): Promise<{
     inputs: ResolvedPayrollInputs;
     snapshot: PayrollCalculationSnapshot;
@@ -238,7 +238,6 @@ export class PayrollCalculationService {
     const inputs = await this.inputResolver.resolve(
       payrollPeriodId,
       employeeId,
-      requestedPayableDays,
     );
 
     const { components: resolvedComponents, masterMap } =

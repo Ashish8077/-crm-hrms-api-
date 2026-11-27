@@ -168,6 +168,54 @@ export class PayrollCalculationSnapshotResponseDto {
   calendarDays!: number;
 
   @ApiProperty({ example: 30 })
+  tenureCalendarDays!: number;
+
+  @ApiProperty({ example: 22 })
+  eligibleWorkingDays!: number;
+
+  @ApiProperty({ example: 8 })
+  weeklyOffDays!: number;
+
+  @ApiProperty({ example: 0 })
+  holidayDays!: number;
+
+  @ApiProperty({ example: 20 })
+  presentDays!: number;
+
+  @ApiProperty({ example: 0 })
+  halfDays!: number;
+
+  @ApiProperty({ example: 2 })
+  paidLeaveDays!: number;
+
+  @ApiProperty({ example: 1 })
+  unpaidLeaveDays!: number;
+
+  @ApiProperty({ example: 1 })
+  unpaidLeaveLopDays!: number;
+
+  @ApiProperty({ example: 0 })
+  attendanceAbsenceDays!: number;
+
+  @ApiProperty({ example: 0 })
+  attendanceAbsenceLopDays!: number;
+
+  @ApiProperty({ example: 0 })
+  halfDayDeductions!: number;
+
+  @ApiProperty({ example: 1 })
+  totalLopDays!: number;
+
+  @ApiProperty({ example: 0 })
+  pendingCancellationLeaveDays!: number;
+
+  @ApiProperty({ type: [String], example: [] })
+  attendanceLeaveWarnings!: string[];
+
+  @ApiProperty({ type: [String], example: [] })
+  leaveAttendanceMismatchDates!: string[];
+
+  @ApiProperty({ example: 30 })
   prorationDenominatorDays!: number;
 
   @ApiProperty({ example: 15 })

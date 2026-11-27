@@ -118,7 +118,7 @@ export class SalaryStructureRepository {
   }
 
   async findById(
-    id: Types.ObjectId | string,
+    id: string | Types.ObjectId,
     session?: ClientSession,
   ): Promise<SalaryStructureLean | null> {
     const objectId = typeof id === 'string' ? new Types.ObjectId(id) : id;
@@ -127,6 +127,17 @@ export class SalaryStructureRepository {
       query.session(session);
     }
     return query.lean<SalaryStructureLean>().exec();
+  }
+
+  /**
+   * Batch fetches salary structures by ObjectIds using the primary _id index.
+   */
+  async findByIds(ids: Types.ObjectId[]): Promise<SalaryStructureLean[]> {
+    if (ids.length === 0) return [];
+    return this.salaryStructureModel
+      .find({ _id: { $in: ids } })
+      .lean<SalaryStructureLean[]>()
+      .exec();
   }
 
   async findByCode(

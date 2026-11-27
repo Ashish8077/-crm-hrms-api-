@@ -34,6 +34,23 @@ export interface MonthlyAttendanceSummary {
   totalBreakMinutes: number;
 }
 
+export interface PayrollAttendanceBucket {
+  employeeId: Types.ObjectId;
+  attendanceDate: string;
+  recordCount: number;
+  status: AttendanceStatus;
+  statuses: AttendanceStatus[];
+  isLate: boolean;
+  lateMinutes: number;
+  isEarlyDeparture: boolean;
+  earlyDepartureMinutes: number;
+  totalWorkMinutes: number;
+  totalBreakMinutes: number;
+  overtimeMinutes: number;
+  regularizationId: Types.ObjectId | null;
+  leaveRequestId: Types.ObjectId | null;
+}
+
 @Injectable()
 export class AttendanceRepository implements OnModuleInit {
   private readonly logger = new Logger(AttendanceRepository.name);

@@ -30,6 +30,7 @@ import { PayrollPeriodStatus } from '../payroll-periods/constants/payroll-period
 import { PayrollPeriodRepository } from '../payroll-periods/repositories/payroll-period.repository';
 import { PayrollPeriodLean } from '../payroll-periods/schemas/payroll-period.schema';
 import { PayrollAttendanceSummaryService } from '../payroll-periods/services/payroll-attendance-summary.service';
+import { PayrollLeaveAttendanceResolverService } from '../payroll-periods/services/payroll-leave-attendance-resolver.service';
 import { SalaryComponentType } from '../salary-components/constants/salary-component.constant';
 import {
   SalaryStructureBasis,
@@ -239,6 +240,15 @@ describe('Payroll Eligibility Consistency (PayrollAttendanceSummaryService vs Pa
       }),
     } as unknown as PayrollCalculationRuleRepository;
 
+    const leaveAttendanceResolver = new PayrollLeaveAttendanceResolverService(
+      branchRepo,
+      attendanceRepo,
+      regRepo,
+      leaveRepo,
+      holidayRepo,
+      weeklyOffRepo,
+    );
+
     const inputResolver = new PayrollInputResolver(
       periodRepo,
       employeeModel,
@@ -246,6 +256,7 @@ describe('Payroll Eligibility Consistency (PayrollAttendanceSummaryService vs Pa
       structureRepo,
       settingsRepo,
       ruleRepo,
+      leaveAttendanceResolver,
     );
 
     return { summaryService, inputResolver };

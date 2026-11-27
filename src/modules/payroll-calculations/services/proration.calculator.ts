@@ -52,15 +52,10 @@ export class ProrationCalculator {
     let prorationApplied = false;
     let prorationFactor = toDecimal(1);
 
-    if (payableDays < calendarDays) {
+    if (payableDays < prorationDenominatorDays) {
       prorationApplied = true;
       if (payableDays === 0) {
         prorationFactor = toDecimal(0);
-      } else if (
-        config.prorationPolicy === PayrollProrationPolicy.FIXED_30_DAYS &&
-        payableDays >= prorationDenominatorDays
-      ) {
-        prorationFactor = toDecimal(1);
       } else {
         prorationFactor = toDecimal(payableDays).dividedBy(
           prorationDenominatorDays,
