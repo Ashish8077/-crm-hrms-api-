@@ -614,4 +614,22 @@ export const PermissionKeys = {
     PermissionModule.PAYROLL_CALCULATIONS,
     PermissionAction.CREATE,
   ),
+
+  // Payslips
+  PAYSLIPS_VIEW: PermissionKey.of(
+    PermissionModule.PAYSLIPS,
+    PermissionAction.VIEW,
+  ),
+  PAYSLIPS_VIEW_OWN: PermissionKey.of(
+    PermissionModule.PAYSLIPS,
+    PermissionAction.VIEW_OWN,
+  ),
+  PAYSLIPS_CREATE: PermissionKey.of(
+    PermissionModule.PAYSLIPS,
+    PermissionAction.CREATE,
+  ),
+  PAYSLIPS_EXPORT: PermissionKey.of(
+    PermissionModule.PAYSLIPS,
+    PermissionAction.EXPORT,
+  ),
 } as const;

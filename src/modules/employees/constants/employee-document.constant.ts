@@ -19,3 +19,14 @@ export type AllowedEmployeeDocumentMimeType =
   (typeof ALLOWED_EMPLOYEE_DOCUMENT_MIME_TYPES)[number];
 
 export const MAX_DOCUMENT_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+export const EMPLOYEE_DOCUMENTS_STORAGE_PREFIX = 'hrms/employees';
+
+/**
+ * Builds the standardized S3 folder prefix for new employee document uploads.
+ */
+export function buildEmployeeDocumentsStorageFolder(
+  employeeId: string,
+): string {
+  return `${EMPLOYEE_DOCUMENTS_STORAGE_PREFIX}/${employeeId}/documents`;
+}
