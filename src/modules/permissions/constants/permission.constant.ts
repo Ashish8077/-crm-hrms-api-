@@ -65,6 +65,10 @@ export enum PermissionModule {
   SALARY_STRUCTURES = 'salary.structures',
   EMPLOYEE_SALARIES = 'employee.salaries',
   PAYROLL = 'payroll',
+  PAYROLL_SETTINGS = 'payroll.settings',
+  PAYROLL_CALCULATIONS = 'payroll.calculations',
+  PAYROLL_HISTORY = 'payroll.history',
+  PAYROLL_REPORTS = 'payroll.reports',
   PAYSLIPS = 'payslips',
   TAX = 'tax',
 
@@ -573,5 +577,79 @@ export const PermissionKeys = {
   EMPLOYEE_SALARIES_ASSIGN: PermissionKey.of(
     PermissionModule.EMPLOYEE_SALARIES,
     PermissionAction.ASSIGN,
+  ),
+
+  // Payroll Configuration
+  PAYROLL_SETTINGS_VIEW: PermissionKey.of(
+    PermissionModule.PAYROLL_SETTINGS,
+    PermissionAction.VIEW,
+  ),
+  PAYROLL_SETTINGS_EDIT: PermissionKey.of(
+    PermissionModule.PAYROLL_SETTINGS,
+    PermissionAction.EDIT,
+  ),
+
+  // Payroll Periods
+  PAYROLL_PERIODS_VIEW: PermissionKey.of(
+    PermissionModule.PAYROLL,
+    PermissionAction.VIEW,
+  ),
+  PAYROLL_PERIODS_CREATE: PermissionKey.of(
+    PermissionModule.PAYROLL,
+    PermissionAction.CREATE,
+  ),
+  PAYROLL_PERIODS_EDIT: PermissionKey.of(
+    PermissionModule.PAYROLL,
+    PermissionAction.EDIT,
+  ),
+  PAYROLL_PERIODS_APPROVE: PermissionKey.of(
+    PermissionModule.PAYROLL,
+    PermissionAction.APPROVE,
+  ),
+
+  // Payroll Calculations
+  PAYROLL_CALCULATIONS_VIEW: PermissionKey.of(
+    PermissionModule.PAYROLL_CALCULATIONS,
+    PermissionAction.VIEW,
+  ),
+  PAYROLL_CALCULATIONS_CREATE: PermissionKey.of(
+    PermissionModule.PAYROLL_CALCULATIONS,
+    PermissionAction.CREATE,
+  ),
+
+  // Payslips
+  PAYSLIPS_VIEW: PermissionKey.of(
+    PermissionModule.PAYSLIPS,
+    PermissionAction.VIEW,
+  ),
+  PAYSLIPS_VIEW_OWN: PermissionKey.of(
+    PermissionModule.PAYSLIPS,
+    PermissionAction.VIEW_OWN,
+  ),
+  PAYSLIPS_CREATE: PermissionKey.of(
+    PermissionModule.PAYSLIPS,
+    PermissionAction.CREATE,
+  ),
+  PAYSLIPS_EXPORT: PermissionKey.of(
+    PermissionModule.PAYSLIPS,
+    PermissionAction.EXPORT,
+  ),
+
+  // Payroll History & Reports
+  PAYROLL_HISTORY_VIEW: PermissionKey.of(
+    PermissionModule.PAYROLL_HISTORY,
+    PermissionAction.VIEW,
+  ),
+  PAYROLL_HISTORY_VIEW_OWN: PermissionKey.of(
+    PermissionModule.PAYROLL_HISTORY,
+    PermissionAction.VIEW_OWN,
+  ),
+  PAYROLL_REPORTS_VIEW: PermissionKey.of(
+    PermissionModule.PAYROLL_REPORTS,
+    PermissionAction.VIEW,
+  ),
+  PAYROLL_REPORTS_EXPORT: PermissionKey.of(
+    PermissionModule.PAYROLL_REPORTS,
+    PermissionAction.EXPORT,
   ),
 } as const;

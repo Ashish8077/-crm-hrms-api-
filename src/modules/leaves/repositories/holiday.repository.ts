@@ -166,4 +166,23 @@ export class HolidayRepository implements OnModuleInit {
     );
     return query.lean<HolidayLean>().exec();
   }
+
+  /**
+   * Batch query returning all active holidays in [startDate, endDate] across all branches and global scope.
+   */
+  async findActiveInRange(
+    startDate: string,
+    endDate: string,
+  ): Promise<HolidayLean[]> {
+    return this.holidayModel
+      .find({
+        date: { $gte: startDate, $lte: endDate },
+        isActive: true,
+        deletedAt: null,
+      })
+      .select('_id name date type branchId')
+      .sort({ date: 1 })
+      .lean<HolidayLean[]>()
+      .exec();
+  }
 }

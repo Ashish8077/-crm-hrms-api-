@@ -194,4 +194,25 @@ export class WeeklyOffConfigRepository {
     );
     return query.lean<WeeklyOffConfigLean>().exec();
   }
+
+  /**
+   * Batch query returning all active weekly-off configs overlapping [startDate, endDate],
+   * ordered by precedence (`effectiveFrom` desc, `createdAt` desc) to match `findEffectiveConfig`.
+   */
+  async findActiveEffectiveInRange(
+    startDate: string,
+    endDate: string,
+  ): Promise<WeeklyOffConfigLean[]> {
+    return this.weeklyOffModel
+      .find({
+        isActive: true,
+        deletedAt: null,
+        effectiveFrom: { $lte: endDate },
+        $or: [{ effectiveTo: null }, { effectiveTo: { $gte: startDate } }],
+      })
+      .select('_id name branchId days effectiveFrom effectiveTo')
+      .sort({ effectiveFrom: -1, createdAt: -1 })
+      .lean<WeeklyOffConfigLean[]>()
+      .exec();
+  }
 }

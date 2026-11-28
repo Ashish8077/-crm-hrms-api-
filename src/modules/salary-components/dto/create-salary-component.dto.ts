@@ -2,10 +2,12 @@ import {
   IsBoolean,
   IsEnum,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
+  Min,
   MinLength,
   Validate,
   ValidationArguments,
@@ -26,6 +28,36 @@ import {
   SalaryComponentType,
   SALARY_COMPONENT_CONSTANTS,
 } from '../constants/salary-component.constant';
+
+@ValidatorConstraint({ name: 'isValidDefaultValue', async: false })
+export class IsValidSalaryComponentDefaultValueConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown, args: ValidationArguments): boolean {
+    if (value === undefined || value === null) return true;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      return false;
+    }
+    const obj = args.object as {
+      calculationType?: SalaryComponentCalculationType | null;
+    };
+    if (
+      obj.calculationType === SalaryComponentCalculationType.PERCENTAGE &&
+      value > 100
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  defaultMessage(args: ValidationArguments): string {
+    const obj = args.object as {
+      calculationType?: SalaryComponentCalculationType | null;
+    };
+    if (obj.calculationType === SalaryComponentCalculationType.PERCENTAGE) {
+      return 'defaultValue must be between 0 and 100 when calculationType is PERCENTAGE';
+    }
+    return 'defaultValue must be a non-negative number';
+  }
+}
 
 @ValidatorConstraint({ name: 'isValidGratuityClassification', async: false })
 export class IsValidGratuityClassificationConstraint implements ValidatorConstraintInterface {
@@ -165,6 +197,19 @@ export class CreateSalaryComponentDto {
   })
   @Validate(IsValidPercentageOfConstraint)
   percentageOf?: SalaryComponentPercentageBasis | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Default fixed monetary value or percentage rate (0-100 for PERCENTAGE)',
+    example: 15000,
+    minimum: 0,
+    nullable: true,
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Validate(IsValidSalaryComponentDefaultValueConstraint)
+  defaultValue?: number | null;
 
   @ApiPropertyOptional({
     description: 'Whether this component is subject to income tax',

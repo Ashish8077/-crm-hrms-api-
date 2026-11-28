@@ -64,6 +64,12 @@ export class Employee {
   @Prop({ type: Date, required: true })
   dateOfJoining!: Date;
 
+  @Prop({ type: Date, default: null })
+  lastWorkingDate?: Date | null;
+
+  @Prop({ type: Date, default: null })
+  terminationDate?: Date | null;
+
   @Prop({ type: Types.ObjectId, ref: 'Department', required: true })
   departmentId!: Types.ObjectId;
 

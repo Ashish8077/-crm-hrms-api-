@@ -34,6 +34,23 @@ export interface MonthlyAttendanceSummary {
   totalBreakMinutes: number;
 }
 
+export interface PayrollAttendanceBucket {
+  employeeId: Types.ObjectId;
+  attendanceDate: string;
+  recordCount: number;
+  status: AttendanceStatus;
+  statuses: AttendanceStatus[];
+  isLate: boolean;
+  lateMinutes: number;
+  isEarlyDeparture: boolean;
+  earlyDepartureMinutes: number;
+  totalWorkMinutes: number;
+  totalBreakMinutes: number;
+  overtimeMinutes: number;
+  regularizationId: Types.ObjectId | null;
+  leaveRequestId: Types.ObjectId | null;
+}
+
 @Injectable()
 export class AttendanceRepository implements OnModuleInit {
   private readonly logger = new Logger(AttendanceRepository.name);
@@ -517,5 +534,117 @@ export class AttendanceRepository implements OnModuleInit {
       }
       throw error;
     }
+  }
+
+  /**
+   * Batch payroll-period attendance aggregation grouped by (employeeId, attendanceDate).
+   * Preserves per-day recordCount to detect duplicate daily records while returning
+   * compact employee-day buckets for server-side payroll summary normalization.
+   */
+  async aggregateForPayrollPeriod(
+    employeeIds: Types.ObjectId[],
+    startDate: string,
+    endDate: string,
+  ): Promise<
+    Array<{
+      employeeId: Types.ObjectId;
+      attendanceDate: string;
+      recordCount: number;
+      status: AttendanceStatus;
+      statuses: AttendanceStatus[];
+      isLate: boolean;
+      lateMinutes: number;
+      isEarlyDeparture: boolean;
+      earlyDepartureMinutes: number;
+      totalWorkMinutes: number;
+      totalBreakMinutes: number;
+      overtimeMinutes: number;
+      regularizationId: Types.ObjectId | null;
+      leaveRequestId: Types.ObjectId | null;
+    }>
+  > {
+    if (employeeIds.length === 0) return [];
+
+    return this.attendanceModel
+      .aggregate<{
+        employeeId: Types.ObjectId;
+        attendanceDate: string;
+        recordCount: number;
+        status: AttendanceStatus;
+        statuses: AttendanceStatus[];
+        isLate: boolean;
+        lateMinutes: number;
+        isEarlyDeparture: boolean;
+        earlyDepartureMinutes: number;
+        totalWorkMinutes: number;
+        totalBreakMinutes: number;
+        overtimeMinutes: number;
+        regularizationId: Types.ObjectId | null;
+        leaveRequestId: Types.ObjectId | null;
+      }>([
+        {
+          $match: {
+            employeeId: { $in: employeeIds },
+            attendanceDate: { $gte: startDate, $lte: endDate },
+            deletedAt: null,
+          },
+        },
+        {
+          $sort: {
+            employeeId: 1,
+            attendanceDate: 1,
+            createdAt: -1,
+            _id: -1,
+          },
+        },
+        {
+          $group: {
+            _id: {
+              employeeId: '$employeeId',
+              attendanceDate: '$attendanceDate',
+            },
+            recordCount: { $sum: 1 },
+            status: { $first: '$status' },
+            statuses: { $push: '$status' },
+            isLate: { $first: { $ifNull: ['$isLate', false] } },
+            lateMinutes: { $first: { $ifNull: ['$lateMinutes', 0] } },
+            isEarlyDeparture: {
+              $first: { $ifNull: ['$isEarlyDeparture', false] },
+            },
+            earlyDepartureMinutes: {
+              $first: { $ifNull: ['$earlyDepartureMinutes', 0] },
+            },
+            totalWorkMinutes: { $first: { $ifNull: ['$totalWorkMinutes', 0] } },
+            totalBreakMinutes: {
+              $first: { $ifNull: ['$totalBreakMinutes', 0] },
+            },
+            overtimeMinutes: { $first: { $ifNull: ['$overtimeMinutes', 0] } },
+            regularizationId: {
+              $first: { $ifNull: ['$regularizationId', null] },
+            },
+            leaveRequestId: { $first: { $ifNull: ['$leaveRequestId', null] } },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            employeeId: '$_id.employeeId',
+            attendanceDate: '$_id.attendanceDate',
+            recordCount: 1,
+            status: 1,
+            statuses: 1,
+            isLate: 1,
+            lateMinutes: 1,
+            isEarlyDeparture: 1,
+            earlyDepartureMinutes: 1,
+            totalWorkMinutes: 1,
+            totalBreakMinutes: 1,
+            overtimeMinutes: 1,
+            regularizationId: 1,
+            leaveRequestId: 1,
+          },
+        },
+      ])
+      .exec();
   }
 }

@@ -1,10 +1,12 @@
 import {
   IsBoolean,
   IsEnum,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
+  Min,
   MinLength,
   Validate,
   ValidationArguments,
@@ -21,6 +23,7 @@ import {
   SalaryComponentType,
   SALARY_COMPONENT_CONSTANTS,
 } from '../constants/salary-component.constant';
+import { IsValidSalaryComponentDefaultValueConstraint } from './create-salary-component.dto';
 
 @ValidatorConstraint({
   name: 'isValidGratuityUpdateClassification',
@@ -127,6 +130,19 @@ export class UpdateSalaryComponentDto {
   @IsOptional()
   @IsEnum(SalaryComponentPercentageBasis)
   percentageOf?: SalaryComponentPercentageBasis | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Default fixed monetary value or percentage rate (0-100 for PERCENTAGE)',
+    example: 15000,
+    minimum: 0,
+    nullable: true,
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Validate(IsValidSalaryComponentDefaultValueConstraint)
+  defaultValue?: number | null;
 
   @ApiPropertyOptional({
     description: 'Whether this component is subject to income tax',

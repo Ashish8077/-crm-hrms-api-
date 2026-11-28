@@ -22,6 +22,7 @@ import { PaginatedResult } from '../../common/pagination/types/pagination.types'
 import {
   ALLOWED_EMPLOYEE_DOCUMENT_MIME_TYPES,
   MAX_DOCUMENT_FILE_SIZE,
+  buildEmployeeDocumentsStorageFolder,
 } from './constants/employee-document.constant';
 import {
   validateFileContent,
@@ -110,7 +111,7 @@ export class EmployeeDocumentsService {
     try {
       const uploaded = await this.storageService.uploadFile(
         file,
-        `employees/${employeeId.toString()}/documents`,
+        buildEmployeeDocumentsStorageFolder(employeeId.toString()),
         [...ALLOWED_EMPLOYEE_DOCUMENT_MIME_TYPES],
         MAX_DOCUMENT_FILE_SIZE,
         trustedExtension,

@@ -285,7 +285,7 @@ describe('EmployeeDocumentsService', () => {
         _id: employeeId,
       } as unknown as EmployeeLean);
       storageService.uploadFile.mockResolvedValue({
-        key: `employees/${employeeId.toString()}/documents/file.pdf`,
+        key: `hrms/employees/${employeeId.toString()}/documents/file.pdf`,
       });
 
       const createdDoc: EmployeeDocumentLean = {
@@ -293,7 +293,7 @@ describe('EmployeeDocumentsService', () => {
         employeeId,
         category: EmployeeDocumentCategory.RESUME,
         originalFileName: 'resume.pdf',
-        storageKey: `employees/${employeeId.toString()}/documents/file.pdf`,
+        storageKey: `hrms/employees/${employeeId.toString()}/documents/file.pdf`,
         mimeType: 'application/pdf',
         fileSize: validPdfContent.length,
         uploadedBy: actorId,
@@ -312,7 +312,7 @@ describe('EmployeeDocumentsService', () => {
 
       expect(storageService.uploadFile).toHaveBeenCalledWith(
         mockFile,
-        `employees/${employeeId.toString()}/documents`,
+        `hrms/employees/${employeeId.toString()}/documents`,
         [...ALLOWED_EMPLOYEE_DOCUMENT_MIME_TYPES],
         MAX_DOCUMENT_FILE_SIZE,
         '.pdf',
@@ -323,7 +323,7 @@ describe('EmployeeDocumentsService', () => {
         expect.objectContaining({
           employeeId,
           category: EmployeeDocumentCategory.RESUME,
-          storageKey: `employees/${employeeId.toString()}/documents/file.pdf`,
+          storageKey: `hrms/employees/${employeeId.toString()}/documents/file.pdf`,
           uploadedBy: actorId,
           fileSize: validPdfContent.length,
           mimeType: 'application/pdf',
@@ -350,7 +350,7 @@ describe('EmployeeDocumentsService', () => {
       employeeRepo.findById.mockResolvedValue({
         _id: employeeId,
       } as unknown as EmployeeLean);
-      const storageKey = `employees/${employeeId.toString()}/documents/file.pdf`;
+      const storageKey = `hrms/employees/${employeeId.toString()}/documents/file.pdf`;
       storageService.uploadFile.mockResolvedValue({ key: storageKey });
 
       mockSession.withTransaction.mockRejectedValueOnce(
@@ -390,7 +390,7 @@ describe('EmployeeDocumentsService', () => {
       employeeRepo.findById.mockResolvedValue({
         _id: employeeId,
       } as unknown as EmployeeLean);
-      const storageKey = `employees/${employeeId.toString()}/documents/file.pdf`;
+      const storageKey = `hrms/employees/${employeeId.toString()}/documents/file.pdf`;
       storageService.uploadFile.mockResolvedValue({ key: storageKey });
 
       mockSession.withTransaction.mockRejectedValueOnce(
@@ -517,6 +517,9 @@ describe('EmployeeDocumentsService', () => {
       );
 
       expect(result.url).toBe('https://s3.aws.com/signed-url');
+      expect(storageService.getSignedDownloadUrl).toHaveBeenCalledWith(
+        'employees/docs/resume.pdf',
+      );
       expect(auditLogsService.createAuditLog).toHaveBeenCalledWith(
         expect.objectContaining({
           actorId,
@@ -526,6 +529,32 @@ describe('EmployeeDocumentsService', () => {
           ipAddress: clientMetadata.ipAddress,
           userAgent: clientMetadata.userAgent,
         }),
+      );
+    });
+
+    it('should download new hrms/employees documents using stored storageKey verbatim', async () => {
+      const newStorageKey = `hrms/employees/${employeeId.toString()}/documents/new-uuid.pdf`;
+      employeeDocumentRepo.findById.mockResolvedValue({
+        _id: documentId,
+        employeeId,
+        category: EmployeeDocumentCategory.CONTRACT,
+        originalFileName: 'contract.pdf',
+        storageKey: newStorageKey,
+      } as unknown as EmployeeDocumentLean);
+      storageService.getSignedDownloadUrl.mockResolvedValue(
+        'https://s3.aws.com/signed-new-url',
+      );
+
+      const result = await service.getDocumentDownloadUrl(
+        employeeId,
+        documentId,
+        actorId,
+        clientMetadata,
+      );
+
+      expect(result.url).toBe('https://s3.aws.com/signed-new-url');
+      expect(storageService.getSignedDownloadUrl).toHaveBeenCalledWith(
+        newStorageKey,
       );
     });
   });
@@ -576,6 +605,26 @@ describe('EmployeeDocumentsService', () => {
       );
       expect(mockSession.endSession).toHaveBeenCalled();
       expect(storageService.deleteFile).toHaveBeenCalledWith(storageKey);
+    });
+
+    it('should delete newly uploaded hrms/employees documents using stored storageKey', async () => {
+      const newStorageKey = `hrms/employees/${employeeId.toString()}/documents/delete-uuid.pdf`;
+      employeeDocumentRepo.findById.mockResolvedValue({
+        _id: documentId,
+        employeeId,
+        category: EmployeeDocumentCategory.CERTIFICATE,
+        originalFileName: 'cert.pdf',
+        storageKey: newStorageKey,
+      } as unknown as EmployeeDocumentLean);
+
+      await service.deleteDocument(
+        employeeId,
+        documentId,
+        actorId,
+        clientMetadata,
+      );
+
+      expect(storageService.deleteFile).toHaveBeenCalledWith(newStorageKey);
     });
   });
 });

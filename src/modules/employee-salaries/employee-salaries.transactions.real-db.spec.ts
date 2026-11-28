@@ -1,3 +1,7 @@
+import * as dns from 'node:dns/promises';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   HttpStatus,
   INestApplication,
@@ -64,12 +68,45 @@ import {
 } from '../audit-logs/constants/audit-log.constant';
 import { AppError } from '../../common/errors/app-error';
 
-const REAL_MONGODB_URI = process.env.MONGODB_URI;
+const EXPECTED_TEST_DATABASE = 'crm_hrms_test';
+
+function resolveMongoUri(
+  testEnvPath: string = path.resolve(process.cwd(), '.env.test'),
+): string | null {
+  if (!fs.existsSync(testEnvPath)) {
+    return null;
+  }
+
+  const content = fs.readFileSync(testEnvPath, 'utf8');
+  const match = /^MONGODB_URI=(.+)$/m.exec(content);
+
+  const uri = match?.[1]?.trim().replace(/^["']|["']$/g, '');
+
+  if (!uri) {
+    return null;
+  }
+
+  let databaseName: string;
+
+  try {
+    databaseName = decodeURIComponent(new URL(uri).pathname.slice(1));
+  } catch {
+    throw new Error('Invalid test MongoDB URI.');
+  }
+
+  if (databaseName !== EXPECTED_TEST_DATABASE) {
+    throw new Error(
+      `Unsafe test database. Expected ${EXPECTED_TEST_DATABASE}.`,
+    );
+  }
+
+  return uri;
+}
 
 describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency', () => {
   jest.setTimeout(60000);
 
-  let connection: Connection;
+  let connection: Connection | null = null;
   let employeeSalaryModel: Model<EmployeeSalaryDocument>;
   let employeeModel: Model<EmployeeDocument>;
   let salaryStructureModel: Model<SalaryStructureDocument>;
@@ -90,39 +127,51 @@ describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency
   const actorId = new Types.ObjectId();
 
   beforeAll(async () => {
-    if (!REAL_MONGODB_URI) {
-      console.warn(
-        'MONGODB_URI environment variable is not set; skipping real MongoDB replica set tests.',
-      );
-      isConnected = false;
+    const uri = resolveMongoUri();
+    if (!uri) {
+      console.warn('Real MongoDB URI not configured; skipping live DB checks.');
       return;
     }
 
     try {
-      connection = await mongoose
-        .createConnection(REAL_MONGODB_URI, {
+      // Fast 1.5s DNS pre-check so offline sandboxes skip immediately without hanging
+      const srvHost = uri.includes('mongodb+srv://')
+        ? uri.split('@')[1]?.split('/')[0]
+        : null;
+      if (srvHost) {
+        await Promise.race([
+          dns.resolveSrv(`_mongodb._tcp.${srvHost}`),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('DNS offline timeout')), 1500),
+          ),
+        ]);
+      }
+
+      const conn = await mongoose
+        .createConnection(uri, {
           serverSelectionTimeoutMS: 8000,
           connectTimeoutMS: 10000,
         })
         .asPromise();
+      connection = conn;
 
-      employeeSalaryModel = connection.model<EmployeeSalaryDocument>(
+      employeeSalaryModel = conn.model<EmployeeSalaryDocument>(
         EmployeeSalary.name,
         EmployeeSalarySchema,
       );
-      employeeModel = connection.model<EmployeeDocument>(
-        EmployeeEmployeeSchemaModelName(connection),
+      employeeModel = conn.model<EmployeeDocument>(
+        EmployeeEmployeeSchemaModelName(conn),
         EmployeeSchema,
       );
-      salaryStructureModel = connection.model<SalaryStructureDocument>(
+      salaryStructureModel = conn.model<SalaryStructureDocument>(
         SalaryStructure.name,
         SalaryStructureSchema,
       );
-      salaryComponentModel = connection.model<SalaryComponentDocument>(
+      salaryComponentModel = conn.model<SalaryComponentDocument>(
         SalaryComponent.name,
         SalaryComponentSchema,
       );
-      auditLogModel = connection.model<AuditLogDocument>(
+      auditLogModel = conn.model<AuditLogDocument>(
         AuditLog.name,
         AuditLogSchema,
       );
@@ -140,7 +189,7 @@ describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency
       const auditLogRepository = new AuditLogRepository(auditLogModel);
       auditLogsService = new AuditLogsService(auditLogRepository);
       service = new EmployeeSalariesService(
-        connection,
+        conn,
         repository,
         calculationService,
         auditLogsService,
@@ -151,11 +200,11 @@ describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency
 
       isConnected = true;
     } catch (err: unknown) {
-      console.warn(
-        'Real MongoDB replica set not accessible (offline sandbox):',
-        (err as Error).message,
-      );
+      await connection?.close(true).catch(() => undefined);
+      connection = null;
       isConnected = false;
+
+      throw err;
     }
   });
 
@@ -302,6 +351,54 @@ describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency
 
     return { basicId, hraId, structure1Id, structure2Id };
   }
+
+  describe('0. Test MongoDB URI Validation', () => {
+    it('reads strictly from .env.test, ignores process.env.MONGODB_URI, and enforces crm_hrms_test', () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mongo-uri-test-'));
+      const tmpEnv = path.join(tmpDir, '.env.test');
+      const prevEnv = process.env.MONGODB_URI;
+
+      try {
+        // Must ignore process.env.MONGODB_URI even if set to production
+        process.env.MONGODB_URI = 'mongodb://localhost:27017/crm_hrms_prod';
+        expect(resolveMongoUri(tmpEnv)).toBeNull();
+
+        fs.writeFileSync(
+          tmpEnv,
+          'MONGODB_URI=mongodb+srv://cluster0.example.invalid/crm_hrms_test?retryWrites=true\n',
+        );
+        expect(resolveMongoUri(tmpEnv)).toContain('crm_hrms_test');
+
+        fs.writeFileSync(tmpEnv, 'MONGODB_URI=not-a-valid-uri\n');
+        expect(() => resolveMongoUri(tmpEnv)).toThrow(
+          'Invalid test MongoDB URI.',
+        );
+
+        fs.writeFileSync(
+          tmpEnv,
+          'MONGODB_URI=mongodb+srv://cluster0.example.invalid/\n',
+        );
+        expect(() => resolveMongoUri(tmpEnv)).toThrow(
+          `Unsafe test database. Expected ${EXPECTED_TEST_DATABASE}.`,
+        );
+
+        fs.writeFileSync(
+          tmpEnv,
+          'MONGODB_URI=mongodb+srv://cluster0.example.invalid/crm_hrms?retryWrites=true\n',
+        );
+        expect(() => resolveMongoUri(tmpEnv)).toThrow(
+          `Unsafe test database. Expected ${EXPECTED_TEST_DATABASE}.`,
+        );
+      } finally {
+        if (prevEnv === undefined) {
+          delete process.env.MONGODB_URI;
+        } else {
+          process.env.MONGODB_URI = prevEnv;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
 
   describe('1. Real MongoDB Index Verification', () => {
     it('verifies all 4 critical indexes exist on the real replica set collection', async () => {
@@ -953,6 +1050,177 @@ describe('EmployeeSalaries - Real MongoDB Replica Set Transactions & Concurrency
           `/api/v1/employees/${new Types.ObjectId().toString()}/salary-assignments`,
         )
         .expect(HttpStatus.NOT_FOUND);
+    });
+
+    it('creates non-overlapping ACTIVE assignment when only closed SUPERSEDED history exists, preserves history, enforces partial unique index under concurrency, and rolls back on audit failure', async () => {
+      if (!isConnected) return;
+
+      const employeeId = await createTestEmployee('2026-01-01');
+      const { structure1Id, structure2Id } =
+        await createTestStructuresAndComponents();
+      const basePath = `/api/v1/employees/${employeeId.toString()}/salary-assignments`;
+
+      // Seed closed SUPERSEDED assignment [2026-10-27, 2027-01-01) with __v: 0 (no active assignment)
+      const histDoc = await repository.create({
+        employeeId,
+        salaryStructureId: structure1Id,
+        effectiveFrom: new Date('2026-10-27T00:00:00.000Z'),
+        effectiveTo: new Date('2027-01-01T00:00:00.000Z'),
+        salaryBasis: SalaryStructureBasis.CTC,
+        salaryFrequency: SalaryStructureFrequency.MONTHLY,
+        salaryAmount: 50000,
+        salaryStructureVersion: 1,
+        salarySnapshot: {
+          salaryBasis: SalaryStructureBasis.CTC,
+          salaryFrequency: SalaryStructureFrequency.MONTHLY,
+          inputSalaryAmount: 50000,
+          grossSalaryMonthly: 50000,
+          grossSalaryAnnual: 600000,
+          totalEmployerContributionsMonthly: 0,
+          totalEmployerContributionsAnnual: 0,
+          totalCtcMonthly: 50000,
+          totalCtcAnnual: 600000,
+          totalEmployeeDeductionsMonthly: 0,
+          totalEmployeeDeductionsAnnual: 0,
+          estimatedNetSalaryMonthly: 50000,
+          estimatedNetSalaryAnnual: 600000,
+          summary: {
+            monthly: {
+              grossSalary: 50000,
+              employerContributions: 0,
+              totalCtc: 50000,
+              employeeDeductions: 0,
+              estimatedNetSalary: 50000,
+            },
+            annual: {
+              grossSalary: 600000,
+              employerContributions: 0,
+              totalCtc: 600000,
+              employeeDeductions: 0,
+              estimatedNetSalary: 600000,
+            },
+          },
+          earnings: [],
+          employeeDeductions: [],
+          employerContributions: [],
+        },
+        status: EmployeeSalaryStatus.SUPERSEDED,
+        createdBy: actorId,
+        updatedBy: actorId,
+      });
+
+      // 1. Overlapping date against historical SUPERSEDED record -> 409 Conflict
+      await request(app.getHttpServer())
+        .post(basePath)
+        .send({
+          salaryStructureId: structure2Id.toString(),
+          effectiveFrom: '2026-12-01',
+        })
+        .expect(HttpStatus.CONFLICT);
+
+      // 2. Transaction rollback on audit failure -> historical record stays untouched, no orphan created
+      jest
+        .spyOn(auditLogsService, 'createAuditLog')
+        .mockRejectedValueOnce(
+          new Error('Simulated MongoDB audit crash after superseded history'),
+        );
+      await request(app.getHttpServer())
+        .post(basePath)
+        .send({
+          salaryStructureId: structure2Id.toString(),
+          effectiveFrom: '2027-06-01',
+        })
+        .expect(HttpStatus.INTERNAL_SERVER_ERROR);
+
+      expect(await employeeSalaryModel.countDocuments({ employeeId })).toBe(1);
+
+      // 3. Concurrent POST creation when only SUPERSEDED history exists -> exactly 1 succeeds, 1 rejected
+      const [c1, c2] = await Promise.allSettled([
+        service.assignSalary(
+          employeeId,
+          {
+            salaryStructureId: structure2Id.toString(),
+            effectiveFrom: '2027-06-01',
+          },
+          actorId,
+        ),
+        service.assignSalary(
+          employeeId,
+          {
+            salaryStructureId: structure2Id.toString(),
+            effectiveFrom: '2027-06-01',
+          },
+          actorId,
+        ),
+      ]);
+      const fulfilled = [c1, c2].filter((r) => r.status === 'fulfilled');
+      const rejected = [c1, c2].filter((r) => r.status === 'rejected');
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect([HttpStatus.CONFLICT, HttpStatus.BAD_REQUEST]).toContain(
+        (rejected[0].reason as AppError).statusCode,
+      );
+
+      // Historical doc preserved untouched, and unique partial index ensures exactly 1 open ACTIVE record
+      const histAfter = await employeeSalaryModel.findById(histDoc._id).exec();
+      expect(histAfter?.status).toBe(EmployeeSalaryStatus.SUPERSEDED);
+      expect(histAfter?.effectiveTo?.toISOString().slice(0, 10)).toBe(
+        '2027-01-01',
+      );
+      expect(histAfter?.__v).toBe(0);
+
+      const activeDocs = await employeeSalaryModel
+        .find({
+          employeeId,
+          effectiveTo: null,
+          status: EmployeeSalaryStatus.ACTIVE,
+        })
+        .exec();
+      expect(activeDocs).toHaveLength(1);
+      expect(activeDocs[0].effectiveFrom.toISOString().slice(0, 10)).toBe(
+        '2027-06-01',
+      );
+
+      const assignAudit = await auditLogModel
+        .findOne({
+          targetId: activeDocs[0]._id,
+          action: AuditAction.EMPLOYEE_SALARY_ASSIGNED,
+        })
+        .exec();
+      expect(assignAudit).not.toBeNull();
+
+      // 4. Subsequent revision on activeDocs[0] -> 2028-01-01 closes 2027-06-01 cleanly and logs REVISED
+      const revRes = await request(app.getHttpServer())
+        .post(basePath)
+        .send({
+          salaryStructureId: structure1Id.toString(),
+          effectiveFrom: '2028-01-01',
+        })
+        .expect(HttpStatus.CREATED);
+      const revId = (revRes.body as { data: { id: string } }).data.id;
+
+      const closedActive = await employeeSalaryModel
+        .findById(activeDocs[0]._id)
+        .exec();
+      expect(closedActive?.status).toBe(EmployeeSalaryStatus.SUPERSEDED);
+      expect(closedActive?.effectiveTo?.toISOString().slice(0, 10)).toBe(
+        '2028-01-01',
+      );
+
+      const reviseAudit = await auditLogModel
+        .findOne({
+          targetId: new Types.ObjectId(revId),
+          action: AuditAction.EMPLOYEE_SALARY_REVISED,
+        })
+        .exec();
+      expect(reviseAudit).not.toBeNull();
+      expect(
+        await employeeSalaryModel.countDocuments({
+          employeeId,
+          effectiveTo: null,
+          status: EmployeeSalaryStatus.ACTIVE,
+        }),
+      ).toBe(1);
     });
   });
 });

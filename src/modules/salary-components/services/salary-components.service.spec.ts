@@ -1,10 +1,17 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpStatus } from '@nestjs/common';
+import { getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 import { SalaryComponentsService } from './salary-components.service';
 import { SalaryComponentRepository } from '../repositories/salary-component.repository';
+import { SalaryStructure } from '../../salary-structures/schemas/salary-structure.schema';
+import { EmployeeSalary } from '../../employee-salaries/schemas/employee-salary.schema';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
+import {
+  AuditAction,
+  AuditTargetModel,
+} from '../../audit-logs/constants/audit-log.constant';
 import {
   SalaryComponentCalculationType,
   SalaryComponentPercentageBasis,
@@ -77,7 +84,21 @@ describe('SalaryComponentsService', () => {
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
   };
 
+  let mockSalaryStructureModel: { exists: jest.Mock };
+  let mockEmployeeSalaryModel: { exists: jest.Mock };
+
   beforeEach(async () => {
+    mockSalaryStructureModel = {
+      exists: jest
+        .fn()
+        .mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
+    };
+    mockEmployeeSalaryModel = {
+      exists: jest
+        .fn()
+        .mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SalaryComponentsService,
@@ -90,6 +111,7 @@ describe('SalaryComponentsService', () => {
             findList: jest.fn(),
             updateById: jest.fn(),
             updateStatus: jest.fn(),
+            deleteById: jest.fn(),
             isDuplicateKeyError: jest.fn().mockReturnValue(false),
           },
         },
@@ -98,6 +120,14 @@ describe('SalaryComponentsService', () => {
           useValue: {
             createAuditLog: jest.fn().mockResolvedValue({}),
           },
+        },
+        {
+          provide: getModelToken(SalaryStructure.name),
+          useValue: mockSalaryStructureModel,
+        },
+        {
+          provide: getModelToken(EmployeeSalary.name),
+          useValue: mockEmployeeSalaryModel,
         },
       ],
     }).compile();
@@ -636,6 +666,77 @@ describe('SalaryComponentsService', () => {
         code: ErrorCode.RESOURCE_NOT_FOUND,
         statusCode: HttpStatus.NOT_FOUND,
       });
+    });
+  });
+
+  describe('delete', () => {
+    it('throws 404 if salary component to delete does not exist', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(
+        service.delete(componentId, actorId, clientMetadata),
+      ).rejects.toMatchObject({
+        code: ErrorCode.RESOURCE_NOT_FOUND,
+        statusCode: HttpStatus.NOT_FOUND,
+      });
+    });
+
+    it('rejects deletion with 409 Conflict if component is referenced by a SalaryStructure', async () => {
+      repository.findById.mockResolvedValue(mockBasicSalaryComponent);
+      mockSalaryStructureModel.exists.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }),
+      });
+
+      await expect(
+        service.delete(componentId, actorId, clientMetadata),
+      ).rejects.toMatchObject({
+        code: ErrorCode.RESOURCE_ALREADY_EXISTS,
+        statusCode: HttpStatus.CONFLICT,
+      });
+      expect(repository.deleteById).not.toHaveBeenCalled();
+    });
+
+    it('rejects deletion with 409 Conflict if component is referenced by an EmployeeSalary assignment', async () => {
+      repository.findById.mockResolvedValue(mockBasicSalaryComponent);
+      mockSalaryStructureModel.exists.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(null),
+      });
+      mockEmployeeSalaryModel.exists.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }),
+      });
+
+      await expect(
+        service.delete(componentId, actorId, clientMetadata),
+      ).rejects.toMatchObject({
+        code: ErrorCode.RESOURCE_ALREADY_EXISTS,
+        statusCode: HttpStatus.CONFLICT,
+      });
+      expect(repository.deleteById).not.toHaveBeenCalled();
+    });
+
+    it('deletes component and logs audit record when component is not referenced anywhere', async () => {
+      repository.findById.mockResolvedValue(mockBasicSalaryComponent);
+      mockSalaryStructureModel.exists.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(null),
+      });
+      mockEmployeeSalaryModel.exists.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(null),
+      });
+      repository.deleteById.mockResolvedValue(mockBasicSalaryComponent);
+
+      const res = await service.delete(componentId, actorId, clientMetadata);
+
+      expect(res.deleted).toBe(true);
+      expect(res.id).toBe(componentId.toString());
+      expect(repository.deleteById).toHaveBeenCalledWith(componentId);
+      expect(auditLogsService.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorId,
+          action: AuditAction.SALARY_COMPONENT_DELETED,
+          targetId: componentId,
+          targetModel: AuditTargetModel.SALARY_COMPONENT,
+        }),
+      );
     });
   });
 });

@@ -23,6 +23,7 @@ export interface SalaryComponentQueryFilter {
   type?: SalaryComponentType;
   calculationType?: SalaryComponentCalculationType;
   isActive?: boolean;
+  isStatutory?: boolean;
   $or?: Array<
     | { name: { $regex: string; $options: string } }
     | { code: { $regex: string; $options: string } }
@@ -38,6 +39,7 @@ export interface CreateSalaryComponentInput {
   type: SalaryComponentType;
   calculationType?: SalaryComponentCalculationType | null;
   percentageOf?: SalaryComponentPercentageBasis | null;
+  defaultValue?: number | null;
   isTaxable?: boolean;
   isStatutory?: boolean;
   description?: string | null;
@@ -52,6 +54,7 @@ export interface UpdateSalaryComponentInput {
   type?: SalaryComponentType;
   calculationType?: SalaryComponentCalculationType;
   percentageOf?: SalaryComponentPercentageBasis | null;
+  defaultValue?: number | null;
   isTaxable?: boolean;
   isStatutory?: boolean;
   description?: string | null;
@@ -174,6 +177,10 @@ export class SalaryComponentRepository {
       filter.isActive = isActive;
     }
 
+    if (queryDto.isStatutory !== undefined) {
+      filter.isStatutory = queryDto.isStatutory;
+    }
+
     const sortField: SalaryComponentSortableField =
       sortBy &&
       (SALARY_COMPONENT_SORTABLE_FIELDS as readonly string[]).includes(sortBy)
@@ -240,6 +247,17 @@ export class SalaryComponentRepository {
       { $set: { isActive, updatedBy } },
       { new: true, runValidators: true },
     );
+    if (session) {
+      query.session(session);
+    }
+    return query.lean<SalaryComponentLean>().exec();
+  }
+
+  async deleteById(
+    id: Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<SalaryComponentLean | null> {
+    const query = this.salaryComponentModel.findByIdAndDelete(id);
     if (session) {
       query.session(session);
     }

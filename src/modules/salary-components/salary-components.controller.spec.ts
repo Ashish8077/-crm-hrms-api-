@@ -23,6 +23,7 @@ describe('SalaryComponentsController', () => {
     getById: jest.fn(),
     update: jest.fn(),
     updateStatus: jest.fn(),
+    delete: jest.fn(),
   };
 
   const actorId = new Types.ObjectId();
@@ -99,6 +100,12 @@ describe('SalaryComponentsController', () => {
       expect(updateStatusPerms).toEqual([
         PermissionKeys.SALARY_COMPONENTS_EDIT,
       ]);
+
+      const deletePerms = reflector.get<string[]>(
+        REQUIRE_PERMISSIONS_KEY,
+        controller.delete,
+      );
+      expect(deletePerms).toEqual([PermissionKeys.SALARY_COMPONENTS_DELETE]);
     });
   });
 
@@ -215,6 +222,30 @@ describe('SalaryComponentsController', () => {
       expect(result).toEqual({
         success: true,
         data: { ...mockResponseData, isActive: false },
+      });
+    });
+  });
+
+  describe('DELETE /salary-components/:id', () => {
+    it('TC-SC-CTRL-07: Delegates safe deletion to service and returns result', async () => {
+      mockService.delete.mockResolvedValue({
+        deleted: true,
+        id: componentId.toString(),
+      });
+
+      const result = await controller.delete(componentId, mockRequest);
+
+      expect(mockService.delete).toHaveBeenCalledWith(
+        componentId,
+        actorId,
+        expect.objectContaining({
+          ipAddress: '127.0.0.1',
+          userAgent: 'JestClient/1.0',
+        }),
+      );
+      expect(result).toEqual({
+        success: true,
+        data: { deleted: true, id: componentId.toString() },
       });
     });
   });

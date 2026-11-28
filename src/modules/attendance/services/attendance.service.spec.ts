@@ -1132,7 +1132,7 @@ describe('AttendanceService', () => {
           ...mockEmployee,
           employmentStatus: EmploymentStatus.NOTICE_PERIOD,
           lastWorkingDate: tomorrow,
-        } as unknown as EmployeeLean);
+        });
 
         const result = await service.checkIn(actorUserId, {}, clientMetadata);
         expect(result.status).toBe(AttendanceStatus.CHECKED_IN);
@@ -1144,7 +1144,7 @@ describe('AttendanceService', () => {
           ...mockEmployee,
           employmentStatus: EmploymentStatus.NOTICE_PERIOD,
           lastWorkingDate: yesterday,
-        } as unknown as EmployeeLean);
+        });
 
         await expect(
           service.checkIn(actorUserId, {}, clientMetadata),
@@ -5692,7 +5692,7 @@ describe('AttendanceService', () => {
           ...mockEmployee,
           employmentStatus: EmploymentStatus.NOTICE_PERIOD,
           lastWorkingDate: new Date('2026-10-31T23:59:59.999Z'), // Notice period active through Oct 31
-        } as unknown as EmployeeLean;
+        };
         employeeRepo.findByUserId.mockResolvedValue(noticeEmployee);
 
         const createdDoc: AttendanceLean = {
@@ -5978,7 +5978,7 @@ describe('AttendanceService', () => {
           ...mockEmployee,
           employmentStatus: EmploymentStatus.TERMINATED,
           terminationDate: new Date(`${testDate}T23:59:59.999Z`),
-        } as unknown as EmployeeLean;
+        };
         employeeRepo.findByUserId.mockResolvedValue(terminatedEmployee);
 
         // Employee attempts to check out at end of day: succeeds to close active session
@@ -6053,7 +6053,7 @@ describe('AttendanceService', () => {
           ...mockEmployee,
           employmentStatus: EmploymentStatus.TERMINATED,
           terminationDate: new Date('2026-11-04T10:00:00.000Z'),
-        } as unknown as EmployeeLean;
+        };
         employeeRepo.findByUserId.mockResolvedValue(terminatedEmployee);
 
         const res = await service.checkOut(actorUserId, {}, clientMetadata);
@@ -6104,7 +6104,7 @@ describe('AttendanceService', () => {
           ...mockEmployee,
           employmentStatus: EmploymentStatus.RESIGNED,
           lastWorkingDate: new Date('2026-11-04T23:59:59.999Z'),
-        } as unknown as EmployeeLean;
+        };
         employeeRepo.findByUserId.mockResolvedValue(resignedEmployee);
 
         const res = await service.checkOut(actorUserId, {}, clientMetadata);
@@ -6168,7 +6168,7 @@ describe('AttendanceService', () => {
         dateOfJoining: new Date('2026-01-01T00:00:00.000Z'),
         employmentStatus: EmploymentStatus.TERMINATED,
         terminationDate: new Date('2026-10-31T23:59:59.999Z'),
-      } as unknown as EmployeeLean;
+      };
       employeeRepo.findById.mockResolvedValue(terminatedEmployee);
       attendanceRepo.findByEmployeeAndDate.mockResolvedValue(null);
       attendanceRepo.create.mockImplementation((data) =>
@@ -6209,7 +6209,7 @@ describe('AttendanceService', () => {
         dateOfJoining: new Date('2026-01-01T00:00:00.000Z'),
         employmentStatus: EmploymentStatus.TERMINATED,
         terminationDate: new Date('2026-10-31T23:59:59.999Z'),
-      } as unknown as EmployeeLean;
+      };
       employeeRepo.findById.mockResolvedValue(terminatedEmployee);
 
       await expect(
@@ -6242,7 +6242,7 @@ describe('AttendanceService', () => {
         dateOfJoining: new Date('2026-01-01T00:00:00.000Z'),
         employmentStatus: EmploymentStatus.TERMINATED,
         terminationDate: new Date('2026-10-31T23:59:59.999Z'),
-      } as unknown as EmployeeLean;
+      };
       employeeRepo.findById.mockResolvedValue(terminatedEmployee);
 
       await expect(
@@ -6366,7 +6366,7 @@ describe('AttendanceService', () => {
         dateOfJoining: new Date('2026-01-01T00:00:00.000Z'),
         employmentStatus: EmploymentStatus.TERMINATED,
         terminationDate: new Date('2026-10-31T23:59:59.999Z'),
-      } as unknown as EmployeeLean;
+      };
       employeeRepo.findById.mockResolvedValue(terminatedEmployee);
 
       const existingRecord: AttendanceLean = {
@@ -6423,7 +6423,7 @@ describe('AttendanceService', () => {
           ...mockEmployee,
           employmentStatus: EmploymentStatus.TERMINATED,
           terminationDate: new Date('2026-11-04T23:59:59.999Z'),
-        } as unknown as EmployeeLean;
+        };
         employeeRepo.findByUserId.mockResolvedValue(terminatedEmployee);
 
         await expect(
@@ -6488,7 +6488,7 @@ describe('AttendanceService', () => {
           ...mockEmployee,
           employmentStatus: EmploymentStatus.NOTICE_PERIOD,
           lastWorkingDate: new Date('2026-10-31T12:00:00.000Z'),
-        } as unknown as EmployeeLean;
+        };
         employeeRepo.findByUserId.mockResolvedValue(noticePeriodEmployee);
 
         const result = await service.checkOut(actorUserId, {}, clientMetadata);
@@ -6549,7 +6549,7 @@ describe('AttendanceService', () => {
           ...mockEmployee,
           employmentStatus: EmploymentStatus.ACTIVE,
           lastWorkingDate: new Date('2026-10-31T12:00:00.000Z'),
-        } as unknown as EmployeeLean;
+        };
         employeeRepo.findByUserId.mockResolvedValue(activeEmployee);
 
         const result = await service.checkOut(actorUserId, {}, clientMetadata);
@@ -6588,7 +6588,7 @@ describe('AttendanceService', () => {
           ...mockEmployee,
           employmentStatus: EmploymentStatus.ACTIVE,
           lastWorkingDate: new Date('2026-10-31T12:00:00.000Z'),
-        } as unknown as EmployeeLean;
+        };
         employeeRepo.findByUserId.mockResolvedValue(activeEmployee);
 
         await expect(

@@ -1,10 +1,19 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { Types } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
 import {
   CreateSalaryComponentInput,
   SalaryComponentRepository,
   UpdateSalaryComponentInput,
 } from '../repositories/salary-component.repository';
+import {
+  SalaryStructure,
+  SalaryStructureDocument,
+} from '../../salary-structures/schemas/salary-structure.schema';
+import {
+  EmployeeSalary,
+  EmployeeSalaryDocument,
+} from '../../employee-salaries/schemas/employee-salary.schema';
 import { AuditLogsService } from '../../audit-logs/audit-logs.service';
 import {
   AuditAction,
@@ -35,6 +44,10 @@ export class SalaryComponentsService {
   constructor(
     private readonly salaryComponentRepository: SalaryComponentRepository,
     private readonly auditLogsService: AuditLogsService,
+    @InjectModel(SalaryStructure.name)
+    private readonly salaryStructureModel: Model<SalaryStructureDocument>,
+    @InjectModel(EmployeeSalary.name)
+    private readonly employeeSalaryModel: Model<EmployeeSalaryDocument>,
   ) {}
 
   /**
@@ -115,6 +128,7 @@ export class SalaryComponentsService {
         dto.calculationType === SalaryComponentCalculationType.PERCENTAGE
           ? (dto.percentageOf ?? null)
           : null,
+      defaultValue: dto.defaultValue ?? null,
       isTaxable: dto.isTaxable ?? false,
       isStatutory:
         normalizedCode === GRATUITY_COMPONENT_CODE
@@ -305,6 +319,9 @@ export class SalaryComponentsService {
     } else if (dto.percentageOf !== undefined) {
       updateData.percentageOf = effectivePercentageOf;
     }
+    if (dto.defaultValue !== undefined) {
+      updateData.defaultValue = dto.defaultValue;
+    }
     if (dto.isTaxable !== undefined) {
       updateData.isTaxable = dto.isTaxable;
     }
@@ -437,5 +454,63 @@ export class SalaryComponentsService {
       actorId,
       clientMetadata,
     );
+  }
+
+  /**
+   * Safely deletes a salary component if and only if it is not referenced
+   * by any SalaryStructure templates or EmployeeSalary historical assignments.
+   */
+  async delete(
+    id: Types.ObjectId,
+    actorId: Types.ObjectId,
+    clientMetadata?: ClientMetadata,
+  ): Promise<{ deleted: true; id: string }> {
+    const existing = await this.salaryComponentRepository.findById(id);
+    if (!existing) {
+      throw new AppError(
+        ErrorCode.RESOURCE_NOT_FOUND,
+        'Salary component not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const idStr = id.toString();
+    const [referencedInStructure, referencedInEmployeeSalary] =
+      await Promise.all([
+        this.salaryStructureModel
+          .exists({ 'components.componentId': id })
+          .exec(),
+        this.employeeSalaryModel
+          .exists({
+            $or: [
+              { 'salarySnapshot.earnings.componentId': idStr },
+              { 'salarySnapshot.employeeDeductions.componentId': idStr },
+              { 'salarySnapshot.employerContributions.componentId': idStr },
+            ],
+          })
+          .exec(),
+      ]);
+
+    if (referencedInStructure || referencedInEmployeeSalary) {
+      throw new AppError(
+        ErrorCode.RESOURCE_ALREADY_EXISTS,
+        `Cannot delete salary component '${existing.code}' because it is referenced by existing salary structures or employee salary records. Deactivate it instead.`,
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    await this.salaryComponentRepository.deleteById(id);
+
+    await this.auditLogsService.createAuditLog({
+      actorId,
+      action: AuditAction.SALARY_COMPONENT_DELETED,
+      targetId: id,
+      targetModel: AuditTargetModel.SALARY_COMPONENT,
+      details: { name: existing.name, code: existing.code },
+      ipAddress: clientMetadata?.ipAddress ?? null,
+      userAgent: clientMetadata?.userAgent ?? null,
+    });
+
+    return { deleted: true, id: idStr };
   }
 }

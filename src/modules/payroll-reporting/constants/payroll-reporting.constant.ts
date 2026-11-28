@@ -1,0 +1,7 @@
+export const PAYROLL_REPORTING_CONSTANTS = {
+  DEFAULT_PAGE: 1,
+  DEFAULT_LIMIT: 20,
+  MAX_PAGE_LIMIT: 100,
+  MAX_EXPORT_ROWS: 10_000,
+  UNASSIGNED_GROUP_LABEL: 'Unassigned / Unknown',
+} as const;

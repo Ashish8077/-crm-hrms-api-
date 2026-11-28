@@ -567,6 +567,7 @@ describe('EmployeeSalariesService', () => {
         employeeId,
         effectiveFrom: new Date('2026-07-01T00:00:00.000Z'),
         effectiveTo: null,
+        status: EmployeeSalaryStatus.ACTIVE,
       } as EmployeeSalaryLean;
 
       (
@@ -604,6 +605,7 @@ describe('EmployeeSalariesService', () => {
         employeeId,
         effectiveFrom: new Date('2026-07-01T00:00:00.000Z'),
         effectiveTo: null,
+        status: EmployeeSalaryStatus.ACTIVE,
       } as EmployeeSalaryLean;
 
       (
@@ -633,6 +635,7 @@ describe('EmployeeSalariesService', () => {
         employeeId,
         effectiveFrom: new Date('2026-10-01T00:00:00.000Z'),
         effectiveTo: null,
+        status: EmployeeSalaryStatus.ACTIVE,
       } as EmployeeSalaryLean;
 
       const currentAssignment = {
@@ -640,6 +643,7 @@ describe('EmployeeSalariesService', () => {
         employeeId,
         effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
         effectiveTo: new Date('2026-10-01T00:00:00.000Z'),
+        status: EmployeeSalaryStatus.SUPERSEDED,
       } as EmployeeSalaryLean;
 
       // Note: findAllByEmployeeId returns newest first
@@ -652,7 +656,7 @@ describe('EmployeeSalariesService', () => {
         effectiveFrom: '2026-08-01', // Between current and future!
       };
 
-      // Because latestAssignment is 2026-10-01, 2026-08-01 <= 2026-10-01, so it is rejected!
+      // Because activeAssignment is 2026-10-01, 2026-08-01 <= 2026-10-01, so it is rejected!
       await expect(
         service.assignSalary(employeeId, dto, actorId),
       ).rejects.toMatchObject({
@@ -667,6 +671,7 @@ describe('EmployeeSalariesService', () => {
         employeeId,
         effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
         effectiveTo: null,
+        status: EmployeeSalaryStatus.ACTIVE,
       } as EmployeeSalaryLean;
 
       (
@@ -688,6 +693,184 @@ describe('EmployeeSalariesService', () => {
         statusCode: HttpStatus.CONFLICT,
         code: ErrorCode.CONCURRENT_MODIFICATION,
       });
+    });
+
+    it('allows new non-overlapping ACTIVE assignment when only closed SUPERSEDED history exists (2026-10-27 to 2027-01-01 -> new 2027-06-01)', async () => {
+      const closedHistorical = {
+        _id: new Types.ObjectId(),
+        employeeId,
+        salaryStructureId: structureId,
+        effectiveFrom: new Date('2026-10-27T00:00:00.000Z'),
+        effectiveTo: new Date('2027-01-01T00:00:00.000Z'),
+        status: EmployeeSalaryStatus.SUPERSEDED,
+        __v: 0,
+      } as EmployeeSalaryLean;
+
+      (
+        mockEmployeeSalaryRepo.findAllByEmployeeId as jest.Mock
+      ).mockResolvedValueOnce([closedHistorical]);
+
+      const result = await service.assignSalary(
+        employeeId,
+        {
+          salaryStructureId: structureId.toString(),
+          effectiveFrom: '2027-06-01',
+        },
+        actorId,
+      );
+
+      expect(result.status).toBe(EmployeeSalaryStatus.ACTIVE);
+      expect(result.effectiveFrom).toEqual(
+        new Date('2027-06-01T00:00:00.000Z'),
+      );
+      expect(result.effectiveTo).toBeNull();
+      expect(
+        mockEmployeeSalaryRepo.closePreviousAssignment,
+      ).not.toHaveBeenCalled();
+      expect(mockEmployeeSalaryRepo.create).toHaveBeenCalledTimes(1);
+      expect(mockAuditLogsService.createAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'EMPLOYEE_SALARY_ASSIGNED',
+        }),
+        mockSession,
+      );
+    });
+
+    it('allows contiguous boundary assignment immediately after closed SUPERSEDED effectiveTo (2027-01-01)', async () => {
+      const closedHistorical = {
+        _id: new Types.ObjectId(),
+        employeeId,
+        salaryStructureId: structureId,
+        effectiveFrom: new Date('2026-10-27T00:00:00.000Z'),
+        effectiveTo: new Date('2027-01-01T00:00:00.000Z'),
+        status: EmployeeSalaryStatus.SUPERSEDED,
+        __v: 0,
+      } as EmployeeSalaryLean;
+
+      (
+        mockEmployeeSalaryRepo.findAllByEmployeeId as jest.Mock
+      ).mockResolvedValueOnce([closedHistorical]);
+
+      const result = await service.assignSalary(
+        employeeId,
+        {
+          salaryStructureId: structureId.toString(),
+          effectiveFrom: '2027-01-01',
+        },
+        actorId,
+      );
+
+      expect(result.status).toBe(EmployeeSalaryStatus.ACTIVE);
+      expect(result.effectiveTo).toBeNull();
+      expect(
+        mockEmployeeSalaryRepo.closePreviousAssignment,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('rejects overlapping or future-conflicting assignments when only SUPERSEDED history exists', async () => {
+      const closedHistorical = {
+        _id: new Types.ObjectId(),
+        employeeId,
+        salaryStructureId: structureId,
+        effectiveFrom: new Date('2026-10-27T00:00:00.000Z'),
+        effectiveTo: new Date('2027-01-01T00:00:00.000Z'),
+        status: EmployeeSalaryStatus.SUPERSEDED,
+        __v: 0,
+      } as EmployeeSalaryLean;
+
+      for (const overlappingDate of [
+        '2026-12-01',
+        '2026-10-27',
+        '2026-09-01',
+      ]) {
+        (
+          mockEmployeeSalaryRepo.findAllByEmployeeId as jest.Mock
+        ).mockResolvedValueOnce([closedHistorical]);
+
+        await expect(
+          service.assignSalary(
+            employeeId,
+            {
+              salaryStructureId: structureId.toString(),
+              effectiveFrom: overlappingDate,
+            },
+            actorId,
+          ),
+        ).rejects.toMatchObject({
+          statusCode: HttpStatus.CONFLICT,
+          code: ErrorCode.RESOURCE_ALREADY_EXISTS,
+        });
+      }
+
+      // Future bounded historical interval also blocks overlapping open-ended assignment
+      const futureBoundedHistorical = {
+        _id: new Types.ObjectId(),
+        employeeId,
+        salaryStructureId: structureId,
+        effectiveFrom: new Date('2027-08-01T00:00:00.000Z'),
+        effectiveTo: new Date('2027-10-01T00:00:00.000Z'),
+        status: EmployeeSalaryStatus.SUPERSEDED,
+      } as EmployeeSalaryLean;
+
+      (
+        mockEmployeeSalaryRepo.findAllByEmployeeId as jest.Mock
+      ).mockResolvedValueOnce([futureBoundedHistorical, closedHistorical]);
+
+      await expect(
+        service.assignSalary(
+          employeeId,
+          {
+            salaryStructureId: structureId.toString(),
+            effectiveFrom: '2027-06-01',
+          },
+          actorId,
+        ),
+      ).rejects.toMatchObject({
+        statusCode: HttpStatus.CONFLICT,
+        code: ErrorCode.RESOURCE_ALREADY_EXISTS,
+      });
+
+      expect(mockEmployeeSalaryRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects ACTIVE revision when another future-dated historical assignment overlaps the requested interval', async () => {
+      const futureClosed = {
+        _id: new Types.ObjectId(),
+        employeeId,
+        effectiveFrom: new Date('2027-10-01T00:00:00.000Z'),
+        effectiveTo: new Date('2027-12-01T00:00:00.000Z'),
+        status: EmployeeSalaryStatus.SUPERSEDED,
+      } as EmployeeSalaryLean;
+      const openActive = {
+        _id: new Types.ObjectId(),
+        employeeId,
+        effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+        effectiveTo: null,
+        status: EmployeeSalaryStatus.ACTIVE,
+      } as EmployeeSalaryLean;
+
+      (
+        mockEmployeeSalaryRepo.findAllByEmployeeId as jest.Mock
+      ).mockResolvedValueOnce([futureClosed, openActive]);
+
+      await expect(
+        service.assignSalary(
+          employeeId,
+          {
+            salaryStructureId: structureId.toString(),
+            effectiveFrom: '2027-06-01',
+          },
+          actorId,
+        ),
+      ).rejects.toMatchObject({
+        statusCode: HttpStatus.CONFLICT,
+        code: ErrorCode.RESOURCE_ALREADY_EXISTS,
+      });
+
+      expect(
+        mockEmployeeSalaryRepo.closePreviousAssignment,
+      ).not.toHaveBeenCalled();
+      expect(mockEmployeeSalaryRepo.create).not.toHaveBeenCalled();
     });
   });
 

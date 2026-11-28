@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -135,5 +136,28 @@ export class SalaryComponentsController {
       { ipAddress, userAgent },
     );
     return { success: true, data: component };
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary: 'Delete an unreferenced salary component',
+  })
+  @ApiParam({ name: 'id', description: 'Salary Component ID', type: String })
+  @ApiOkResponse({
+    description: 'The salary component was successfully deleted.',
+  })
+  @RequirePermissions(PermissionKeys.SALARY_COMPONENTS_DELETE)
+  async delete(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<{ success: true; data: { deleted: true; id: string } }> {
+    const ipAddress = request.ip ?? null;
+    const userAgent = request.headers['user-agent'] ?? null;
+    const result = await this.salaryComponentsService.delete(
+      id,
+      request.user.userId,
+      { ipAddress, userAgent },
+    );
+    return { success: true, data: result };
   }
 }

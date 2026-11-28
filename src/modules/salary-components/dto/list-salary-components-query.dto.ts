@@ -51,6 +51,19 @@ export class ListSalaryComponentsQueryDto extends PaginationQueryDto {
   isActive?: boolean;
 
   @ApiPropertyOptional({
+    description: 'Filter by statutory compliance flag',
+    example: true,
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    return value;
+  })
+  @IsBoolean()
+  isStatutory?: boolean;
+
+  @ApiPropertyOptional({
     description: 'Field to sort by',
     enum: SALARY_COMPONENT_SORTABLE_FIELDS,
     default: 'createdAt',

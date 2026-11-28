@@ -141,4 +141,27 @@ export class BranchRepository {
     }
     return query.lean().exec();
   }
+
+  async findByIds(ids: Types.ObjectId[]): Promise<
+    Array<{
+      _id: Types.ObjectId;
+      name: string;
+      timezone?: string;
+      isActive: boolean;
+    }>
+  > {
+    if (ids.length === 0) return [];
+    return this.branchModel
+      .find({ _id: { $in: ids }, deletedAt: null })
+      .select('_id name timezone isActive')
+      .lean<
+        Array<{
+          _id: Types.ObjectId;
+          name: string;
+          timezone?: string;
+          isActive: boolean;
+        }>
+      >()
+      .exec();
+  }
 }
